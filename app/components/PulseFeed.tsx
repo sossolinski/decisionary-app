@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { getSessionPulse, subscribePulse, type PulseItem } from "@/lib/sessions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessions";
 
 type Props = {
   sessionId: string;
   selectedId: string | null;
-  onSelect: (itemId: string) => void; // wybieramy pulse item id
+  onSelect: (item: SessionInject) => void;
 };
 
 function clampText(s: string, max = 160) {
@@ -31,12 +31,17 @@ function rangePages(totalPages: number, current: number) {
 export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
   const pageSize = 5;
 
-  const [items, setItems] = useState<PulseItem[]>([]);
+  const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+
+  const pageRef = useRef(1);
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pages = rangePages(totalPages, page);
@@ -45,7 +50,6 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
     try {
       setErr(null);
       setLoading(true);
-
       const res = await getSessionPulse(sessionId, { page: p, pageSize });
       setItems(res.items);
       setTotal(res.total);
@@ -62,7 +66,11 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
     setPage(1);
     load(1);
 
-    const unsub = subscribePulse(sessionId, () => load(page));
+    const unsub = subscribePulse(sessionId, () => {
+      // ważne: bierzemy aktualny page z refa (bez stale closure)
+      load(pageRef.current);
+    });
+
     return () => unsub?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
@@ -76,48 +84,40 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
   const visible = useMemo(() => items, [items]);
 
   return (
-    <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700 }}>Pulse</div>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          {loading ? "Loading…" : `${total} total`}
-        </div>
-      </div>
-
+    <div style={{ display: "grid", gap: 10 }}>
       {err && (
-        <div
-          style={{
-            marginBottom: 10,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(220,38,38,0.35)",
-            background: "rgba(220,38,38,0.08)",
-            color: "crimson",
-            fontSize: 12,
-          }}
-        >
+        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(255,0,0,0.05)" }}>
           {err}
         </div>
       )}
 
-      <div style={{ display: "grid", gap: 8 }}>
-        {visible.map((p) => {
+      {loading && (
+        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
+          Loading…
+        </div>
+      )}
+
+      {!loading &&
+        visible.map((p) => {
           const active = selectedId === p.id;
-          const title = p.title?.trim() || "Pulse post";
-          const preview = p.body ? clampText(p.body, 160) : "";
+
+          const title = p.injects?.title?.trim() || "Pulse post";
+          const preview = p.injects?.body ? clampText(p.injects.body, 160) : "";
+
           const metaLeft =
-            [p.sender_name, p.sender_org].filter(Boolean).join(" · ") || "Unknown source";
+            [p.injects?.sender_name, p.injects?.sender_org].filter(Boolean).join(" · ") || "Unknown source";
+
           const metaRightParts = [
-            p.channel ? p.channel.toUpperCase() : null,
-            p.severity ? p.severity.toUpperCase() : null,
-          ].filter(Boolean);
+            p.injects?.channel ? String(p.injects.channel).toUpperCase() : null,
+            p.injects?.severity ? String(p.injects.severity).toUpperCase() : null,
+          ].filter(Boolean) as string[];
 
           const time = fmtTime(p.delivered_at);
 
           return (
             <button
               key={p.id}
-              onClick={() => onSelect(p.id)}
+              onClick={() => onSelect(p)}
               style={{
                 width: "100%",
                 textAlign: "left",
@@ -128,31 +128,20 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
                 cursor: "pointer",
               }}
             >
-              <div
-                style={{
-                  fontSize: 13,
-                  fontWeight: 700,
-                  marginBottom: 4,
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                }}
-              >
-                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {title}
-                </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                <div style={{ fontWeight: 700 }}>{title}</div>
 
                 {metaRightParts.length > 0 && (
-                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                     {metaRightParts.map((t) => (
                       <span
                         key={t}
                         style={{
-                          fontSize: 11,
+                          fontSize: 12,
                           padding: "2px 8px",
                           borderRadius: 999,
                           border: "1px solid rgba(0,0,0,0.12)",
-                          opacity: 0.8,
+                          background: "rgba(0,0,0,0.02)",
                         }}
                       >
                         {t}
@@ -162,67 +151,30 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
                 )}
               </div>
 
-              {preview ? (
-                <div style={{ fontSize: 12, opacity: 0.72, marginBottom: 8 }}>{preview}</div>
-              ) : (
-                <div style={{ fontSize: 12, opacity: 0.55, marginBottom: 8 }}>(no content)</div>
-              )}
+              <div style={{ marginTop: 6, color: "rgba(0,0,0,0.72)", fontSize: 13 }}>
+                {preview ? preview : <span style={{ color: "rgba(0,0,0,0.45)" }}>(no content)</span>}
+              </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  fontSize: 11,
-                  opacity: 0.68,
-                }}
-              >
-                <div
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    maxWidth: "70%",
-                  }}
-                >
-                  {metaLeft}
-                </div>
-                <div style={{ flexShrink: 0 }}>{time}</div>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
+                <span>{metaLeft}</span>
+                <span>{time}</span>
               </div>
             </button>
           );
         })}
 
-        {!loading && visible.length === 0 && (
-          <div
-            style={{
-              border: "1px solid rgba(0,0,0,0.10)",
-              borderRadius: 14,
-              padding: 12,
-              fontSize: 12,
-              opacity: 0.7,
-            }}
-          >
-            No pulse items on this page.
-          </div>
-        )}
-      </div>
+      {!loading && visible.length === 0 && (
+        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
+          No pulse items on this page.
+        </div>
+      )}
 
-      <div
-        style={{
-          marginTop: 10,
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 10,
-          fontSize: 12,
-        }}
-      >
-        <div style={{ opacity: 0.7 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>
           Page {page} / {totalPages}
         </div>
 
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
           <button
             onClick={() => setPage((x) => Math.max(1, x - 1))}
             disabled={page <= 1}
