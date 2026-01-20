@@ -85,25 +85,47 @@ export default function SessionParticipantPage() {
     };
   }, [sessionId, validSessionId]);
 
-  async function doAction(actionType: "ignore" | "escalate" | "act") {
-    if (!selectedItem) return;
+async function doAction(actionType: "ignore" | "escalate" | "act") {
+  if (!selectedItem) return;
 
-    try {
-      const saved = await addSessionAction({
-        sessionId,
-        sessionInjectId: selectedItem.id,
-        source: activeTab,
-        actionType,
-        comment: comment.trim() ? comment.trim() : null,
-      });
+  try {
+    const saved = await addSessionAction({
+      sessionId,
+      sessionInjectId: selectedItem.id,
+      source: activeTab,
+      actionType,
+      comment: comment.trim() ? comment.trim() : null,
+    });
 
-      // prepend
-      setActions((prev) => [saved, ...prev]);
-      setComment("");
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to save action");
+    // add to log immediately
+    setActions((prev) => [saved, ...prev]);
+
+    // === CONSEQUENCE (MVP) ===
+    // After ACT, generate a new official inject
+    if (actionType === "act") {
+      const title = `Update: action taken on "${
+        selectedItem.injects?.title ?? "message"
+      }"`;
+
+      const body =
+        `Decision recorded.\n\n` +
+        `Action: ACT\n` +
+        `Source: ${activeTab.toUpperCase()}\n` +
+        `Reference message ID: ${selectedItem.id}\n` +
+        (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
+        `\nNext update will follow.`;
+
+      // reuse existing helper
+      const { sendInjectToSession } = await import("@/lib/sessions");
+      await sendInjectToSession(sessionId, title, body);
     }
+
+    setComment("");
+  } catch (e: any) {
+    alert(e?.message ?? "Failed to save action");
   }
+}
+
 
   if (!sessionId) return <div style={{ padding: 24 }}>Loading…</div>;
 
