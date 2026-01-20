@@ -1,8 +1,6 @@
 import { supabase } from "./supabaseClient";
 
-/* =========================
-   TYPES
-========================= */
+/* ========================= TYPES ========================= */
 
 export type SessionSituation = {
   session_id: string;
@@ -57,9 +55,7 @@ export type PagedResult<T> = {
   page: number;
 };
 
-/* =========================
-   SITUATION
-========================= */
+/* ========================= SITUATION ========================= */
 
 export async function getSessionSituation(sessionId: string) {
   const { data, error } = await supabase
@@ -72,18 +68,17 @@ export async function getSessionSituation(sessionId: string) {
   return data as SessionSituation | null;
 }
 
-/* =========================
-   INBOX (session_injects) – paginated
-========================= */
+/* ========================= INBOX (session_injects) – paginated ========================= */
 
 type InboxOpts = {
   page?: number;
   pageSize?: number;
-  channel?: string | null; // filter by injects.channel, e.g. "pulse"
+  channel?: string | null;     // eq filter (injects.channel = ...)
+  channelNot?: string | null;  // neq filter (injects.channel <> ...)
 };
 
 function selectSessionInjects() {
-  // NOTE: alias injects:inject_id must match your schema FK on session_injects.inject_id -> injects.id
+  // alias injects:inject_id must match FK on session_injects.inject_id -> injects.id
   return supabase.from("session_injects").select(
     `
       id,
@@ -110,7 +105,6 @@ export async function getSessionInbox(
 ): Promise<PagedResult<SessionInject>> {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.max(1, Math.min(50, opts.pageSize ?? 5));
-
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -118,13 +112,14 @@ export async function getSessionInbox(
     .eq("session_id", sessionId)
     .order("delivered_at", { ascending: false });
 
-  // Filter by joined injects.channel (PostgREST supports filters on embedded resources)
+  // Server-side filters on embedded resource
   if (opts.channel) {
     q = q.eq("injects.channel", opts.channel);
+  } else if (opts.channelNot) {
+    q = q.neq("injects.channel", opts.channelNot);
   }
 
   const { data, error, count } = await q.range(from, to);
-
   if (error) throw error;
 
   return {
@@ -154,9 +149,7 @@ export function subscribeInbox(sessionId: string, cb: () => void) {
   };
 }
 
-/* =========================
-   PULSE – uses session_injects filtered by injects.channel="pulse"
-========================= */
+/* ========================= PULSE ========================= */
 
 export async function getSessionPulse(
   sessionId: string,
@@ -170,13 +163,11 @@ export async function getSessionPulse(
 }
 
 export function subscribePulse(sessionId: string, cb: () => void) {
-  // Same underlying table (session_injects). We refresh in UI after any change.
+  // Same underlying table (session_injects)
   return subscribeInbox(sessionId, cb);
 }
 
-/* =========================
-   ACTIONS LOG
-========================= */
+/* ========================= ACTIONS LOG ========================= */
 
 export async function getSessionActions(sessionId: string, limit = 50) {
   const { data, error } = await supabase
@@ -215,11 +206,7 @@ export async function addSessionAction(params: {
   return data as SessionAction;
 }
 
-/* =========================
-   SEND INJECT TO SESSION (MVP)
-   - creates inject row
-   - links it into session_injects
-========================= */
+/* ========================= SEND INJECT TO SESSION (MVP) ========================= */
 
 export async function sendInjectToSession(
   sessionId: string,
@@ -253,20 +240,16 @@ export async function sendInjectToSession(
   // 2) attach to session
   const { error: linkErr } = await supabase.from("session_injects").insert({
     session_id: sessionId,
-    inject_id: inj.id,
+    inject_id: (inj as any).id,
     delivered_at: new Date().toISOString(),
   });
 
   if (linkErr) throw linkErr;
 
-  return inj.id as string;
+  return (inj as any).id as string;
 }
 
-/* =========================
-   FACILITATOR: deliverDueInjects (MVP)
-   - delivers scheduled scenario injects into session_injects
-   - uses scenario_id from sessions table
-========================= */
+/* ========================= FACILITATOR: deliverDueInjects (MVP) ========================= */
 
 export async function deliverDueInjects(sessionId: string) {
   // 0) fetch scenario_id for the session
@@ -281,8 +264,7 @@ export async function deliverDueInjects(sessionId: string) {
   const scenarioId = (sess as any)?.scenario_id;
   if (!scenarioId) return { delivered: 0 };
 
-  // 1) find scenario injects that are due now
-  // ASSUMPTION: scenario_injects has scheduled_at column
+  // 1) due scenario injects
   const { data: due, error: dueErr } = await supabase
     .from("scenario_injects")
     .select("id, scenario_id, inject_id, scheduled_at")
@@ -295,7 +277,7 @@ export async function deliverDueInjects(sessionId: string) {
   const dueRows = (due ?? []) as any[];
   if (dueRows.length === 0) return { delivered: 0 };
 
-  // 2) avoid duplicates: check which injects already delivered to this session
+  // 2) avoid duplicates
   const injectIds = Array.from(new Set(dueRows.map((r) => r.inject_id)));
 
   const { data: already, error: alreadyErr } = await supabase
@@ -308,7 +290,6 @@ export async function deliverDueInjects(sessionId: string) {
 
   const alreadySet = new Set((already ?? []).map((r: any) => r.inject_id));
   const toDeliver = dueRows.filter((r) => !alreadySet.has(r.inject_id));
-
   if (toDeliver.length === 0) return { delivered: 0 };
 
   // 3) deliver into session_injects
@@ -324,9 +305,7 @@ export async function deliverDueInjects(sessionId: string) {
   return { delivered: toDeliver.length };
 }
 
-/* =========================
-   CASUALTIES UPDATE
-========================= */
+/* ========================= CASUALTIES UPDATE ========================= */
 
 export async function updateCasualties(params: {
   sessionId: string;

@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { getSessionInbox, subscribeInbox, type SessionInject } from "@/lib/sessions";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getSessionInbox,
+  subscribeInbox,
+  type SessionInject,
+} from "@/lib/sessions";
 
 type Props = {
   sessionId: string;
@@ -25,7 +29,8 @@ function fmtTime(iso?: string | null) {
 }
 
 function rangePages(totalPages: number, current: number) {
-  if (totalPages <= 4) return Array.from({ length: totalPages }, (_, i) => i + 1);
+  if (totalPages <= 4)
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
   const start = Math.max(1, Math.min(current - 1, totalPages - 3));
   return [start, start + 1, start + 2, start + 3];
 }
@@ -43,37 +48,45 @@ export default function Inbox({
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
+  const pageRef = useRef(1);
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pages = rangePages(totalPages, page);
 
+  function buildQueryOpts(p: number) {
+    // Jeśli channel jest podany, to traktujemy go jako filtr nadrzędny
+    if (channel) {
+      return { page: p, pageSize, channel };
+    }
+
+    // Domyślnie:
+    // - inbox = wszystko poza pulse
+    // - pulse = tylko pulse
+    if (mode === "pulse") {
+      return { page: p, pageSize, channel: "pulse" as const };
+    }
+
+    return { page: p, pageSize, channelNot: "pulse" as const };
+  }
+
   async function load(p = page) {
     try {
       setErr(null);
       setLoading(true);
 
-      const res = await getSessionInbox(sessionId, { page: p, pageSize });
+      const opts = buildQueryOpts(p);
+      const res = await getSessionInbox(sessionId, opts);
 
-      // res is PagedResult<SessionInject> here
-      const paged = res as any;
-
-      let list: SessionInject[] = paged.items ?? [];
-      // mode filter: Inbox excludes pulse by default
-      if (mode === "inbox") {
-        list = list.filter((x) => (x.injects?.channel ?? "") !== "pulse");
-      } else {
-        list = list.filter((x) => (x.injects?.channel ?? "") === "pulse");
-      }
-
-      if (channel) {
-        list = list.filter((x) => (x.injects?.channel ?? null) === channel);
-      }
-
-      setItems(list);
-      setTotal(paged.total ?? 0);
-      setPage(paged.page ?? p);
+      setItems(res.items ?? []);
+      setTotal(res.total ?? 0);
+      setPage(res.page ?? p);
+      pageRef.current = res.page ?? p;
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load inbox");
     } finally {
@@ -81,15 +94,24 @@ export default function Inbox({
     }
   }
 
+  // Reset page on mode/channel/session changes, and subscribe realtime
   useEffect(() => {
     if (!sessionId) return;
+
     setPage(1);
+    pageRef.current = 1;
     load(1);
-    const unsub = subscribeInbox(sessionId, () => load(1));
+
+    const unsub = subscribeInbox(sessionId, () => {
+      // ✅ nie skacz na 1 — odśwież bieżącą stronę
+      load(pageRef.current);
+    });
+
     return () => unsub?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, mode, channel]);
 
+  // Load when page changes
   useEffect(() => {
     if (!sessionId) return;
     load(page);
@@ -99,18 +121,14 @@ export default function Inbox({
   const visible = useMemo(() => items, [items]);
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <div>
       {err && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(255,0,0,0.05)" }}>
+        <div style={{ color: "#b91c1c", marginBottom: 8 }}>
           {err}
         </div>
       )}
 
-      {loading && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
-          Loading…
-        </div>
-      )}
+      {loading && <div>Loading…</div>}
 
       {!loading &&
         visible.map((item) => {
@@ -118,7 +136,9 @@ export default function Inbox({
           const title = item.injects?.title?.trim() || "Message";
           const preview = item.injects?.body ? clampText(item.injects.body, 150) : "";
           const metaLeft =
-            [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") || "Unknown source";
+            [item.injects?.sender_name, item.injects?.sender_org]
+              .filter(Boolean)
+              .join(" · ") || "Unknown source";
 
           const metaRightParts = [
             item.injects?.channel ? String(item.injects.channel).toUpperCase() : null,
@@ -136,15 +156,18 @@ export default function Inbox({
                 textAlign: "left",
                 padding: "10px 10px",
                 borderRadius: 14,
-                border: active ? "1px solid rgba(0,0,0,0.28)" : "1px solid rgba(0,0,0,0.12)",
+                border: active
+                  ? "1px solid rgba(0,0,0,0.28)"
+                  : "1px solid rgba(0,0,0,0.12)",
                 background: active ? "rgba(0,0,0,0.04)" : "white",
                 cursor: "pointer",
+                marginBottom: 8,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontWeight: 700 }}>{title}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontWeight: 800 }}>{title}</div>
                 {metaRightParts.length > 0 && (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {metaRightParts.map((t) => (
                       <span
                         key={t}
@@ -153,7 +176,7 @@ export default function Inbox({
                           padding: "2px 8px",
                           borderRadius: 999,
                           border: "1px solid rgba(0,0,0,0.12)",
-                          background: "rgba(0,0,0,0.02)",
+                          opacity: 0.85,
                         }}
                       >
                         {t}
@@ -163,11 +186,11 @@ export default function Inbox({
                 )}
               </div>
 
-              <div style={{ marginTop: 6, color: "rgba(0,0,0,0.72)", fontSize: 13 }}>
-                {preview ? preview : <span style={{ color: "rgba(0,0,0,0.45)" }}>(no content)</span>}
+              <div style={{ marginTop: 6, opacity: 0.85 }}>
+                {preview ? preview : <span style={{ opacity: 0.7 }}>(no content)</span>}
               </div>
 
-              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7, display: "flex", justifyContent: "space-between" }}>
                 <span>{metaLeft}</span>
                 <span>{time}</span>
               </div>
@@ -176,18 +199,16 @@ export default function Inbox({
         })}
 
       {!loading && visible.length === 0 && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
-          No messages on this page.
-        </div>
+        <div style={{ opacity: 0.75 }}>No messages on this page.</div>
       )}
 
       {/* Pagination */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
           Page {page} / {totalPages}
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}

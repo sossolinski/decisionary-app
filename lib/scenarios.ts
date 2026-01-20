@@ -215,3 +215,88 @@ export async function updateScenarioInject(params: {
 
   if (error) throw error;
 }
+
+import { supabase } from "./supabaseClient";
+
+export type ScenarioRole = {
+  id: string;
+  scenario_id: string;
+  role_key: string;
+  role_name: string;
+  role_description: string | null;
+  sort_order: number;
+  is_required: boolean;
+  created_at: string;
+};
+
+export async function listScenarioRoles(scenarioId: string) {
+  const { data, error } = await supabase
+    .from("scenario_roles")
+    .select("*")
+    .eq("scenario_id", scenarioId)
+    .order("sort_order", { ascending: true })
+    .order("role_name", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as ScenarioRole[];
+}
+
+export async function createScenarioRole(params: {
+  scenarioId: string;
+  roleKey: string;
+  roleName: string;
+  roleDescription?: string | null;
+  sortOrder?: number;
+  isRequired?: boolean;
+}) {
+  const { scenarioId, roleKey, roleName, roleDescription, sortOrder, isRequired } = params;
+
+  const { data, error } = await supabase
+    .from("scenario_roles")
+    .insert({
+      scenario_id: scenarioId,
+      role_key: roleKey.trim(),
+      role_name: roleName.trim(),
+      role_description: roleDescription ?? null,
+      sort_order: sortOrder ?? 100,
+      is_required: isRequired ?? true,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as ScenarioRole;
+}
+
+export async function updateScenarioRole(params: {
+  id: string;
+  roleKey?: string;
+  roleName?: string;
+  roleDescription?: string | null;
+  sortOrder?: number;
+  isRequired?: boolean;
+}) {
+  const { id, ...patch } = params;
+
+  const update: any = {};
+  if (patch.roleKey !== undefined) update.role_key = patch.roleKey.trim();
+  if (patch.roleName !== undefined) update.role_name = patch.roleName.trim();
+  if (patch.roleDescription !== undefined) update.role_description = patch.roleDescription;
+  if (patch.sortOrder !== undefined) update.sort_order = patch.sortOrder;
+  if (patch.isRequired !== undefined) update.is_required = patch.isRequired;
+
+  const { data, error } = await supabase
+    .from("scenario_roles")
+    .update(update)
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as ScenarioRole;
+}
+
+export async function deleteScenarioRole(id: string) {
+  const { error } = await supabase.from("scenario_roles").delete().eq("id", id);
+  if (error) throw error;
+}
