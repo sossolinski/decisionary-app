@@ -14,10 +14,11 @@ import {
 
 import SituationCard from "@/app/components/SituationCard";
 import CasualtyEditor from "@/app/components/CasualtyEditor";
-import Inbox from "@/app/components/Inbox";
 import MessageDetail from "@/app/components/MessageDetail";
 import FacilitatorControls from "@/app/components/FacilitatorControls";
 import AddInjectForm from "@/app/components/AddInjectForm";
+import Inbox from "@/app/components/Inbox";
+import PulseFeed from "@/app/components/PulseFeed";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -77,7 +78,9 @@ export default function SessionParticipantPage() {
 
     getSessionActions(sessionId, 50)
       .then((rows) => alive && setActions(rows))
-      .catch((e) => alive && setActionsError(e?.message ?? "Failed to load actions"))
+      .catch((e) =>
+        alive && setActionsError(e?.message ?? "Failed to load actions")
+      )
       .finally(() => alive && setActionsLoading(false));
 
     return () => {
@@ -85,47 +88,88 @@ export default function SessionParticipantPage() {
     };
   }, [sessionId, validSessionId]);
 
-async function doAction(actionType: "ignore" | "escalate" | "act") {
-  if (!selectedItem) return;
+  // Inbox actions
+  async function doAction(actionType: "ignore" | "escalate" | "act") {
+    if (!selectedItem) return;
 
-  try {
-    const saved = await addSessionAction({
-      sessionId,
-      sessionInjectId: selectedItem.id,
-      source: activeTab,
-      actionType,
-      comment: comment.trim() ? comment.trim() : null,
-    });
+    try {
+      const saved = await addSessionAction({
+        sessionId,
+        sessionInjectId: selectedItem.id,
+        source: activeTab, // should be "inbox" for these buttons
+        actionType,
+        comment: comment.trim() ? comment.trim() : null,
+      });
 
-    // add to log immediately
-    setActions((prev) => [saved, ...prev]);
+      // prepend to log
+      setActions((prev) => [saved, ...prev]);
 
-    // === CONSEQUENCE (MVP) ===
-    // After ACT, generate a new official inject
-    if (actionType === "act") {
-      const title = `Update: action taken on "${
-        selectedItem.injects?.title ?? "message"
-      }"`;
+      // CONSEQUENCE (MVP): after ACT, generate a new official inject
+      if (actionType === "act") {
+        const title = `Update: action taken on "${
+          selectedItem.injects?.title ?? "message"
+        }"`;
+
+        const body =
+          `Decision recorded.\n\n` +
+          `Action: ACT\n` +
+          `Source: ${activeTab.toUpperCase()}\n` +
+          `Reference message ID: ${selectedItem.id}\n` +
+          (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
+          `\nNext update will follow.`;
+
+        const { sendInjectToSession } = await import("@/lib/sessions");
+        await sendInjectToSession(sessionId, title, body);
+      }
+
+      setComment("");
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to save action");
+    }
+  }
+
+  // Pulse decisions -> official comms into Inbox
+  async function doPulseDecision(decision: "confirm" | "deny") {
+    if (!selectedItem) return;
+
+    try {
+      // log as an action (MVP mapping: confirm -> act, deny -> ignore)
+      const saved = await addSessionAction({
+        sessionId,
+        sessionInjectId: selectedItem.id,
+        source: "pulse",
+        actionType: decision === "confirm" ? "act" : "ignore",
+        comment: comment.trim()
+          ? `${decision.toUpperCase()}: ${comment.trim()}`
+          : `${decision.toUpperCase()}`,
+      });
+
+      setActions((prev) => [saved, ...prev]);
+
+      const pulseTitle = selectedItem.injects?.title ?? "pulse post";
+      const pulseBody = selectedItem.injects?.body ?? "";
+
+      const title =
+        decision === "confirm"
+          ? `Official confirmation regarding "${pulseTitle}"`
+          : `Official denial regarding "${pulseTitle}"`;
 
       const body =
-        `Decision recorded.\n\n` +
-        `Action: ACT\n` +
-        `Source: ${activeTab.toUpperCase()}\n` +
-        `Reference message ID: ${selectedItem.id}\n` +
-        (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
-        `\nNext update will follow.`;
+        (decision === "confirm"
+          ? `We confirm that the information circulating is accurate.`
+          : `We deny the information currently circulating.`) +
+        `\n\nReference pulse message ID: ${selectedItem.id}` +
+        (comment.trim() ? `\n\nComment:\n${comment.trim()}` : "") +
+        (pulseBody ? `\n\nQuoted content:\n${pulseBody}` : "");
 
-      // reuse existing helper
       const { sendInjectToSession } = await import("@/lib/sessions");
       await sendInjectToSession(sessionId, title, body);
+
+      setComment("");
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to process Pulse decision");
     }
-
-    setComment("");
-  } catch (e: any) {
-    alert(e?.message ?? "Failed to save action");
   }
-}
-
 
   if (!sessionId) return <div style={{ padding: 24 }}>Loading…</div>;
 
@@ -164,7 +208,7 @@ async function doAction(actionType: "ignore" | "escalate" | "act") {
           alignItems: "start",
         }}
       >
-        {/* LEFT: Inbox/Pulse */}
+        {/* LEFT: Tabs + Feed */}
         <section
           style={{
             border: "1px solid rgba(0,0,0,0.12)",
@@ -218,16 +262,24 @@ async function doAction(actionType: "ignore" | "escalate" | "act") {
           </div>
 
           <div style={{ padding: 10 }}>
-            <Inbox
-              sessionId={sessionId}
-              mode={activeTab}
-              selectedId={selectedItem?.id ?? null}
-              onSelect={(item) => setSelectedItem(item)}
-            />
+            {activeTab === "inbox" ? (
+              <Inbox
+                sessionId={sessionId}
+                mode="inbox"
+                selectedId={selectedItem?.id ?? null}
+                onSelect={(item) => setSelectedItem(item)}
+              />
+            ) : (
+              <PulseFeed
+                sessionId={sessionId}
+                selectedId={selectedItem?.id ?? null}
+                onSelect={(item) => setSelectedItem(item)}
+              />
+            )}
           </div>
         </section>
 
-        {/* MIDDLE: Message detail */}
+        {/* MIDDLE: Detail */}
         <section
           style={{
             minHeight: 420,
@@ -255,7 +307,11 @@ async function doAction(actionType: "ignore" | "escalate" | "act") {
             <input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Optional comment (what you did / why)"
+              placeholder={
+                activeTab === "pulse"
+                  ? "Optional comment (why confirm/deny)"
+                  : "Optional comment (what you did / why)"
+              }
               style={{
                 width: "100%",
                 padding: 10,
@@ -266,48 +322,80 @@ async function doAction(actionType: "ignore" | "escalate" | "act") {
             />
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => doAction("ignore")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                }}
-              >
-                Ignore
-              </button>
-
-              <button
-                onClick={() => doAction("escalate")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                }}
-              >
-                Escalate
-              </button>
-
-              <button
-                onClick={() => doAction("act")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                  fontWeight: 700,
-                }}
-              >
-                Act
-              </button>
+              {activeTab === "pulse" ? (
+                <>
+                  <button
+                    onClick={() => doPulseDecision("confirm")}
+                    disabled={!selectedItem}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      cursor: selectedItem ? "pointer" : "not-allowed",
+                      opacity: selectedItem ? 1 : 0.5,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Confirm
+                  </button>
+                  <button
+                    onClick={() => doPulseDecision("deny")}
+                    disabled={!selectedItem}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      cursor: selectedItem ? "pointer" : "not-allowed",
+                      opacity: selectedItem ? 1 : 0.5,
+                    }}
+                  >
+                    Deny
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => doAction("ignore")}
+                    disabled={!selectedItem}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      cursor: selectedItem ? "pointer" : "not-allowed",
+                      opacity: selectedItem ? 1 : 0.5,
+                    }}
+                  >
+                    Ignore
+                  </button>
+                  <button
+                    onClick={() => doAction("escalate")}
+                    disabled={!selectedItem}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      cursor: selectedItem ? "pointer" : "not-allowed",
+                      opacity: selectedItem ? 1 : 0.5,
+                    }}
+                  >
+                    Escalate
+                  </button>
+                  <button
+                    onClick={() => doAction("act")}
+                    disabled={!selectedItem}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      cursor: selectedItem ? "pointer" : "not-allowed",
+                      opacity: selectedItem ? 1 : 0.5,
+                      fontWeight: 700,
+                    }}
+                  >
+                    Act
+                  </button>
+                </>
+              )}
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
