@@ -6,6 +6,7 @@ import { getMyRole } from "../../../../lib/users";
 import {
   Scenario,
   ScenarioInject,
+  ScenarioRole,
   getScenario,
   updateScenario,
   listScenarioInjects,
@@ -13,6 +14,10 @@ import {
   attachInjectToScenario,
   detachScenarioInject,
   updateScenarioInject,
+  listScenarioRoles,
+  createScenarioRole,
+  updateScenarioRole,
+  deleteScenarioRole,
 } from "../../../../lib/scenarios";
 
 function asInt(v: string) {
@@ -50,6 +55,14 @@ export default function ScenarioEditorPage() {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [injects, setInjects] = useState<ScenarioInject[]>([]);
 
+  // Roles
+  const [roles, setRoles] = useState<ScenarioRole[]>([]);
+  const [roleAddOpen, setRoleAddOpen] = useState(false);
+  const [rKey, setRKey] = useState("");
+  const [rName, setRName] = useState("");
+  const [rDesc, setRDesc] = useState("");
+  const [rRequired, setRRequired] = useState(true);
+
   // Injects tabs
   const [injectTab, setInjectTab] = useState<"inbox" | "pulse">("inbox");
 
@@ -69,7 +82,7 @@ export default function ScenarioEditorPage() {
 
   // For now:
   // - Pulse tab shows channel === "pulse"
-  // - Inbox tab shows everything else (including any legacy "media/social" you might already have)
+  // - Inbox tab shows everything else
   const inboxInjects = useMemo(() => {
     return sortedInjects.filter((si) => (si.injects?.channel ?? "") !== "pulse");
   }, [sortedInjects]);
@@ -79,6 +92,10 @@ export default function ScenarioEditorPage() {
   }, [sortedInjects]);
 
   const visibleInjects = injectTab === "pulse" ? pulseInjects : inboxInjects;
+
+  const sortedRoles = useMemo(() => {
+    return [...roles].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  }, [roles]);
 
   /* ================= AUTH GUARD + LOAD ================= */
 
@@ -101,14 +118,18 @@ export default function ScenarioEditorPage() {
       if (!s) {
         setScenario(null);
         setInjects([]);
+        setRoles([]);
         setError("Scenario not found.");
         setLoading(false);
         return;
       }
 
       const si = await listScenarioInjects(scenarioId);
+      const sr = await listScenarioRoles(scenarioId);
+
       setScenario(s);
       setInjects(si);
+      setRoles(sr);
       setLoading(false);
     })().catch((e: any) => {
       setError(e?.message ?? String(e));
@@ -119,6 +140,11 @@ export default function ScenarioEditorPage() {
   async function reloadInjects() {
     const si = await listScenarioInjects(scenarioId);
     setInjects(si);
+  }
+
+  async function reloadRoles() {
+    const sr = await listScenarioRoles(scenarioId);
+    setRoles(sr);
   }
 
   /* ================= SAVE SCENARIO ================= */
@@ -148,6 +174,111 @@ export default function ScenarioEditorPage() {
       setScenario(updated);
     } catch (e: any) {
       setError(e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /* ================= ROLES ================= */
+
+  async function onAddRole() {
+    if (!rKey.trim() || !rName.trim()) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      const nextSort =
+        roles.length > 0 ? Math.max(...roles.map((x) => x.sort_order ?? 0)) + 1 : 1;
+
+      const created = await createScenarioRole({
+        scenarioId,
+        roleKey: rKey.trim(),
+        roleName: rName.trim(),
+        roleDescription: rDesc.trim() ? rDesc.trim() : null,
+        sortOrder: nextSort,
+        isRequired: rRequired,
+      });
+
+      setRoles((prev) => [...prev, created]);
+      setRoleAddOpen(false);
+      setRKey("");
+      setRName("");
+      setRDesc("");
+      setRRequired(true);
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSaveRole(role: ScenarioRole) {
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await updateScenarioRole({
+        id: role.id,
+        roleKey: role.role_key,
+        roleName: role.role_name,
+        roleDescription: role.role_description ?? null,
+        sortOrder: role.sort_order ?? 100,
+        isRequired: !!role.is_required,
+      });
+
+      setRoles((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDeleteRole(roleId: string) {
+    if (!confirm("Delete this role?")) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await deleteScenarioRole(roleId);
+      setRoles((prev) => prev.filter((x) => x.id !== roleId));
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onMoveRole(roleId: string, dir: -1 | 1) {
+    const list = [...sortedRoles];
+    const idx = list.findIndex((x) => x.id === roleId);
+    if (idx < 0) return;
+
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= list.length) return;
+
+    const a = list[idx];
+    const b = list[swapIdx];
+
+    // temp sort_order avoids collisions
+    const temp = 1000000000 + Math.floor(Math.random() * 1000000);
+
+    setSaving(true);
+    setError(null);
+    try {
+      await updateScenarioRole({ id: a.id, sortOrder: temp });
+      await updateScenarioRole({ id: b.id, sortOrder: a.sort_order ?? 0 });
+      await updateScenarioRole({ id: a.id, sortOrder: b.sort_order ?? 0 });
+
+      setRoles((prev) =>
+        prev.map((x) => {
+          if (x.id === a.id) return { ...x, sort_order: b.sort_order };
+          if (x.id === b.id) return { ...x, sort_order: a.sort_order };
+          return x;
+        })
+      );
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+      await reloadRoles();
     } finally {
       setSaving(false);
     }
@@ -193,7 +324,7 @@ export default function ScenarioEditorPage() {
       setInjects((prev) => [...prev, attached]);
       setAddOpen(false);
 
-      // reset form (keep channel aligned with current tab)
+      // reset form
       setITitle("");
       setIBody("");
       setIChannel(injectTab === "pulse" ? "pulse" : "ops");
@@ -223,76 +354,69 @@ export default function ScenarioEditorPage() {
   }
 
   async function onMoveWithin(list: ScenarioInject[], id: string, dir: -1 | 1) {
-  const idx = list.findIndex((x) => x.id === id);
-  if (idx < 0) return;
+    const idx = list.findIndex((x) => x.id === id);
+    if (idx < 0) return;
 
-  const swapIdx = idx + dir;
-  if (swapIdx < 0 || swapIdx >= list.length) return;
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= list.length) return;
 
-  const a = list[idx];
-  const b = list[swapIdx];
+    const a = list[idx];
+    const b = list[swapIdx];
 
-  // Treat order_index <= 0 as "missing"
-  const aHas = typeof a.order_index === "number" && a.order_index > 0;
-  const bHas = typeof b.order_index === "number" && b.order_index > 0;
+    const aHas = typeof a.order_index === "number" && a.order_index > 0;
+    const bHas = typeof b.order_index === "number" && b.order_index > 0;
 
-  // If we detect legacy/broken data (0), normalize all injects for this scenario once.
-  if (!aHas || !bHas) {
+    if (!aHas || !bHas) {
+      setSaving(true);
+      setError(null);
+      try {
+        const all = [...sortedInjects];
+
+        for (let i = 0; i < all.length; i++) {
+          const tempOrder = 1000000000 + i;
+          await updateScenarioInject({ id: all[i].id, order_index: tempOrder });
+        }
+
+        for (let i = 0; i < all.length; i++) {
+          await updateScenarioInject({ id: all[i].id, order_index: i + 1 });
+        }
+
+        await reloadInjects();
+      } catch (e: any) {
+        setError(e?.message ?? String(e));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    const aOrder = a.order_index;
+    const bOrder = b.order_index;
+
+    const tempOrder = 1000000000 + Math.floor(Math.random() * 1000000);
+
     setSaving(true);
     setError(null);
+
     try {
-      // normalize using current sortedInjects order (created_at/order_index)
-      const all = [...sortedInjects];
+      await updateScenarioInject({ id: a.id, order_index: tempOrder });
+      await updateScenarioInject({ id: b.id, order_index: aOrder });
+      await updateScenarioInject({ id: a.id, order_index: bOrder });
 
-      // Phase 1: put temp unique indices to avoid collisions
-      for (let i = 0; i < all.length; i++) {
-        const tempOrder = 1000000000 + i;
-        await updateScenarioInject({ id: all[i].id, order_index: tempOrder });
-      }
-
-      // Phase 2: assign clean 1..N
-      for (let i = 0; i < all.length; i++) {
-        await updateScenarioInject({ id: all[i].id, order_index: i + 1 });
-      }
-
-      await reloadInjects(); // refresh state after normalization
+      setInjects((prev) =>
+        prev.map((x) => {
+          if (x.id === a.id) return { ...x, order_index: bOrder };
+          if (x.id === b.id) return { ...x, order_index: aOrder };
+          return x;
+        })
+      );
     } catch (e: any) {
       setError(e?.message ?? String(e));
+      await reloadInjects();
     } finally {
       setSaving(false);
     }
-    return; // user clicks arrow again (now it will work)
   }
-
-  const aOrder = a.order_index;
-  const bOrder = b.order_index;
-
-  // temp order_index avoids UNIQUE collisions
-  const tempOrder = 1000000000 + Math.floor(Math.random() * 1000000);
-
-  setSaving(true);
-  setError(null);
-
-  try {
-    await updateScenarioInject({ id: a.id, order_index: tempOrder });
-    await updateScenarioInject({ id: b.id, order_index: aOrder });
-    await updateScenarioInject({ id: a.id, order_index: bOrder });
-
-    setInjects((prev) =>
-      prev.map((x) => {
-        if (x.id === a.id) return { ...x, order_index: bOrder };
-        if (x.id === b.id) return { ...x, order_index: aOrder };
-        return x;
-      })
-    );
-  } catch (e: any) {
-    setError(e?.message ?? String(e));
-    await reloadInjects();
-  } finally {
-    setSaving(false);
-  }
-}
-
 
   async function onSchedule(id: string, datetimeLocalValue: string) {
     setSaving(true);
@@ -301,9 +425,7 @@ export default function ScenarioEditorPage() {
       const scheduled_at = datetimeLocalValue ? new Date(datetimeLocalValue).toISOString() : null;
       await updateScenarioInject({ id, scheduled_at });
 
-      setInjects((prev) =>
-        prev.map((x) => (x.id === id ? { ...x, scheduled_at } : x))
-      );
+      setInjects((prev) => prev.map((x) => (x.id === id ? { ...x, scheduled_at } : x)));
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -338,7 +460,7 @@ export default function ScenarioEditorPage() {
         <div>
           <button onClick={() => router.push("/facilitator/scenarios")}>← Back to scenarios</button>
           <h1 style={{ fontSize: 22, fontWeight: 800, marginTop: 10 }}>Scenario Editor</h1>
-          <p style={{ opacity: 0.75, marginTop: 6 }}>Configure situation and injects.</p>
+          <p style={{ opacity: 0.75, marginTop: 6 }}>Configure situation, roles and injects.</p>
         </div>
 
         <button onClick={onSaveScenario} disabled={saving} style={{ padding: "10px 14px" }}>
@@ -464,6 +586,157 @@ export default function ScenarioEditorPage() {
               style={{ width: "100%", padding: 10 }}
             />
           </div>
+        </div>
+      </div>
+
+      {/* ======= ROLES ======= */}
+      <div style={{ marginTop: 16, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <h2 style={{ fontWeight: 800 }}>Scenario roles</h2>
+          <button
+            type="button"
+            onClick={() => setRoleAddOpen((v) => !v)}
+            style={{ padding: "9px 12px" }}
+          >
+            {roleAddOpen ? "Close" : "Add role"}
+          </button>
+        </div>
+
+        {roleAddOpen && (
+          <div style={{ marginTop: 12, border: "1px solid rgba(0,0,0,0.10)", borderRadius: 12, padding: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", marginBottom: 6 }}>Role key</label>
+                <input
+                  value={rKey}
+                  onChange={(e) => setRKey(e.target.value)}
+                  placeholder="e.g. OPS"
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </div>
+              <div>
+                <label style={{ display: "block", marginBottom: 6 }}>Role name</label>
+                <input
+                  value={rName}
+                  onChange={(e) => setRName(e.target.value)}
+                  placeholder="e.g. Operations"
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </div>
+
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={{ display: "block", marginBottom: 6 }}>Description (optional)</label>
+                <input
+                  value={rDesc}
+                  onChange={(e) => setRDesc(e.target.value)}
+                  placeholder="What this role does…"
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </div>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={rRequired}
+                  onChange={(e) => setRRequired(e.target.checked)}
+                />
+                Required
+              </label>
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+              <button type="button" onClick={onAddRole} disabled={saving} style={{ padding: "9px 12px" }}>
+                {saving ? "…" : "Create role"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 12 }}>
+          {sortedRoles.length === 0 ? (
+            <p style={{ opacity: 0.75 }}>No roles yet. Add roles to enable assignments in session roster.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {sortedRoles.map((r, idx) => (
+                <div key={r.id} style={{ border: "1px solid rgba(0,0,0,0.10)", borderRadius: 12, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, flex: 1 }}>
+                      <input
+                        value={r.role_key ?? ""}
+                        onChange={(e) =>
+                          setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, role_key: e.target.value } : x)))
+                        }
+                        style={{ padding: 10 }}
+                      />
+                      <input
+                        value={r.role_name ?? ""}
+                        onChange={(e) =>
+                          setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, role_name: e.target.value } : x)))
+                        }
+                        style={{ padding: 10 }}
+                      />
+                      <input
+                        value={r.role_description ?? ""}
+                        onChange={(e) =>
+                          setRoles((prev) =>
+                            prev.map((x) => (x.id === r.id ? { ...x, role_description: e.target.value } : x))
+                          )
+                        }
+                        placeholder="Description (optional)"
+                        style={{ padding: 10, gridColumn: "1 / -1" }}
+                      />
+
+                      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!r.is_required}
+                          onChange={(e) =>
+                            setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_required: e.target.checked } : x)))
+                          }
+                        />
+                        Required
+                      </label>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        disabled={saving || idx === 0}
+                        onClick={() => onMoveRole(r.id, -1)}
+                        style={{ padding: "8px 10px" }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving || idx === sortedRoles.length - 1}
+                        onClick={() => onMoveRole(r.id, 1)}
+                        style={{ padding: "8px 10px" }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onSaveRole(r)}
+                        style={{ padding: "8px 10px" }}
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => onDeleteRole(r.id)}
+                        style={{ padding: "8px 10px", color: "#b91c1c" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

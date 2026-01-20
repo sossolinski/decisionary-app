@@ -14,6 +14,7 @@ export type Scenario = {
   event_time: string | null;
   timezone: string | null;
   location: string | null;
+
   situation_type: string | null;
   short_description: string | null;
 
@@ -23,8 +24,7 @@ export type Scenario = {
   unknown: number;
 
   created_at: string;
-  // updated_at may NOT exist in your schema (keep it optional)
-  updated_at?: string;
+  updated_at?: string; // optional (jeśli nie ma w schemacie)
 };
 
 export type Inject = {
@@ -48,6 +48,17 @@ export type ScenarioInject = {
   injects: Inject | null;
 };
 
+export type ScenarioRole = {
+  id: string;
+  scenario_id: string;
+  role_key: string;
+  role_name: string;
+  role_description: string | null;
+  sort_order: number;
+  is_required: boolean;
+  created_at: string;
+};
+
 /* =========================
    SCENARIO CRUD
 ========================= */
@@ -65,9 +76,9 @@ export async function getScenario(id: string): Promise<Scenario | null> {
 
 export async function updateScenario(
   id: string,
-  patch: Partial<Omit<Scenario, "id" | "created_at" | "updated_at">>
+  patch: Partial<Scenario>
 ): Promise<Scenario> {
-  // IMPORTANT: do NOT write updated_at (not present in your DB)
+  // IMPORTANT: nie dotykaj updated_at jeśli nie istnieje w DB
   const { data, error } = await supabase
     .from("scenarios")
     .update({ ...patch })
@@ -83,27 +94,29 @@ export async function updateScenario(
    INJECTS FOR SCENARIO
 ========================= */
 
-export async function listScenarioInjects(scenarioId: string): Promise<ScenarioInject[]> {
+export async function listScenarioInjects(
+  scenarioId: string
+): Promise<ScenarioInject[]> {
   const { data, error } = await supabase
     .from("scenario_injects")
     .select(
       `
-      id,
-      scenario_id,
-      inject_id,
-      scheduled_at,
-      order_index,
-      created_at,
-      injects:inject_id (
         id,
-        title,
-        body,
-        channel,
-        severity,
-        sender_name,
-        sender_org
-      )
-    `
+        scenario_id,
+        inject_id,
+        scheduled_at,
+        order_index,
+        created_at,
+        injects:inject_id (
+          id,
+          title,
+          body,
+          channel,
+          severity,
+          sender_name,
+          sender_org
+        )
+      `
     )
     .eq("scenario_id", scenarioId)
     .order("order_index", { ascending: true })
@@ -131,9 +144,7 @@ export async function createInject(params: {
       sender_name: params.sender_name ?? "Facilitator",
       sender_org: params.sender_org ?? "Decisionary",
     })
-    .select(
-      "id, title, body, channel, severity, sender_name, sender_org, created_at"
-    )
+    .select("id, title, body, channel, severity, sender_name, sender_org, created_at")
     .single();
 
   if (error) throw error;
@@ -154,6 +165,7 @@ export async function attachInjectToScenario(params: {
     .limit(1);
 
   if (exErr) throw exErr;
+
   const maxOrder = (existing?.[0]?.order_index ?? 0) as number;
   const nextOrder = maxOrder + 1;
 
@@ -167,22 +179,16 @@ export async function attachInjectToScenario(params: {
     })
     .select(
       `
-      id,
-      scenario_id,
-      inject_id,
-      scheduled_at,
-      order_index,
-      created_at,
-      injects:inject_id (
         id,
-        title,
-        body,
-        channel,
-        severity,
-        sender_name,
-        sender_org
-      )
-    `
+        scenario_id,
+        inject_id,
+        scheduled_at,
+        order_index,
+        created_at,
+        injects:inject_id (
+          id, title, body, channel, severity, sender_name, sender_org
+        )
+      `
     )
     .single();
 
@@ -216,20 +222,11 @@ export async function updateScenarioInject(params: {
   if (error) throw error;
 }
 
-import { supabase } from "./supabaseClient";
+/* =========================
+   SCENARIO ROLES (CRUD)
+========================= */
 
-export type ScenarioRole = {
-  id: string;
-  scenario_id: string;
-  role_key: string;
-  role_name: string;
-  role_description: string | null;
-  sort_order: number;
-  is_required: boolean;
-  created_at: string;
-};
-
-export async function listScenarioRoles(scenarioId: string) {
+export async function listScenarioRoles(scenarioId: string): Promise<ScenarioRole[]> {
   const { data, error } = await supabase
     .from("scenario_roles")
     .select("*")
@@ -248,7 +245,7 @@ export async function createScenarioRole(params: {
   roleDescription?: string | null;
   sortOrder?: number;
   isRequired?: boolean;
-}) {
+}): Promise<ScenarioRole> {
   const { scenarioId, roleKey, roleName, roleDescription, sortOrder, isRequired } = params;
 
   const { data, error } = await supabase
@@ -275,7 +272,7 @@ export async function updateScenarioRole(params: {
   roleDescription?: string | null;
   sortOrder?: number;
   isRequired?: boolean;
-}) {
+}): Promise<ScenarioRole> {
   const { id, ...patch } = params;
 
   const update: any = {};
@@ -296,7 +293,7 @@ export async function updateScenarioRole(params: {
   return data as ScenarioRole;
 }
 
-export async function deleteScenarioRole(id: string) {
+export async function deleteScenarioRole(id: string): Promise<void> {
   const { error } = await supabase.from("scenario_roles").delete().eq("id", id);
   if (error) throw error;
 }

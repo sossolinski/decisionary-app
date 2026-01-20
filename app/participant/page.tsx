@@ -3,26 +3,20 @@
 import { useRequireAuth } from "@/lib/useRequireAuth";
 
 export default function ParticipantPage() {
-  const { loading, userEmail } = useRequireAuth();
+  const { loading, userId, userEmail } = useRequireAuth();
 
-  if (loading) {
-    return (
-      <div style={{ padding: 24, opacity: 0.8 }}>
-        Loading…
-      </div>
-    );
-  }
+  if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
 
-  // Jeśli brak usera, hook zrobi redirect do /login.
-  // Renderujemy fallback, żeby nie było “białej” w międzyczasie.
-  if (!userEmail) return null;
+  // useRequireAuth zrobi redirect gdy brak usera, to tylko fallback
+if (loading) return <div>Loading…</div>;
+if (!userId) return <div>Not authenticated</div>;
 
   return (
     <div style={{ padding: 24 }}>
-      <h1 style={{ margin: 0, marginBottom: 10 }}>Participant</h1>
-      <div style={{ opacity: 0.75 }}>Signed in as: {userEmail}</div>
-
-      {/* TODO: tu Twoja istniejąca zawartość participant */}
+      <h1>Participant</h1>
+      <div style={{ marginTop: 8, opacity: 0.8 }}>
+        Signed in as: {userEmail ?? `Anonymous (${userId.slice(0, 8)})`}
+      </div>
     </div>
   );
 }

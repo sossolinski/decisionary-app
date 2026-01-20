@@ -236,9 +236,9 @@ export default function SessionParticipantPage() {
     return <div style={{ padding: 16 }}>Loading…</div>;
   }
 
-  // Jeśli brak usera, hook zrobi redirect do /login.
-  // Renderujemy fallback, żeby nie było “białej” w międzyczasie.
-  if (!userId) return null;
+
+if (loading) return <div>Loading…</div>;
+if (!userId) return <div>Not authenticated</div>;
 
   if (!sessionId) return <div style={{ padding: 16 }}>Loading…</div>;
 

@@ -273,3 +273,68 @@ export async function getMyScenarioRoleInSession(sessionId: string) {
     roleName: (data as any).scenario_roles?.role_name as string,
   };
 }
+
+export async function getSessionByJoinCode(code: string) {
+  const clean = code.trim().toUpperCase();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id, status, join_code, title")
+    .eq("join_code", clean)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as { id: string; status: string; join_code: string; title: string } | null;
+}
+
+export async function joinSessionByCode(code: string) {
+  // ===== DEBUG (tymczasowe) =====
+  const { data: before, error: beforeErr } = await supabase.auth.getUser();
+  if (beforeErr) throw beforeErr;
+  console.log("BEFORE anon signin:", before.user?.id, before.user?.email);
+
+  if (!before.user) {
+    const { data: anonData, error: aErr } = await supabase.auth.signInAnonymously();
+    console.log("ANON SIGNIN RESULT:", anonData?.user?.id, aErr);
+    if (aErr) throw aErr;
+  }
+
+  const { data: after, error: uErr } = await supabase.auth.getUser();
+  if (uErr) throw uErr;
+  console.log("AFTER anon signin:", after.user?.id, after.user?.email);
+
+  if (!after.user) throw new Error("Auth session missing after anonymous sign-in.");
+  const userId = after.user.id;
+  console.log("FINAL userId used for insert:", userId);
+  // ===== end debug =====
+
+  // 2) find session by code
+  const sess = await getSessionByJoinCode(code);
+  if (!sess) throw new Error("Invalid join code.");
+  if (sess.status !== "live") throw new Error(`Session is not live (status: ${sess.status}).`);
+
+  // 3) register participant (INSERT, a nie UPSERT)
+  //    Join jest jednorazowy i masz UNIQUE(session_id,user_id), więc duplikat ignorujemy.
+  const row = {
+    session_id: sess.id,
+    user_id: userId,
+    joined_at: new Date().toISOString(),
+  };
+  console.log("trying insert session_participants row:", row);
+
+  const { error: insErr } = await supabase.from("session_participants").insert(row);
+
+  if (insErr) {
+    const code = String((insErr as any).code ?? "");
+    const msg = String((insErr as any).message ?? "");
+
+    // Postgres unique violation = 23505
+    if (code !== "23505" && !msg.toLowerCase().includes("duplicate")) {
+      throw insErr;
+    }
+    // duplikat = user już był dołączony → OK
+    console.log("participant already joined (duplicate), ignoring");
+  }
+
+  return sess;
+}
+
