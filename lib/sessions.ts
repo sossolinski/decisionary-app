@@ -1,6 +1,8 @@
 import { supabase } from "./supabaseClient";
 
-/* ========================= TYPES ========================= */
+/* =========================
+   TYPES
+========================= */
 
 export type SessionSituation = {
   session_id: string;
@@ -34,8 +36,10 @@ export type SessionInject = {
   session_id: string;
   delivered_at: string;
   inject_id: string;
-  injects: Inject | null;
+  injects: Inject | null; // join
 };
+
+export type PulseItem = SessionInject;
 
 export type SessionAction = {
   id: string;
@@ -51,10 +55,11 @@ export type PagedResult<T> = {
   items: T[];
   total: number;
   page: number;
-  pageSize: number;
 };
 
-/* ========================= SITUATION ========================= */
+/* =========================
+   SITUATION
+========================= */
 
 export async function getSessionSituation(sessionId: string) {
   const { data, error } = await supabase
@@ -67,44 +72,58 @@ export async function getSessionSituation(sessionId: string) {
   return data as SessionSituation | null;
 }
 
-/* ========================= INBOX (session_injects) ========================= */
-/**
- * Backwards compatible:
- * - if opts omitted => returns ALL items (old behavior)
- * - if opts provided => returns paged result
- */
+/* =========================
+   INBOX (session_injects) – paginated
+========================= */
+
+type InboxOpts = {
+  page?: number;
+  pageSize?: number;
+  channel?: string | null; // filter by injects.channel, e.g. "pulse"
+};
+
+function selectSessionInjects() {
+  // NOTE: alias injects:inject_id must match your schema FK on session_injects.inject_id -> injects.id
+  return supabase.from("session_injects").select(
+    `
+      id,
+      session_id,
+      delivered_at,
+      inject_id,
+      injects:inject_id (
+        id,
+        title,
+        body,
+        channel,
+        severity,
+        sender_name,
+        sender_org
+      )
+    `,
+    { count: "exact" }
+  );
+}
+
 export async function getSessionInbox(
   sessionId: string,
-  opts?: { page?: number; pageSize?: number }
-): Promise<SessionInject[] | PagedResult<SessionInject>> {
-  const select = `
-    id, session_id, delivered_at, inject_id,
-    injects:inject_id ( id, title, body, channel, severity, sender_name, sender_org )
-  `;
-
-  // Old behavior (no pagination)
-  if (!opts) {
-    const { data, error } = await supabase
-      .from("session_injects")
-      .select(select)
-      .eq("session_id", sessionId)
-      .order("delivered_at", { ascending: false });
-
-    if (error) throw error;
-    return (data ?? []) as SessionInject[];
-  }
-
+  opts: InboxOpts = {}
+): Promise<PagedResult<SessionInject>> {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.max(1, Math.min(50, opts.pageSize ?? 5));
+
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
-    .from("session_injects")
-    .select(select, { count: "exact" })
+  let q = selectSessionInjects()
     .eq("session_id", sessionId)
-    .order("delivered_at", { ascending: false })
-    .range(from, to);
+    .order("delivered_at", { ascending: false });
+
+  // Filter by joined injects.channel (PostgREST supports filters on embedded resources)
+  if (opts.channel) {
+    q = q.eq("injects.channel", opts.channel);
+  }
+
+  const { data, error, count } = await q.range(from, to);
 
   if (error) throw error;
 
@@ -112,7 +131,6 @@ export async function getSessionInbox(
     items: (data ?? []) as SessionInject[],
     total: count ?? 0,
     page,
-    pageSize,
   };
 }
 
@@ -136,66 +154,29 @@ export function subscribeInbox(sessionId: string, cb: () => void) {
   };
 }
 
-/* ========================= PULSE ========================= */
-/**
- * Pulse = messages delivered to session where injects.channel = "pulse"
- * We still subscribe to ALL session_injects changes and just reload+filter.
- */
+/* =========================
+   PULSE – uses session_injects filtered by injects.channel="pulse"
+========================= */
+
 export async function getSessionPulse(
   sessionId: string,
-  opts?: { page?: number; pageSize?: number }
-): Promise<PagedResult<SessionInject>> {
-  const select = `
-    id, session_id, delivered_at, inject_id,
-    injects:inject_id ( id, title, body, channel, severity, sender_name, sender_org )
-  `;
-
-  const page = Math.max(1, opts?.page ?? 1);
-  const pageSize = Math.max(1, Math.min(50, opts?.pageSize ?? 5));
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-
-  // Filter on joined table field (PostgREST)
-  const { data, error, count } = await supabase
-    .from("session_injects")
-    .select(select, { count: "exact" })
-    .eq("session_id", sessionId)
-    .eq("injects.channel", "pulse")
-    .order("delivered_at", { ascending: false })
-    .range(from, to);
-
-  if (error) throw error;
-
-  return {
-    items: (data ?? []) as SessionInject[],
-    total: count ?? 0,
-    page,
-    pageSize,
-  };
+  opts: { page?: number; pageSize?: number } = {}
+): Promise<PagedResult<PulseItem>> {
+  return getSessionInbox(sessionId, {
+    page: opts.page ?? 1,
+    pageSize: opts.pageSize ?? 5,
+    channel: "pulse",
+  });
 }
 
 export function subscribePulse(sessionId: string, cb: () => void) {
-  // We subscribe to session_injects for the session; PulseFeed reloads and filters by injects.channel
-  const ch = supabase
-    .channel(`pulse:${sessionId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "session_injects",
-        filter: `session_id=eq.${sessionId}`,
-      },
-      () => cb()
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(ch);
-  };
+  // Same underlying table (session_injects). We refresh in UI after any change.
+  return subscribeInbox(sessionId, cb);
 }
 
-/* ========================= ACTIONS LOG ========================= */
+/* =========================
+   ACTIONS LOG
+========================= */
 
 export async function getSessionActions(sessionId: string, limit = 50) {
   const { data, error } = await supabase
@@ -234,7 +215,11 @@ export async function addSessionAction(params: {
   return data as SessionAction;
 }
 
-/* ========================= SEND INJECT TO SESSION (MVP) ========================= */
+/* =========================
+   SEND INJECT TO SESSION (MVP)
+   - creates inject row
+   - links it into session_injects
+========================= */
 
 export async function sendInjectToSession(
   sessionId: string,
@@ -273,10 +258,15 @@ export async function sendInjectToSession(
   });
 
   if (linkErr) throw linkErr;
+
   return inj.id as string;
 }
 
-/* ========================= FACILITATOR: deliverDueInjects (MVP) ========================= */
+/* =========================
+   FACILITATOR: deliverDueInjects (MVP)
+   - delivers scheduled scenario injects into session_injects
+   - uses scenario_id from sessions table
+========================= */
 
 export async function deliverDueInjects(sessionId: string) {
   // 0) fetch scenario_id for the session
@@ -292,6 +282,7 @@ export async function deliverDueInjects(sessionId: string) {
   if (!scenarioId) return { delivered: 0 };
 
   // 1) find scenario injects that are due now
+  // ASSUMPTION: scenario_injects has scheduled_at column
   const { data: due, error: dueErr } = await supabase
     .from("scenario_injects")
     .select("id, scenario_id, inject_id, scheduled_at")
@@ -301,11 +292,11 @@ export async function deliverDueInjects(sessionId: string) {
 
   if (dueErr) throw dueErr;
 
-  const dueRows = due ?? [];
+  const dueRows = (due ?? []) as any[];
   if (dueRows.length === 0) return { delivered: 0 };
 
-  // 2) avoid duplicates
-  const injectIds = Array.from(new Set(dueRows.map((r: any) => r.inject_id)));
+  // 2) avoid duplicates: check which injects already delivered to this session
+  const injectIds = Array.from(new Set(dueRows.map((r) => r.inject_id)));
 
   const { data: already, error: alreadyErr } = await supabase
     .from("session_injects")
@@ -316,12 +307,12 @@ export async function deliverDueInjects(sessionId: string) {
   if (alreadyErr) throw alreadyErr;
 
   const alreadySet = new Set((already ?? []).map((r: any) => r.inject_id));
-  const toDeliver = dueRows.filter((r: any) => !alreadySet.has(r.inject_id));
+  const toDeliver = dueRows.filter((r) => !alreadySet.has(r.inject_id));
 
   if (toDeliver.length === 0) return { delivered: 0 };
 
   // 3) deliver into session_injects
-  const inserts = toDeliver.map((r: any) => ({
+  const inserts = toDeliver.map((r) => ({
     session_id: sessionId,
     inject_id: r.inject_id,
     delivered_at: new Date().toISOString(),
@@ -333,7 +324,9 @@ export async function deliverDueInjects(sessionId: string) {
   return { delivered: toDeliver.length };
 }
 
-/* ========================= CASUALTIES UPDATE ========================= */
+/* =========================
+   CASUALTIES UPDATE
+========================= */
 
 export async function updateCasualties(params: {
   sessionId: string;
