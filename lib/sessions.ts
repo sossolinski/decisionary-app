@@ -1,130 +1,135 @@
-"use client";
+import { supabase } from "./supabaseClient";
 
-import type { SessionInject } from "@/lib/sessions";
+/* =======================
+   SITUATION (COP)
+======================= */
 
-function formatTs(iso: string) {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
+export type SessionSituation = {
+  session_id: string;
+  event_date: string | null;
+  event_time: string | null;
+  timezone: string | null;
+  location: string | null;
+  situation_type: string | null;
+  short_description: string | null;
+  injured: number;
+  fatalities: number;
+  uninjured: number;
+  unknown: number;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+export async function getSessionSituation(sessionId: string) {
+  const { data, error } = await supabase
+    .from("session_situation")
+    .select("*")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data as SessionSituation | null;
 }
 
-function labelForMode(mode: "inbox" | "pulse") {
-  return mode === "pulse" ? "Pulse (Unverified)" : "Inbox (Official)";
-}
-
-export default function MessageDetail({
-  item,
-  mode,
-}: {
-  item: SessionInject | null;
-  mode: "inbox" | "pulse";
+export async function updateCasualties(params: {
+  sessionId: string;
+  injured: number;
+  fatalities: number;
+  uninjured: number;
+  unknown: number;
 }) {
-  if (!item) {
-    return (
-      <div>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Message detail</div>
-        <div style={{ opacity: 0.7, lineHeight: 1.45 }}>
-          Select an item from Inbox or Pulse to view details.
-        </div>
-      </div>
-    );
-  }
+  const { sessionId, injured, fatalities, uninjured, unknown } = params;
 
-  const inj = item.injects;
+  const { data, error } = await supabase.rpc("update_casualties", {
+    p_session_id: sessionId,
+    p_injured: injured,
+    p_fatalities: fatalities,
+    p_uninjured: uninjured,
+    p_unknown: unknown,
+  });
 
-  return (
-    <div style={{ display: "grid", gap: 12 }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-        <div style={{ display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>{labelForMode(mode)}</div>
-          <div style={{ fontWeight: 800, fontSize: 18 }}>
-            {inj?.title ?? "(missing title)"}
-          </div>
-        </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 12, opacity: 0.65 }}>Delivered</div>
-          <div style={{ fontSize: 12, fontWeight: 700 }}>
-            {formatTs(item.delivered_at)}
-          </div>
-        </div>
-      </div>
-
-      {/* Meta chips */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-        <Chip>{inj?.channel ? String(inj.channel) : "message"}</Chip>
-
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          {inj?.sender_name || "Unknown"}
-          {inj?.sender_org ? ` · ${inj.sender_org}` : ""}
-        </div>
-
-        {mode !== "pulse" && inj?.severity && (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>
-            · severity: <strong>{inj.severity}</strong>
-          </div>
-        )}
-
-        {mode === "pulse" && (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>
-            · <strong>Unverified</strong>
-          </div>
-        )}
-      </div>
-
-      {/* Warning for Pulse */}
-      {mode === "pulse" && (
-        <div
-          style={{
-            border: "1px solid rgba(245, 158, 11, 0.35)",
-            background: "rgba(245, 158, 11, 0.08)",
-            padding: 10,
-            borderRadius: 12,
-            fontSize: 12,
-            lineHeight: 1.35,
-          }}
-        >
-          ⚠️ Information from Pulse is unverified and may be inaccurate.
-        </div>
-      )}
-
-      {/* Body */}
-      <div
-        style={{
-          borderTop: "1px solid rgba(0,0,0,0.08)",
-          paddingTop: 12,
-          whiteSpace: "pre-wrap",
-          lineHeight: 1.5,
-        }}
-      >
-        {inj?.body ?? ""}
-      </div>
-
-      {/* Footer meta */}
-      <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 10 }}>
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
-          Item ID: <code>{item.id}</code>
-        </div>
-      </div>
-    </div>
-  );
+  if (error) throw error;
+  return data as SessionSituation;
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      style={{
-        fontSize: 12,
-        padding: "2px 8px",
-        borderRadius: 999,
-        border: "1px solid rgba(0,0,0,0.12)",
-        opacity: 0.85,
-      }}
-    >
-      {children}
-    </span>
-  );
+/* =======================
+   INBOX (SESSION_INJECTS)
+======================= */
+
+export type SessionInject = {
+  id: string;
+  session_id: string;
+  scenario_id: string | null;
+  inject_id: string;
+  delivered_at: string;
+  delivered_by: string | null;
+  status: string;
+  injects: {
+    title: string;
+    body: string;
+    channel: string;
+    sender_name: string | null;
+    sender_org: string | null;
+    severity: string | null;
+    created_at: string;
+  } | null;
+};
+
+export async function getSessionInbox(sessionId: string) {
+  const { data, error } = await supabase
+    .from("session_injects")
+    .select(
+      `
+      id, session_id, scenario_id, inject_id, delivered_at, delivered_by, status,
+      injects ( title, body, channel, sender_name, sender_org, severity, created_at )
+    `
+    )
+    .eq("session_id", sessionId)
+    .order("delivered_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as SessionInject[];
+}
+
+export async function deliverDueInjects(sessionId: string) {
+  const { data, error } = await supabase.rpc("deliver_due_injects", {
+    p_session_id: sessionId,
+  });
+
+  if (error) throw error;
+  return data as number;
+}
+
+/* =======================
+   AD-HOC INJECT (CREATE + DELIVER)
+======================= */
+
+export async function sendInjectToSession(
+  sessionId: string,
+  title: string,
+  body: string
+) {
+  const { data: inject, error: injectError } = await supabase
+    .from("injects")
+    .insert({
+      title,
+      body,
+    })
+    .select("id")
+    .single();
+
+  if (injectError) throw injectError;
+
+  const { error: deliverError } = await supabase.from("session_injects").insert({
+    session_id: sessionId,
+    inject_id: inject.id,
+    scenario_id: null,
+    delivered_by: (await supabase.auth.getUser()).data.user?.id ?? null,
+    delivered_at: new Date().toISOString(),
+    status: "delivered",
+  });
+
+  if (deliverError) throw deliverError;
+
+  return inject.id as string;
 }
