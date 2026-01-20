@@ -133,3 +133,57 @@ export async function sendInjectToSession(
 
   return inject.id as string;
 }
+
+/* =======================
+   ACTIONS (SESSION_ACTIONS)
+======================= */
+
+export type SessionAction = {
+  id: string;
+  session_id: string;
+  session_inject_id: string | null;
+  source: "inbox" | "pulse";
+  action_type: "ignore" | "escalate" | "act";
+  comment: string | null;
+  created_at: string;
+  created_by: string | null;
+};
+
+export async function getSessionActions(sessionId: string, limit = 50) {
+  const { data, error } = await supabase
+    .from("session_actions")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []) as SessionAction[];
+}
+
+export async function addSessionAction(params: {
+  sessionId: string;
+  sessionInjectId: string | null;
+  source: "inbox" | "pulse";
+  actionType: "ignore" | "escalate" | "act";
+  comment?: string | null;
+}) {
+  const { sessionId, sessionInjectId, source, actionType, comment } = params;
+
+  const { data, error } = await supabase
+    .from("session_actions")
+    .insert({
+      session_id: sessionId,
+      session_inject_id: sessionInjectId,
+      source,
+      action_type: actionType,
+      comment: comment ?? null,
+      // created_by can be null if you don't store it; you can also set it explicitly:
+      created_by: (await supabase.auth.getUser()).data.user?.id ?? null,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as SessionAction;
+}

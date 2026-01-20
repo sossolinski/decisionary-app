@@ -7,6 +7,9 @@ import {
   getSessionSituation,
   type SessionSituation,
   type SessionInject,
+  getSessionActions,
+  addSessionAction,
+  type SessionAction,
 } from "@/lib/sessions";
 
 import SituationCard from "@/app/components/SituationCard";
@@ -36,9 +39,15 @@ export default function SessionParticipantPage() {
   const [activeTab, setActiveTab] = useState<FeedTab>("inbox");
   const [selectedItem, setSelectedItem] = useState<SessionInject | null>(null);
 
+  // Actions + log state
+  const [actions, setActions] = useState<SessionAction[]>([]);
+  const [actionsLoading, setActionsLoading] = useState(false);
+  const [actionsError, setActionsError] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
+
+  // Load situation (COP)
   useEffect(() => {
     if (!validSessionId) return;
-
     let alive = true;
     setError(null);
 
@@ -57,6 +66,44 @@ export default function SessionParticipantPage() {
       alive = false;
     };
   }, [sessionId, validSessionId]);
+
+  // Load action log
+  useEffect(() => {
+    if (!validSessionId) return;
+
+    let alive = true;
+    setActionsLoading(true);
+    setActionsError(null);
+
+    getSessionActions(sessionId, 50)
+      .then((rows) => alive && setActions(rows))
+      .catch((e) => alive && setActionsError(e?.message ?? "Failed to load actions"))
+      .finally(() => alive && setActionsLoading(false));
+
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, validSessionId]);
+
+  async function doAction(actionType: "ignore" | "escalate" | "act") {
+    if (!selectedItem) return;
+
+    try {
+      const saved = await addSessionAction({
+        sessionId,
+        sessionInjectId: selectedItem.id,
+        source: activeTab,
+        actionType,
+        comment: comment.trim() ? comment.trim() : null,
+      });
+
+      // prepend
+      setActions((prev) => [saved, ...prev]);
+      setComment("");
+    } catch (e: any) {
+      alert(e?.message ?? "Failed to save action");
+    }
+  }
 
   if (!sessionId) return <div style={{ padding: 24 }}>Loading…</div>;
 
@@ -77,13 +124,16 @@ export default function SessionParticipantPage() {
 
   return (
     <div style={{ padding: 24, display: "grid", gap: 14 }}>
+      {/* Facilitator tools (later hide by role) */}
       <div style={{ display: "grid", gap: 10 }}>
         <FacilitatorControls sessionId={sessionId} />
         <AddInjectForm sessionId={sessionId} />
       </div>
 
+      {/* Context */}
       <SituationCard s={situation} />
 
+      {/* Workspace */}
       <div
         style={{
           display: "grid",
@@ -180,33 +230,57 @@ export default function SessionParticipantPage() {
           >
             <div style={{ fontWeight: 700, marginBottom: 10 }}>Actions</div>
 
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Optional comment (what you did / why)"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 12,
+                border: "1px solid rgba(0,0,0,0.15)",
+                marginBottom: 10,
+              }}
+            />
+
             <div style={{ display: "flex", gap: 10 }}>
               <button
+                onClick={() => doAction("ignore")}
+                disabled={!selectedItem}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: "pointer",
+                  cursor: selectedItem ? "pointer" : "not-allowed",
+                  opacity: selectedItem ? 1 : 0.5,
                 }}
               >
                 Ignore
               </button>
+
               <button
+                onClick={() => doAction("escalate")}
+                disabled={!selectedItem}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: "pointer",
+                  cursor: selectedItem ? "pointer" : "not-allowed",
+                  opacity: selectedItem ? 1 : 0.5,
                 }}
               >
                 Escalate
               </button>
+
               <button
+                onClick={() => doAction("act")}
+                disabled={!selectedItem}
                 style={{
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: "pointer",
+                  cursor: selectedItem ? "pointer" : "not-allowed",
+                  opacity: selectedItem ? 1 : 0.5,
                   fontWeight: 700,
                 }}
               >
@@ -234,7 +308,7 @@ export default function SessionParticipantPage() {
         </section>
       </div>
 
-      {/* Bottom log placeholder */}
+      {/* Bottom log */}
       <div
         style={{
           border: "1px solid rgba(0,0,0,0.12)",
@@ -242,12 +316,70 @@ export default function SessionParticipantPage() {
           background: "white",
           padding: 12,
           minHeight: 64,
-          opacity: 0.85,
+          opacity: 0.95,
         }}
       >
         <div style={{ fontWeight: 700, marginBottom: 6 }}>Log</div>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          (Next step) Actions and updates will appear here with timestamps.
+
+        {actionsLoading && (
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Loading…</div>
+        )}
+        {actionsError && (
+          <div style={{ fontSize: 12, color: "crimson" }}>{actionsError}</div>
+        )}
+
+        {!actionsLoading && !actionsError && actions.length === 0 && (
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            No actions recorded yet.
+          </div>
+        )}
+
+        <div style={{ display: "grid", gap: 8 }}>
+          {actions.slice(0, 12).map((a) => (
+            <div
+              key={a.id}
+              style={{
+                border: "1px solid rgba(0,0,0,0.10)",
+                borderRadius: 12,
+                padding: 10,
+                fontSize: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div>
+                  <strong>{a.action_type.toUpperCase()}</strong>{" "}
+                  <span style={{ opacity: 0.7 }}>({a.source})</span>
+                  {a.session_inject_id ? (
+                    <span style={{ opacity: 0.6 }}>
+                      {" "}
+                      · {a.session_inject_id}
+                    </span>
+                  ) : null}
+                </div>
+                <div style={{ opacity: 0.65 }}>
+                  {new Date(a.created_at).toLocaleString()}
+                </div>
+              </div>
+
+              {a.comment ? (
+                <div
+                  style={{
+                    marginTop: 6,
+                    whiteSpace: "pre-wrap",
+                    opacity: 0.9,
+                  }}
+                >
+                  {a.comment}
+                </div>
+              ) : null}
+            </div>
+          ))}
         </div>
       </div>
     </div>
