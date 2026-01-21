@@ -73,26 +73,18 @@ export async function getSessionSituation(sessionId: string) {
 type InboxOpts = {
   page?: number;
   pageSize?: number;
-  channel?: string | null;     // eq filter (injects.channel = ...)
-  channelNot?: string | null;  // neq filter (injects.channel <> ...)
+  channel?: string | null; // eq filter (injects.channel = ...)
+  channelNot?: string | null; // neq filter (injects.channel <> ...)
+  severity?: string | null; // eq filter (injects.severity = ...)
 };
 
 function selectSessionInjects() {
   // alias injects:inject_id must match FK on session_injects.inject_id -> injects.id
   return supabase.from("session_injects").select(
     `
-      id,
-      session_id,
-      delivered_at,
-      inject_id,
+      id, session_id, delivered_at, inject_id,
       injects:inject_id (
-        id,
-        title,
-        body,
-        channel,
-        severity,
-        sender_name,
-        sender_org
+        id, title, body, channel, severity, sender_name, sender_org
       )
     `,
     { count: "exact" }
@@ -113,11 +105,10 @@ export async function getSessionInbox(
     .order("delivered_at", { ascending: false });
 
   // Server-side filters on embedded resource
-  if (opts.channel) {
-    q = q.eq("injects.channel", opts.channel);
-  } else if (opts.channelNot) {
-    q = q.neq("injects.channel", opts.channelNot);
-  }
+  if (opts.channel) q = q.eq("injects.channel", opts.channel);
+  else if (opts.channelNot) q = q.neq("injects.channel", opts.channelNot);
+
+  if (opts.severity) q = q.eq("injects.severity", opts.severity);
 
   const { data, error, count } = await q.range(from, to);
   if (error) throw error;
@@ -153,12 +144,13 @@ export function subscribeInbox(sessionId: string, cb: () => void) {
 
 export async function getSessionPulse(
   sessionId: string,
-  opts: { page?: number; pageSize?: number } = {}
+  opts: { page?: number; pageSize?: number; severity?: string | null } = {}
 ): Promise<PagedResult<PulseItem>> {
   return getSessionInbox(sessionId, {
     page: opts.page ?? 1,
     pageSize: opts.pageSize ?? 5,
     channel: "pulse",
+    severity: opts.severity ?? null,
   });
 }
 
@@ -245,14 +237,12 @@ export async function sendInjectToSession(
   });
 
   if (linkErr) throw linkErr;
-
   return (inj as any).id as string;
 }
 
 /* ========================= FACILITATOR: deliverDueInjects (MVP) ========================= */
 
 export async function deliverDueInjects(sessionId: string) {
-  // 0) fetch scenario_id for the session
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
     .select("id, scenario_id")
@@ -264,7 +254,6 @@ export async function deliverDueInjects(sessionId: string) {
   const scenarioId = (sess as any)?.scenario_id;
   if (!scenarioId) return { delivered: 0 };
 
-  // 1) due scenario injects
   const { data: due, error: dueErr } = await supabase
     .from("scenario_injects")
     .select("id, scenario_id, inject_id, scheduled_at")
@@ -277,7 +266,6 @@ export async function deliverDueInjects(sessionId: string) {
   const dueRows = (due ?? []) as any[];
   if (dueRows.length === 0) return { delivered: 0 };
 
-  // 2) avoid duplicates
   const injectIds = Array.from(new Set(dueRows.map((r) => r.inject_id)));
 
   const { data: already, error: alreadyErr } = await supabase
@@ -292,7 +280,6 @@ export async function deliverDueInjects(sessionId: string) {
   const toDeliver = dueRows.filter((r) => !alreadySet.has(r.inject_id));
   if (toDeliver.length === 0) return { delivered: 0 };
 
-  // 3) deliver into session_injects
   const inserts = toDeliver.map((r) => ({
     session_id: sessionId,
     inject_id: r.inject_id,

@@ -11,18 +11,17 @@ function clampNonNeg(n: number) {
 
 export default function CasualtyEditor({
   situation,
-  editable,
+  editable = true,
   onUpdated,
 }: {
   situation: SessionSituation;
-  editable: boolean; // participant: true (tylko casualties), observer: false
+  editable?: boolean; // default: true
   onUpdated: (s: SessionSituation) => void;
 }) {
-  const [injured, setInjured] = useState<number>(situation.injured);
-  const [fatalities, setFatalities] = useState<number>(situation.fatalities);
-  const [uninjured, setUninjured] = useState<number>(situation.uninjured);
-  const [unknown, setUnknown] = useState<number>(situation.unknown);
-
+  const [injured, setInjured] = useState(situation.injured);
+  const [fatalities, setFatalities] = useState(situation.fatalities);
+  const [uninjured, setUninjured] = useState(situation.uninjured);
+  const [unknown, setUnknown] = useState(situation.unknown);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -56,33 +55,45 @@ export default function CasualtyEditor({
   }
 
   return (
-    <div style={{ border: "1px solid rgba(0,0,0,0.10)", borderRadius: 14, padding: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <div style={{ fontWeight: 700 }}>Update casualties</div>
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div style={{ fontWeight: 900, fontSize: 14 }}>Update casualties</div>
+
         <button
           onClick={save}
           disabled={!editable || saving || !dirty}
           style={{
             padding: "8px 12px",
             borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            opacity: !editable || !dirty ? 0.5 : 1,
-            cursor: !editable || !dirty ? "not-allowed" : "pointer",
+            border: "1px solid rgba(0,0,0,0.14)",
+            background: "rgba(0,0,0,0.03)",
+            cursor: !editable || saving || !dirty ? "not-allowed" : "pointer",
+            opacity: !editable || saving || !dirty ? 0.6 : 1,
+            fontWeight: 900,
           }}
         >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+      {msg ? (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.65)" }}>
+          {msg}
+        </div>
+      ) : null}
+
+      {!editable ? (
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 900, color: "rgba(0,0,0,0.55)" }}>
+          Read-only
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <Num label="Injured" value={injured} setValue={setInjured} disabled={!editable} />
         <Num label="Fatalities" value={fatalities} setValue={setFatalities} disabled={!editable} />
         <Num label="Uninjured" value={uninjured} setValue={setUninjured} disabled={!editable} />
         <Num label="Unknown" value={unknown} setValue={setUnknown} disabled={!editable} />
       </div>
-
-      {msg && <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>{msg}</div>}
-      {!editable && <div style={{ marginTop: 10, fontSize: 12, opacity: 0.6 }}>Read-only</div>}
     </div>
   );
 }
@@ -99,12 +110,10 @@ function Num({
   disabled: boolean;
 }) {
   return (
-    <label style={{ display: "block" }}>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>{label}</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, color: "rgba(0,0,0,0.70)" }}>{label}</div>
       <input
         type="number"
-        min={0}
-        step={1}
         value={value}
         disabled={disabled}
         onChange={(e) => setValue(Number(e.target.value))}
@@ -114,8 +123,9 @@ function Num({
           borderRadius: 12,
           border: "1px solid rgba(0,0,0,0.15)",
           opacity: disabled ? 0.6 : 1,
+          background: disabled ? "rgba(0,0,0,0.03)" : "white",
         }}
       />
-    </label>
+    </div>
   );
 }

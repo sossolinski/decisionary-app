@@ -7,6 +7,10 @@ type Props = {
   sessionId: string;
   selectedId: string | null;
   onSelect: (item: SessionInject) => void;
+
+  // filters
+  severity?: string | null;
+  search?: string;
 };
 
 function clampText(s: string, max = 160) {
@@ -28,7 +32,28 @@ function rangePages(totalPages: number, current: number) {
   return [start, start + 1, start + 2, start + 3];
 }
 
-export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
+function makeSeenKey(sessionId: string, severity: string | null) {
+  return `seen:${sessionId}:pulse:${severity ?? "all"}`;
+}
+
+function loadSeen(key: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeen(key: string, set: Set<string>) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export default function PulseFeed({ sessionId, selectedId, onSelect, severity = null, search = "" }: Props) {
   const pageSize = 5;
 
   const [items, setItems] = useState<SessionInject[]>([]);
@@ -43,6 +68,18 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
     pageRef.current = page;
   }, [page]);
 
+  // NEW flash
+  const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
+  const prevIdsRef = useRef<Set<string>>(new Set());
+
+  // UNREAD
+  const seenKey = useMemo(() => makeSeenKey(sessionId, severity), [sessionId, severity]);
+  const [seen, setSeen] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    setSeen(loadSeen(seenKey));
+  }, [seenKey]);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pages = rangePages(totalPages, page);
 
@@ -50,10 +87,36 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
     try {
       setErr(null);
       setLoading(true);
-      const res = await getSessionPulse(sessionId, { page: p, pageSize });
-      setItems(res.items);
-      setTotal(res.total);
-      setPage(res.page);
+
+      const res = await getSessionPulse(sessionId, { page: p, pageSize, severity });
+      const next = res.items ?? [];
+
+      setItems(next);
+      setTotal(res.total ?? 0);
+      setPage(res.page ?? p);
+
+      const prev = prevIdsRef.current;
+      const nextIds = new Set(next.map((x) => x.id));
+      const added: string[] = [];
+      nextIds.forEach((id) => {
+        if (!prev.has(id)) added.push(id);
+      });
+      prevIdsRef.current = nextIds;
+
+      if (added.length) {
+        setFlashIds((old) => {
+          const merged = new Set(old);
+          added.forEach((id) => merged.add(id));
+          return merged;
+        });
+        window.setTimeout(() => {
+          setFlashIds((old) => {
+            const copy = new Set(old);
+            added.forEach((id) => copy.delete(id));
+            return copy;
+          });
+        }, 3000);
+      }
     } catch (e: any) {
       setErr(e?.message ?? "Failed to load pulse");
     } finally {
@@ -63,17 +126,18 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
 
   useEffect(() => {
     if (!sessionId) return;
+
     setPage(1);
+    prevIdsRef.current = new Set();
     load(1);
 
     const unsub = subscribePulse(sessionId, () => {
-      // ważne: bierzemy aktualny page z refa (bez stale closure)
       load(pageRef.current);
     });
 
     return () => unsub?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
+  }, [sessionId, severity]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -81,21 +145,37 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const visible = useMemo(() => items, [items]);
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) => {
+      const t = it.injects?.title ?? "";
+      const b = it.injects?.body ?? "";
+      const s1 = it.injects?.sender_name ?? "";
+      const s2 = it.injects?.sender_org ?? "";
+      return `${t}\n${b}\n${s1}\n${s2}`.toLowerCase().includes(q);
+    });
+  }, [items, search]);
+
+  function markSeen(id: string) {
+    setSeen((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      saveSeen(seenKey, next);
+      return next;
+    });
+  }
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
+    <>
       {err && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(255,0,0,0.05)" }}>
+        <div style={{ padding: 10, borderRadius: 12, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", marginBottom: 10 }}>
           {err}
         </div>
       )}
 
-      {loading && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
-          Loading…
-        </div>
-      )}
+      {loading && <div style={{ padding: 8 }}>Loading…</div>}
 
       {!loading &&
         visible.map((p) => {
@@ -103,21 +183,25 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
 
           const title = p.injects?.title?.trim() || "Pulse post";
           const preview = p.injects?.body ? clampText(p.injects.body, 160) : "";
-
           const metaLeft =
-            [p.injects?.sender_name, p.injects?.sender_org].filter(Boolean).join(" · ") || "Unknown source";
+            [p.injects?.sender_name, p.injects?.sender_org].filter(Boolean).join(" · ") ||
+            "Unknown source";
 
-          const metaRightParts = [
-            p.injects?.channel ? String(p.injects.channel).toUpperCase() : null,
-            p.injects?.severity ? String(p.injects.severity).toUpperCase() : null,
-          ].filter(Boolean) as string[];
+          const channelTag = p.injects?.channel ? String(p.injects.channel).toUpperCase() : null;
+          const sevTag = p.injects?.severity ? String(p.injects.severity).toUpperCase() : null;
 
           const time = fmtTime(p.delivered_at);
+
+          const unread = !seen.has(p.id);
+          const flash = flashIds.has(p.id);
 
           return (
             <button
               key={p.id}
-              onClick={() => onSelect(p)}
+              onClick={() => {
+                markSeen(p.id);
+                onSelect(p);
+              }}
               style={{
                 width: "100%",
                 textAlign: "left",
@@ -126,36 +210,64 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
                 border: active ? "1px solid rgba(0,0,0,0.28)" : "1px solid rgba(0,0,0,0.12)",
                 background: active ? "rgba(0,0,0,0.04)" : "white",
                 cursor: "pointer",
+                marginBottom: 8,
+                boxShadow: flash ? "0 0 0 3px rgba(34,197,94,0.18)" : "none",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                <div style={{ fontWeight: 700 }}>{title}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                <div style={{ fontWeight: 800, fontSize: 13 }}>
+                  {title}
+                  {unread && (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(0,0,0,0.14)",
+                        background: "rgba(0,0,0,0.04)",
+                      }}
+                    >
+                      UNREAD
+                    </span>
+                  )}
+                  {flash && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 11,
+                        fontWeight: 900,
+                        padding: "3px 8px",
+                        borderRadius: 999,
+                        border: "1px solid rgba(34,197,94,0.35)",
+                        background: "rgba(34,197,94,0.10)",
+                      }}
+                    >
+                      NEW
+                    </span>
+                  )}
+                </div>
 
-                {metaRightParts.length > 0 && (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    {metaRightParts.map((t) => (
-                      <span
-                        key={t}
-                        style={{
-                          fontSize: 12,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(0,0,0,0.12)",
-                          background: "rgba(0,0,0,0.02)",
-                        }}
-                      >
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {channelTag && (
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
+                      {channelTag}
+                    </span>
+                  )}
+                  {sevTag && (
+                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
+                      {sevTag}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div style={{ marginTop: 6, color: "rgba(0,0,0,0.72)", fontSize: 13 }}>
+              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,0.74)" }}>
                 {preview ? preview : <span style={{ color: "rgba(0,0,0,0.45)" }}>(no content)</span>}
               </div>
 
-              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, color: "rgba(0,0,0,0.55)" }}>
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "rgba(0,0,0,0.55)", fontWeight: 700 }}>
                 <span>{metaLeft}</span>
                 <span>{time}</span>
               </div>
@@ -164,17 +276,16 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
         })}
 
       {!loading && visible.length === 0 && (
-        <div style={{ padding: 10, borderRadius: 12, border: "1px solid rgba(0,0,0,0.12)" }}>
-          No pulse items on this page.
-        </div>
+        <div style={{ padding: 10, color: "rgba(0,0,0,0.6)" }}>No pulse items matching filters.</div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.6)" }}>
+      {/* Pagination */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
+        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", fontWeight: 700 }}>
           Page {page} / {totalPages}
         </div>
 
-        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <button
             onClick={() => setPage((x) => Math.max(1, x - 1))}
             disabled={page <= 1}
@@ -185,6 +296,7 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
               background: "white",
               cursor: page <= 1 ? "not-allowed" : "pointer",
               opacity: page <= 1 ? 0.5 : 1,
+              fontWeight: 700,
             }}
           >
             {"<<"}
@@ -199,7 +311,7 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
                 borderRadius: 10,
                 border: "1px solid rgba(0,0,0,0.12)",
                 background: p === page ? "rgba(0,0,0,0.06)" : "white",
-                fontWeight: p === page ? 700 : 600,
+                fontWeight: p === page ? 900 : 700,
                 cursor: "pointer",
               }}
             >
@@ -217,12 +329,13 @@ export default function PulseFeed({ sessionId, selectedId, onSelect }: Props) {
               background: "white",
               cursor: page >= totalPages ? "not-allowed" : "pointer",
               opacity: page >= totalPages ? 0.5 : 1,
+              fontWeight: 700,
             }}
           >
             {">>"}
           </button>
         </div>
       </div>
-    </div>
+    </>
   );
 }

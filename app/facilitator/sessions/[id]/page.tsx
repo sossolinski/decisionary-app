@@ -1,535 +1,414 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-
-import { useRequireAuth } from "@/lib/useRequireAuth";
-import { supabase } from "@/lib/supabaseClient";
-
+import { useRouter } from "next/navigation";
 import {
-  getSessionSituation,
-  type SessionSituation,
-  type SessionInject,
-  getSessionActions,
-  addSessionAction,
-  type SessionAction,
-} from "@/lib/sessions";
+  listScenarios,
+  createScenario,
+  deleteScenario,
+  Scenario,
+  listFacilitators,
+  transferScenarioOwnership,
+  shareScenario,
+  revokeScenarioShare,
+  FacilitatorProfile,
+} from "../../../lib/facilitator";
+import { getMyRole } from "../../../lib/users";
 
-import SituationCard from "@/app/components/SituationCard";
-import CasualtyEditor from "@/app/components/CasualtyEditor";
-import MessageDetail from "@/app/components/MessageDetail";
-import FacilitatorControls from "@/app/components/FacilitatorControls";
-import AddInjectForm from "@/app/components/AddInjectForm";
-import Inbox from "@/app/components/Inbox";
-import PulseFeed from "@/app/components/PulseFeed";
+export default function FacilitatorScenariosPage() {
+  const router = useRouter();
 
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    v
-  );
-}
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [facilitators, setFacilitators] = useState<FacilitatorProfile[]>([]);
 
-type FeedTab = "inbox" | "pulse";
-type AppRole = "facilitator" | "participant";
+  const [newTitle, setNewTitle] = useState("");
+  const [loading, setLoading] = useState(false);
 
-export default function SessionParticipantPage() {
-  const params = useParams<{ id: string }>();
-  const sessionId = params?.id ?? "";
-  const validSessionId = useMemo(() => isUuid(sessionId), [sessionId]);
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [sharingId, setSharingId] = useState<string | null>(null);
 
-  // ✅ Auth guard (hook robi redirect do /login; my tylko pokazujemy fallback)
-  const { loading: authLoading, userId } = useRequireAuth();
-
-  // ✅ Role (MVP): profiles.role
-  const [role, setRole] = useState<AppRole>("participant");
-  const [roleLoading, setRoleLoading] = useState(true);
-  const [roleError, setRoleError] = useState<string | null>(null);
-
-  // Session data
-  const [situation, setSituation] = useState<SessionSituation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<FeedTab>("inbox");
-  const [selectedItem, setSelectedItem] = useState<SessionInject | null>(null);
+  const [shareTargetByScenario, setShareTargetByScenario] = useState<Record<string, string>>({});
 
-  // Actions + log
-  const [actions, setActions] = useState<SessionAction[]>([]);
-  const [actionsLoading, setActionsLoading] = useState(false);
-  const [actionsError, setActionsError] = useState<string | null>(null);
-
-  const [comment, setComment] = useState("");
-
-  const isFacilitator = role === "facilitator";
-
-  // Load role
+  /* ================= AUTH GUARD ================= */
   useEffect(() => {
-    let alive = true;
+    (async () => {
+      const role = await getMyRole();
 
-    async function loadRole() {
-      if (authLoading) return;
-      if (!userId) return;
-      setRoleLoading(true);
-      setRoleError(null);
-
-      try {
-        const { data, error } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", userId)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        const r = (data?.role ?? "participant") as AppRole;
-        if (alive) setRole(r);
-      } catch (e: any) {
-        if (alive) {
-          setRoleError(e?.message ?? "Failed to load role");
-          setRole("participant");
-        }
-      } finally {
-        if (alive) setRoleLoading(false);
+      if (!role) {
+        router.replace("/login");
+        return;
       }
-    }
+      if (role !== "facilitator") {
+        router.replace("/participant");
+        return;
+      }
 
-    loadRole();
-    return () => {
-      alive = false;
-    };
-  }, [authLoading, userId]);
+      await load();
+    })().catch((e: any) => setError(e?.message ?? "Failed to load"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
-  // Load situation (COP)
-  useEffect(() => {
-    if (authLoading || roleLoading) return;
-    if (!validSessionId) return;
-
-    let alive = true;
+  async function load() {
     setError(null);
-
-    getSessionSituation(sessionId)
-      .then((s) => {
-        if (!alive) return;
-        if (!s) {
-          setError("No session_situation row for this session.");
-          return;
-        }
-        setSituation(s);
-      })
-      .catch((e) => alive && setError(e?.message ?? "Failed to load situation"));
-
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, validSessionId, authLoading, roleLoading]);
-
-  // Load action log
-  useEffect(() => {
-    if (authLoading || roleLoading) return;
-    if (!validSessionId) return;
-
-    let alive = true;
-    setActionsLoading(true);
-    setActionsError(null);
-
-    getSessionActions(sessionId, 50)
-      .then((rows) => alive && setActions(rows))
-      .catch((e) => alive && setActionsError(e?.message ?? "Failed to load actions"))
-      .finally(() => alive && setActionsLoading(false));
-
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, validSessionId, authLoading, roleLoading]);
-
-  // Inbox actions
-  async function doAction(actionType: "ignore" | "escalate" | "act") {
-    if (!selectedItem) return;
-
     try {
-      const saved = await addSessionAction({
-        sessionId,
-        sessionInjectId: selectedItem.id,
-        source: activeTab, // inbox/pulse
-        actionType,
-        comment: comment.trim() ? comment.trim() : null,
-      });
-
-      // prepend to log
-      setActions((prev) => [saved, ...prev]);
-
-      // ✅ CONSEQUENCE (MVP): only facilitator can publish official comms
-      if (actionType === "act" && isFacilitator) {
-        const title = `Update: action taken on "${
-          selectedItem.injects?.title ?? "message"
-        }"`;
-
-        const body =
-          `Decision recorded.\n\n` +
-          `Action: ACT\n` +
-          `Source: ${activeTab.toUpperCase()}\n` +
-          `Reference message ID: ${selectedItem.id}\n` +
-          (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
-          `\nNext update will follow.`;
-
-        const { sendInjectToSession } = await import("@/lib/sessions");
-        await sendInjectToSession(sessionId, title, body);
-      }
-
-      setComment("");
+      const [scs, facs] = await Promise.all([
+        listScenarios(),
+        listFacilitators(),
+      ]);
+      setScenarios(scs);
+      setFacilitators(facs ?? []);
     } catch (e: any) {
-      alert(e?.message ?? "Failed to save action");
+      setError(e?.message ?? "Load failed");
     }
   }
 
-  // Pulse decisions -> official comms into Inbox
-  async function doPulseDecision(decision: "confirm" | "deny") {
-    if (!selectedItem) return;
+  /* ================= ACTIONS ================= */
+  async function onCreate() {
+    if (!newTitle.trim()) return;
+    setLoading(true);
+    setError(null);
 
-    // ✅ Only facilitator can publish confirm/deny as official comms
-    if (!isFacilitator) {
-      alert("Only facilitator can publish official confirmation/denial.");
+    try {
+      const s = await createScenario(newTitle.trim());
+      setScenarios((prev) => [s, ...prev]);
+      setNewTitle("");
+    } catch (e: any) {
+      setError(e?.message ?? "Create failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onDelete(id: string) {
+    if (!confirm("Delete this scenario?")) return;
+    setError(null);
+
+    try {
+      await deleteScenario(id);
+      setScenarios((prev) => prev.filter((s) => s.id !== id));
+    } catch (e: any) {
+      setError(e?.message ?? "Delete failed");
+    }
+  }
+
+  async function onAssign(scenarioId: string, newOwnerId: string) {
+    if (!newOwnerId) return;
+    setError(null);
+    setAssigningId(scenarioId);
+
+    try {
+      await transferScenarioOwnership(scenarioId, newOwnerId);
+      setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
+    } catch (e: any) {
+      setError(e?.message ?? "Assign failed");
+    } finally {
+      setAssigningId(null);
+    }
+  }
+
+  async function onShare(scenarioId: string) {
+    const targetId = shareTargetByScenario[scenarioId];
+    if (!targetId) {
+      setError("Select facilitator to share with.");
       return;
     }
 
+    setError(null);
+    setSharingId(scenarioId);
+
     try {
-      // log as an action (MVP mapping: confirm -> act, deny -> ignore)
-      const saved = await addSessionAction({
-        sessionId,
-        sessionInjectId: selectedItem.id,
-        source: "pulse",
-        actionType: decision === "confirm" ? "act" : "ignore",
-        comment: comment.trim()
-          ? `${decision.toUpperCase()}: ${comment.trim()}`
-          : `${decision.toUpperCase()}`,
-      });
-
-      setActions((prev) => [saved, ...prev]);
-
-      const pulseTitle = selectedItem.injects?.title ?? "pulse post";
-      const pulseBody = selectedItem.injects?.body ?? "";
-
-      const title =
-        decision === "confirm"
-          ? `Official confirmation regarding "${pulseTitle}"`
-          : `Official denial regarding "${pulseTitle}"`;
-
-      const body =
-        (decision === "confirm"
-          ? `We confirm that the information circulating is accurate.`
-          : `We deny the information currently circulating.`) +
-        `\n\nReference pulse message ID: ${selectedItem.id}` +
-        (comment.trim() ? `\n\nComment:\n${comment.trim()}` : "") +
-        (pulseBody ? `\n\nQuoted content:\n${pulseBody}` : "");
-
-      const { sendInjectToSession } = await import("@/lib/sessions");
-      await sendInjectToSession(sessionId, title, body);
-
-      setComment("");
+      await shareScenario(scenarioId, targetId, "read");
+      alert("Shared (read-only).");
     } catch (e: any) {
-      alert(e?.message ?? "Failed to process Pulse decision");
+      setError(e?.message ?? "Share failed");
+    } finally {
+      setSharingId(null);
     }
   }
 
-  // ================= RENDER GUARDS =================
+  async function onRevoke(scenarioId: string) {
+    const targetId = shareTargetByScenario[scenarioId];
+    if (!targetId) {
+      setError("Select facilitator to revoke.");
+      return;
+    }
 
-  if (authLoading) {
-    return <div style={{ padding: 16 }}>Loading…</div>;
+    setError(null);
+    setSharingId(scenarioId);
+
+    try {
+      await revokeScenarioShare(scenarioId, targetId);
+      alert("Share revoked.");
+    } catch (e: any) {
+      setError(e?.message ?? "Revoke failed");
+    } finally {
+      setSharingId(null);
+    }
   }
 
+  /* ================= HELPERS ================= */
+  const idToEmail = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of facilitators) {
+      if (f.email) m.set(f.id, f.email);
+    }
+    return m;
+  }, [facilitators]);
 
-if (loading) return <div>Loading…</div>;
-if (!userId) return <div>Not authenticated</div>;
-
-  if (!sessionId) return <div style={{ padding: 16 }}>Loading…</div>;
-
-  if (!validSessionId) {
-    return (
-      <div style={{ padding: 16 }}>
-        <h2>Invalid session id</h2>
-        <p>
-          This URL parameter must be a UUID. Go back and paste a valid{" "}
-          <code>sessions.id</code> from Supabase.
-        </p>
-      </div>
-    );
+  function fmt(dt?: string | null) {
+    if (!dt) return "—";
+    try {
+      return new Date(dt).toLocaleString();
+    } catch {
+      return dt;
+    }
   }
 
-  if (roleLoading) {
-    return <div style={{ padding: 16 }}>Loading permissions…</div>;
+  function who(userId?: string | null) {
+    if (!userId) return "—";
+    return idToEmail.get(userId) ?? userId;
   }
 
-  if (roleError) {
-    return (
-      <div style={{ padding: 16 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Role error</div>
-        <div style={{ opacity: 0.8 }}>{roleError}</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: 16 }}>
-        <div style={{ fontWeight: 700 }}>Error:</div>
-        <div>{error}</div>
-      </div>
-    );
-  }
-
-  if (!situation) return <div style={{ padding: 16 }}>Loading…</div>;
-
-  // ================= UI =================
-
+  /* ================= UI ================= */
   return (
-    <div style={{ padding: 16 }}>
-      {/* ✅ Facilitator-only tools */}
-      {isFacilitator ? (
-        <div style={{ marginBottom: 12 }}>
-          <FacilitatorControls sessionId={sessionId} />
-          <div style={{ height: 10 }} />
-          <AddInjectForm sessionId={sessionId} />
+    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
+      <h1 style={{ margin: 0, marginBottom: 12 }}>Scenarios</h1>
+
+      {error ? (
+        <div
+          style={{
+            marginBottom: 14,
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid rgba(239,68,68,0.35)",
+            background: "rgba(239,68,68,0.06)",
+            color: "#991b1b",
+            fontWeight: 700,
+          }}
+        >
+          {error}
         </div>
       ) : null}
 
-      {/* Context */}
-      <div style={{ marginBottom: 12 }}>
-        <SituationCard situation={situation} />
-      </div>
-
-      {/* Workspace */}
+      {/* CREATE */}
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "360px 1fr 360px",
-          gap: 12,
-          alignItems: "start",
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          marginBottom: 16,
+          flexWrap: "wrap",
         }}
       >
-        {/* LEFT: Tabs + Feed */}
-        <div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            <button
-              onClick={() => {
-                setActiveTab("inbox");
-                setSelectedItem(null);
-              }}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.12)",
-                background: activeTab === "inbox" ? "white" : "transparent",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              Inbox
-            </button>
+        <input
+          value={newTitle}
+          onChange={(e) => setNewTitle(e.target.value)}
+          placeholder="New scenario title"
+          style={{
+            flex: 1,
+            minWidth: 240,
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.15)",
+            background: "white",
+          }}
+        />
+        <button
+          onClick={onCreate}
+          disabled={loading}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.15)",
+            background: "white",
+            fontWeight: 800,
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          {loading ? "..." : "Create"}
+        </button>
 
-            <button
-              onClick={() => {
-                setActiveTab("pulse");
-                setSelectedItem(null);
-              }}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.12)",
-                background: activeTab === "pulse" ? "white" : "transparent",
-                cursor: "pointer",
-                fontWeight: 600,
-              }}
-            >
-              Pulse
-            </button>
-          </div>
-
-          {activeTab === "inbox" ? (
-            <Inbox
-              sessionId={sessionId}
-              mode="inbox"
-              selectedId={selectedItem?.id ?? null}
-              onSelect={(item) => setSelectedItem(item)}
-            />
-          ) : (
-            <PulseFeed
-              sessionId={sessionId}
-              selectedId={selectedItem?.id ?? null}
-              onSelect={(item) => setSelectedItem(item)}
-            />
-          )}
-        </div>
-
-        {/* MIDDLE: Detail */}
-        <div>
-          <MessageDetail item={selectedItem} />
-        </div>
-
-        {/* RIGHT: Actions + Casualties */}
-        <div>
-          <div style={{ fontWeight: 800, marginBottom: 10 }}>Actions</div>
-
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder={
-              activeTab === "pulse"
-                ? "Optional comment (why confirm/deny)"
-                : "Optional comment (what you did / why)"
-            }
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.15)",
-              marginBottom: 10,
-            }}
-          />
-
-          {activeTab === "pulse" ? (
-            <div style={{ display: "flex", gap: 10 }}>
-              <button
-                onClick={() => doPulseDecision("confirm")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                  fontWeight: 700,
-                  width: "100%",
-                }}
-              >
-                Confirm
-              </button>
-
-              <button
-                onClick={() => doPulseDecision("deny")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                  width: "100%",
-                }}
-              >
-                Deny
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button
-                onClick={() => doAction("ignore")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                }}
-              >
-                Ignore
-              </button>
-
-              <button
-                onClick={() => doAction("escalate")}
-                disabled={!selectedItem}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                }}
-              >
-                Escalate
-              </button>
-
-              <button
-                onClick={() => doAction("act")}
-                disabled={!selectedItem}
-                style={{
-                  gridColumn: "1 / -1",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  cursor: selectedItem ? "pointer" : "not-allowed",
-                  opacity: selectedItem ? 1 : 0.5,
-                  fontWeight: 700,
-                }}
-              >
-                Act
-              </button>
-            </div>
-          )}
-
-          <div style={{ marginTop: 10, opacity: 0.85 }}>
-            {selectedItem ? (
-              <>
-                Responding to: <code>{selectedItem.injects?.title ?? selectedItem.id}</code>
-                {!isFacilitator && activeTab === "pulse" ? (
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                    Note: Only facilitator can publish Confirm/Deny.
-                  </div>
-                ) : null}
-                {!isFacilitator && activeTab !== "pulse" ? (
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
-                    Note: Participant actions are logged; only facilitator publishes official updates.
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <>Select a message to enable context-aware actions.</>
-            )}
-          </div>
-
-          {/* ✅ Casualties editor only for facilitator (MVP) */}
-          {isFacilitator ? (
-            <div style={{ marginTop: 14 }}>
-              <CasualtyEditor situation={situation} onSaved={setSituation} />
-            </div>
-          ) : null}
-        </div>
+        <button
+          onClick={load}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(0,0,0,0.15)",
+            background: "white",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Refresh
+        </button>
       </div>
 
-      {/* Bottom log */}
-      <div style={{ marginTop: 14 }}>
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Log</div>
+      {/* LIST */}
+      {scenarios.length === 0 ? (
+        <div style={{ opacity: 0.75 }}>No scenarios yet.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {scenarios.map((s) => {
+            const selectedTarget = shareTargetByScenario[s.id] ?? "";
 
-        {actionsLoading && <div>Loading…</div>}
-        {actionsError && <div style={{ color: "#b91c1c" }}>{actionsError}</div>}
+            return (
+              <div
+                key={s.id}
+                style={{
+                  padding: 14,
+                  borderRadius: 16,
+                  border: "1px solid rgba(0,0,0,0.10)",
+                  background: "rgba(255,255,255,0.92)",
+                  boxShadow: "0 12px 28px rgba(11,18,32,0.06)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>{s.title}</div>
 
-        {!actionsLoading && !actionsError && actions.length === 0 && (
-          <div>No actions recorded yet.</div>
-        )}
+                    <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 8 }}>
+                      <div>
+                        <b>Created:</b> {fmt(s.created_at)} by {who(s.created_by)}
+                      </div>
+                      <div>
+                        <b>Updated:</b> {fmt(s.updated_at)} by {who(s.updated_by)}
+                      </div>
+                    </div>
 
-        {actions.slice(0, 12).map((a) => (
-          <div
-            key={a.id}
-            style={{
-              padding: "10px 10px",
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.10)",
-              background: "white",
-              marginBottom: 8,
-            }}
-          >
-            <div style={{ fontWeight: 700 }}>
-              {a.action_type.toUpperCase()} ({a.source})
-              {a.session_inject_id ? <> · {a.session_inject_id}</> : null}
-            </div>
-            <div style={{ fontSize: 12, opacity: 0.75 }}>
-              {new Date(a.created_at).toLocaleString()}
-            </div>
-            {a.comment ? (
-              <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{a.comment}</div>
-            ) : null}
-          </div>
-        ))}
-      </div>
+                    {s.description ? (
+                      <div style={{ opacity: 0.75, marginBottom: 8 }}>{s.description}</div>
+                    ) : (
+                      <div style={{ opacity: 0.5, marginBottom: 8, fontSize: 13 }}>
+                        No description
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(0,0,0,0.15)",
+                        background: "white",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Open
+                    </button>
+
+                    <button
+                      onClick={() => onDelete(s.id)}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(185,28,28,0.35)",
+                        background: "rgba(185,28,28,0.06)",
+                        color: "#b91c1c",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* ASSIGN */}
+                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>
+                    Assign (transfer owner):
+                  </span>
+                  <select
+                    defaultValue=""
+                    disabled={assigningId === s.id}
+                    onChange={(e) => onAssign(s.id, e.target.value)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      background: "white",
+                      minWidth: 260,
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select facilitator…
+                    </option>
+                    {facilitators.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.email ?? f.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* SHARE */}
+                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>
+                    Share (keeps owner):
+                  </span>
+                  <select
+                    value={selectedTarget}
+                    disabled={sharingId === s.id}
+                    onChange={(e) =>
+                      setShareTargetByScenario((prev) => ({ ...prev, [s.id]: e.target.value }))
+                    }
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      background: "white",
+                      minWidth: 260,
+                    }}
+                  >
+                    <option value="" disabled>
+                      Select facilitator…
+                    </option>
+                    {facilitators.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.email ?? f.id}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button
+                    onClick={() => onShare(s.id)}
+                    disabled={sharingId === s.id}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      background: "white",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Share
+                  </button>
+
+                  <button
+                    onClick={() => onRevoke(s.id)}
+                    disabled={sharingId === s.id}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.15)",
+                      background: "rgba(0,0,0,0.03)",
+                      fontWeight: 800,
+                    }}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
