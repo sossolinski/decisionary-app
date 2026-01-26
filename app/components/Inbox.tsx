@@ -13,8 +13,7 @@ type Props = {
   selectedId: string | null;
   onSelect: (item: SessionInject) => void;
 
-  // filters
-  channel?: string | null; // (for inbox only, pulse uses PulseFeed)
+  channel?: string | null;
   severity?: string | null;
   search?: string;
 };
@@ -38,7 +37,12 @@ function rangePages(totalPages: number, current: number) {
   return [start, start + 1, start + 2, start + 3];
 }
 
-function makeSeenKey(sessionId: string, mode: string, channel: string | null, severity: string | null) {
+function makeSeenKey(
+  sessionId: string,
+  mode: string,
+  channel: string | null,
+  severity: string | null
+) {
   return `seen:${sessionId}:${mode}:${channel ?? "all"}:${severity ?? "all"}`;
 }
 
@@ -72,6 +76,7 @@ export default function Inbox({
 
   const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
+
   const [page, setPage] = useState(1);
   const pageRef = useRef(1);
 
@@ -82,15 +87,14 @@ export default function Inbox({
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  // NEW flash (when realtime brings new ids)
-  const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
+  const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
   const prevIdsRef = useRef<Set<string>>(new Set());
 
-  // UNREAD tracking
   const seenKey = useMemo(
     () => makeSeenKey(sessionId, mode, channel, severity),
     [sessionId, mode, channel, severity]
   );
+
   const [seen, setSeen] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -101,16 +105,12 @@ export default function Inbox({
   const pages = rangePages(totalPages, page);
 
   function buildQueryOpts(p: number) {
-    // channel: if explicitly provided, it overrides mode logic
-    if (channel) {
-      return { page: p, pageSize, channel, severity };
-    }
-    // default:
-    // - inbox = everything except pulse
-    // - pulse = only pulse
+    if (channel) return { page: p, pageSize, channel, severity };
+
     if (mode === "pulse") {
       return { page: p, pageSize, channel: "pulse" as const, severity };
     }
+
     return { page: p, pageSize, channelNot: "pulse" as const, severity };
   }
 
@@ -120,7 +120,7 @@ export default function Inbox({
       setLoading(true);
 
       const opts = buildQueryOpts(p);
-      const res = await getSessionInbox(sessionId, opts);
+      const res = await getSessionInbox(sessionId, opts as any);
 
       const next = res.items ?? [];
       setItems(next);
@@ -128,13 +128,14 @@ export default function Inbox({
       setPage(res.page ?? p);
       pageRef.current = res.page ?? p;
 
-      // detect NEW ids since last load
       const prev = prevIdsRef.current;
       const nextIds = new Set(next.map((x) => x.id));
       const added: string[] = [];
+
       nextIds.forEach((id) => {
         if (!prev.has(id)) added.push(id);
       });
+
       prevIdsRef.current = nextIds;
 
       if (added.length) {
@@ -143,7 +144,7 @@ export default function Inbox({
           added.forEach((id) => merged.add(id));
           return merged;
         });
-        // remove flash after 3s
+
         window.setTimeout(() => {
           setFlashIds((old) => {
             const copy = new Set(old);
@@ -159,16 +160,16 @@ export default function Inbox({
     }
   }
 
-  // Reset page on mode/channel/severity/session changes, and subscribe realtime
   useEffect(() => {
     if (!sessionId) return;
+
     setPage(1);
     pageRef.current = 1;
     prevIdsRef.current = new Set();
+
     load(1);
 
     const unsub = subscribeInbox(sessionId, () => {
-      // refresh current page (no jump)
       load(pageRef.current);
     });
 
@@ -176,7 +177,6 @@ export default function Inbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, mode, channel, severity]);
 
-  // Load when page changes
   useEffect(() => {
     if (!sessionId) return;
     load(page);
@@ -209,29 +209,24 @@ export default function Inbox({
   return (
     <>
       {err && (
-        <div style={{ padding: 10, borderRadius: 12, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", marginBottom: 10 }}>
+        <div style={{ padding: 10, borderRadius: 12, background: "#fee2e2", marginBottom: 10 }}>
           {err}
         </div>
       )}
 
-      {loading && <div style={{ padding: 8 }}>Loading…</div>}
+      {loading && <div style={{ padding: 10 }}>Loading…</div>}
 
       {!loading &&
         visible.map((item) => {
           const active = selectedId === item.id;
-
           const title = item.injects?.title?.trim() || "Message";
           const preview = item.injects?.body ? clampText(item.injects.body, 150) : "";
           const metaLeft =
-            [item.injects?.sender_name, item.injects?.sender_org]
-              .filter(Boolean)
-              .join(" · ") || "Unknown source";
-
+            [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
+            "Unknown source";
           const channelTag = item.injects?.channel ? String(item.injects.channel).toUpperCase() : null;
           const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
-
           const time = fmtTime(item.delivered_at);
-
           const unread = !seen.has(item.id);
           const flash = flashIds.has(item.id);
 
@@ -255,127 +250,89 @@ export default function Inbox({
                 boxShadow: flash ? "0 0 0 3px rgba(34,197,94,0.18)" : "none",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>
-                  {title}
-                  {unread && (
-                    <span
-                      style={{
-                        marginLeft: 8,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(0,0,0,0.14)",
-                        background: "rgba(0,0,0,0.04)",
-                      }}
-                    >
-                      UNREAD
-                    </span>
-                  )}
-                  {flash && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(34,197,94,0.35)",
-                        background: "rgba(34,197,94,0.10)",
-                      }}
-                    >
-                      NEW
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {channelTag && (
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
-                      {channelTag}
-                    </span>
-                  )}
-                  {sevTag && (
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
-                      {sevTag}
-                    </span>
-                  )}
-                </div>
+              <div style={{ fontWeight: 900, marginBottom: 4 }}>
+                {title}{" "}
+                {unread && (
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 900 }}>UNREAD</span>
+                )}
+                {flash && (
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 900 }}>NEW</span>
+                )}
               </div>
 
-              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,0.74)" }}>
-                {preview ? preview : <span style={{ color: "rgba(0,0,0,0.45)" }}>(no content)</span>}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+                {channelTag && <span style={{ fontSize: 11, fontWeight: 800 }}>{channelTag}</span>}
+                {sevTag && <span style={{ fontSize: 11, fontWeight: 800 }}>{sevTag}</span>}
               </div>
 
-              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "rgba(0,0,0,0.55)", fontWeight: 700 }}>
-                <span>{metaLeft}</span>
-                <span>{time}</span>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                {preview ? preview : "(no content)"}
+              </div>
+
+              <div style={{ fontSize: 11, opacity: 0.7 }}>
+                {metaLeft} · {time}
               </div>
             </button>
           );
         })}
 
       {!loading && visible.length === 0 && (
-        <div style={{ padding: 10, color: "rgba(0,0,0,0.6)" }}>No messages matching filters.</div>
+        <div style={{ padding: 10, opacity: 0.7 }}>No messages matching filters.</div>
       )}
 
-      {/* Pagination */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
-        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", fontWeight: 700 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800 }}>
           Page {page} / {totalPages}
         </div>
 
-        <div style={{ display: "flex", gap: 6 }}>
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "white",
+            cursor: page <= 1 ? "not-allowed" : "pointer",
+            opacity: page <= 1 ? 0.5 : 1,
+            fontWeight: 700,
+          }}
+        >
+          {"<<"}
+        </button>
+
+        {pages.map((p) => (
           <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
+            key={p}
+            onClick={() => setPage(p)}
             style={{
               padding: "6px 10px",
               borderRadius: 10,
               border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: page <= 1 ? "not-allowed" : "pointer",
-              opacity: page <= 1 ? 0.5 : 1,
-              fontWeight: 700,
+              background: p === page ? "rgba(0,0,0,0.06)" : "white",
+              fontWeight: p === page ? 900 : 700,
+              cursor: "pointer",
             }}
           >
-            {"<<"}
+            {p}
           </button>
+        ))}
 
-          {pages.map((p) => (
-            <button
-              key={p}
-              onClick={() => setPage(p)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.12)",
-                background: p === page ? "rgba(0,0,0,0.06)" : "white",
-                fontWeight: p === page ? 900 : 700,
-                cursor: "pointer",
-              }}
-            >
-              {p}
-            </button>
-          ))}
-
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page >= totalPages}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: page >= totalPages ? "not-allowed" : "pointer",
-              opacity: page >= totalPages ? 0.5 : 1,
-              fontWeight: 700,
-            }}
-          >
-            {">>"}
-          </button>
-        </div>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page >= totalPages}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "white",
+            cursor: page >= totalPages ? "not-allowed" : "pointer",
+            opacity: page >= totalPages ? 0.5 : 1,
+            fontWeight: 700,
+          }}
+        >
+          {">>"}
+        </button>
       </div>
     </>
   );

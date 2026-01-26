@@ -1,20 +1,26 @@
 // lib/sessions.ts
 import { supabase } from "./supabaseClient";
 
-/* ========================= TYPES ========================= */
+/* =========================
+   TYPES
+========================= */
 
 export type SessionSituation = {
   session_id: string;
+
   event_date: string | null;
   event_time: string | null;
   timezone: string | null;
   location: string | null;
+
   situation_type: string | null;
   short_description: string | null;
+
   injured: number;
   fatalities: number;
   uninjured: number;
   unknown: number;
+
   updated_at: string;
   updated_by: string | null;
 };
@@ -56,7 +62,9 @@ export type PagedResult<T> = {
   page: number;
 };
 
-/* ========================= SITUATION ========================= */
+/* =========================
+   SITUATION
+========================= */
 
 export async function getSessionSituation(sessionId: string) {
   const { data, error } = await supabase
@@ -69,9 +77,13 @@ export async function getSessionSituation(sessionId: string) {
   return data as SessionSituation | null;
 }
 
-/* ========================= SESSION META ========================= */
+/* =========================
+   SESSION META
+========================= */
 
-export async function getSessionScenarioId(sessionId: string): Promise<string | null> {
+export async function getSessionScenarioId(
+  sessionId: string
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("sessions")
     .select("scenario_id")
@@ -82,7 +94,9 @@ export async function getSessionScenarioId(sessionId: string): Promise<string | 
   return ((data as any)?.scenario_id ?? null) as string | null;
 }
 
-/* ========================= CREATE SESSION (seed from scenario) ========================= */
+/* =========================
+   CREATE SESSION (seed from scenario)
+========================= */
 
 export async function createSessionFromScenario(params: {
   scenarioId: string;
@@ -97,11 +111,14 @@ export async function createSessionFromScenario(params: {
   return data as string; // session_id
 }
 
-/* ========================= INBOX (session_injects) – paginated ========================= */
+/* =========================
+   INBOX (session_injects) – paginated
+========================= */
 
 type InboxOpts = {
   page?: number;
   pageSize?: number;
+
   channel?: string | null; // eq filter (injects.channel = ...)
   channelNot?: string | null; // neq filter (injects.channel <> ...)
   severity?: string | null; // eq filter (injects.severity = ...)
@@ -109,15 +126,26 @@ type InboxOpts = {
 
 function selectSessionInjects() {
   // alias injects:inject_id must match FK on session_injects.inject_id -> injects.id
-  return supabase.from("session_injects").select(
-    `
-      id, session_id, delivered_at, inject_id,
-      injects:inject_id (
-        id, title, body, channel, severity, sender_name, sender_org
-      )
-    `,
-    { count: "exact" }
-  );
+  return supabase
+    .from("session_injects")
+    .select(
+      `
+        id,
+        session_id,
+        delivered_at,
+        inject_id,
+        injects:inject_id (
+          id,
+          title,
+          body,
+          channel,
+          severity,
+          sender_name,
+          sender_org
+        )
+      `,
+      { count: "exact" }
+    );
 }
 
 export async function getSessionInbox(
@@ -140,6 +168,7 @@ export async function getSessionInbox(
   if (opts.severity) q = q.eq("injects.severity", opts.severity);
 
   const { data, error, count } = await q.range(from, to);
+
   if (error) throw error;
 
   return {
@@ -169,7 +198,9 @@ export function subscribeInbox(sessionId: string, cb: () => void) {
   };
 }
 
-/* ========================= PULSE ========================= */
+/* =========================
+   PULSE
+========================= */
 
 export async function getSessionPulse(
   sessionId: string,
@@ -188,7 +219,9 @@ export function subscribePulse(sessionId: string, cb: () => void) {
   return subscribeInbox(sessionId, cb);
 }
 
-/* ========================= ACTIONS LOG ========================= */
+/* =========================
+   ACTIONS LOG
+========================= */
 
 export async function getSessionActions(sessionId: string, limit = 50) {
   const { data, error } = await supabase
@@ -227,7 +260,9 @@ export async function addSessionAction(params: {
   return data as SessionAction;
 }
 
-/* ========================= SEND INJECT TO SESSION (MVP) ========================= */
+/* =========================
+   SEND INJECT TO SESSION (MVP)
+========================= */
 
 export async function sendInjectToSession(
   sessionId: string,
@@ -266,12 +301,17 @@ export async function sendInjectToSession(
   });
 
   if (linkErr) throw linkErr;
+
   return (inj as any).id as string;
 }
 
-/* ========================= FACILITATOR: deliverDueInjects (MVP) ========================= */
+/* =========================
+   FACILITATOR: deliverDueInjects (MVP)
+========================= */
 
-export async function deliverDueInjects(sessionId: string): Promise<{ delivered: number }> {
+export async function deliverDueInjects(
+  sessionId: string
+): Promise<{ delivered: number }> {
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
     .select("id, scenario_id")
@@ -322,7 +362,9 @@ export async function deliverDueInjects(sessionId: string): Promise<{ delivered:
   return { delivered: toDeliver.length };
 }
 
-/* ========================= CASUALTIES UPDATE ========================= */
+/* =========================
+   CASUALTIES UPDATE
+========================= */
 
 export async function updateCasualties(params: {
   sessionId: string;
