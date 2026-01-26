@@ -48,7 +48,8 @@ export async function listScenarios(): Promise<Scenario[]> {
 
   const { data, error } = await supabase
     .from("scenarios")
-    .select(`
+    .select(
+      `
       id,
       title,
       description,
@@ -57,7 +58,8 @@ export async function listScenarios(): Promise<Scenario[]> {
       created_by,
       updated_at,
       updated_by
-    `)
+    `
+    )
     .eq("owner_id", uid)
     .order("created_at", { ascending: false });
 
@@ -68,13 +70,19 @@ export async function listScenarios(): Promise<Scenario[]> {
 export async function createScenario(title: string): Promise<Scenario> {
   const uid = await requireUserId();
 
+  const t = (title ?? "").trim();
+  if (!t) {
+    throw new Error("Scenario title is required.");
+  }
+
   const { data, error } = await supabase
     .from("scenarios")
     .insert({
-      title,
+      title: t,
       owner_id: uid,
     })
-    .select(`
+    .select(
+      `
       id,
       title,
       description,
@@ -83,7 +91,8 @@ export async function createScenario(title: string): Promise<Scenario> {
       created_by,
       updated_at,
       updated_by
-    `)
+    `
+    )
     .single();
 
   if (error) throw error;
@@ -145,13 +154,11 @@ export async function shareScenario(
   sharedWithUserId: string,
   permission: "read" | "edit" = "read"
 ) {
-  const { error } = await supabase
-    .from("scenario_shares")
-    .upsert({
-      scenario_id: scenarioId,
-      shared_with: sharedWithUserId,
-      permission,
-    });
+  const { error } = await supabase.from("scenario_shares").upsert({
+    scenario_id: scenarioId,
+    shared_with: sharedWithUserId,
+    permission,
+  });
 
   if (error) throw error;
 }
@@ -167,4 +174,44 @@ export async function revokeScenarioShare(
     .eq("shared_with", sharedWithUserId);
 
   if (error) throw error;
+}
+
+export async function duplicateScenario(sourceScenarioId: string): Promise<Scenario> {
+  const uid = await requireUserId();
+
+  // load source (must be visible via RLS)
+  const { data: src, error: srcErr } = await supabase
+    .from("scenarios")
+    .select("id, title, description")
+    .eq("id", sourceScenarioId)
+    .single();
+
+  if (srcErr) throw srcErr;
+
+  const baseTitle = (src?.title ?? "Scenario").trim();
+  const newTitle = `${baseTitle} (copy)`;
+
+  const { data: created, error: insErr } = await supabase
+    .from("scenarios")
+    .insert({
+      title: newTitle,
+      description: src?.description ?? null,
+      owner_id: uid,
+    })
+    .select(
+      `
+      id,
+      title,
+      description,
+      owner_id,
+      created_at,
+      created_by,
+      updated_at,
+      updated_by
+    `
+    )
+    .single();
+
+  if (insErr) throw insErr;
+  return created as Scenario;
 }

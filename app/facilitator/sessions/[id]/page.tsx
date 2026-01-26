@@ -12,8 +12,8 @@ import {
   shareScenario,
   revokeScenarioShare,
   FacilitatorProfile,
-} from "../../../lib/facilitator";
-import { getMyRole } from "../../../lib/users";
+} from "@/lib/facilitator";
+import { getMyRole } from "@/lib/users";
 
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
@@ -29,7 +29,9 @@ export default function FacilitatorScenariosPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const [shareTargetByScenario, setShareTargetByScenario] = useState<Record<string, string>>({});
+  const [shareTargetByScenario, setShareTargetByScenario] = useState<
+    Record<string, string>
+  >({});
 
   /* ================= AUTH GUARD ================= */
   useEffect(() => {
@@ -53,10 +55,7 @@ export default function FacilitatorScenariosPage() {
   async function load() {
     setError(null);
     try {
-      const [scs, facs] = await Promise.all([
-        listScenarios(),
-        listFacilitators(),
-      ]);
+      const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
       setScenarios(scs);
       setFacilitators(facs ?? []);
     } catch (e: any) {

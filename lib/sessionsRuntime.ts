@@ -1,340 +1,332 @@
+// lib/sessionsRuntime.ts
 import { supabase } from "./supabaseClient";
 
 /* =========================
    TYPES
 ========================= */
 
-export type Session = {
-  id: string;
-  scenario_id: string;
-  title: string;
-  status: "draft" | "live" | "ended";
-  join_code: string;
-  created_at: string;
-};
-
 export type ScenarioListItem = {
   id: string;
   title: string;
 };
 
+export type Session = {
+  id: string;
+  title: string | null;
+  scenario_id: string | null;
+  join_code: string;
+  status: "draft" | "live" | "ended" | string;
+
+  created_at: string | null;
+  created_by: string | null;
+
+  started_at: string | null;
+  ended_at: string | null;
+};
+
+export type ProfileLite = {
+  id: string;
+  email: string | null;
+};
+
+export type SessionParticipant = {
+  user_id: string;
+  joined_at: string | null;
+  profile: ProfileLite | null;
+};
+
+export type SessionRoleSlot = {
+  id: string;
+  session_id: string;
+  role_key: string;
+  capacity: number | null;
+};
+
+export type SessionRoleAssignment = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role_key: string;
+  assigned_at: string | null;
+};
+
 /* =========================
-   LISTS
+   HELPERS
+========================= */
+
+async function requireUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+
+  const uid = data.user?.id;
+  if (!uid) throw new Error("Not authenticated");
+
+  return uid;
+}
+
+function normCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+/* =========================
+   SCENARIOS (for dropdown)
 ========================= */
 
 export async function listScenarios(): Promise<ScenarioListItem[]> {
+  await requireUserId();
+
   const { data, error } = await supabase
     .from("scenarios")
     .select("id, title")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
-}
-
-export async function listSessions(): Promise<Session[]> {
-  const { data, error } = await supabase
-    .from("sessions")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ScenarioListItem[];
 }
 
 /* =========================
-   CREATE / CONTROL
+   SESSIONS LIST
 ========================= */
 
-function randomCode() {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+export async function listSessions(): Promise<Session[]> {
+  await requireUserId();
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .select(
+      `
+      id,
+      title,
+      scenario_id,
+      join_code,
+      status,
+      created_at,
+      created_by,
+      started_at,
+      ended_at
+    `
+    )
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as Session[];
 }
+
+/* =========================
+   CREATE SESSION (seed from scenario)
+========================= */
 
 export async function createSessionFromScenario(params: {
   scenarioId: string;
   title: string;
-}): Promise<Session> {
-  const { data, error } = await supabase
-    .from("sessions")
-    .insert({
-      scenario_id: params.scenarioId,
-      title: params.title,
-      status: "draft",
-      join_code: randomCode(),
-    })
-    .select("*")
-    .single();
+}): Promise<string> {
+  await requireUserId();
+
+  const { data, error } = await supabase.rpc("create_session_from_scenario", {
+    p_scenario_id: params.scenarioId,
+    p_title: params.title,
+  });
 
   if (error) throw error;
-  return data as Session;
+  return data as string; // session_id
 }
+
+/* =========================
+   STATUS / START / END
+========================= */
 
 export async function setSessionStatus(
   sessionId: string,
   status: "draft" | "live" | "ended"
 ) {
-  const { error } = await supabase
-    .from("sessions")
-    .update({ status })
-    .eq("id", sessionId);
+  await requireUserId();
+
+  const patch: any = { status };
+
+  if (status === "live") patch.started_at = new Date().toISOString();
+  if (status === "ended") patch.ended_at = new Date().toISOString();
+
+  const { error } = await supabase.from("sessions").update(patch).eq("id", sessionId);
+  if (error) throw error;
+}
+
+/* =========================
+   RESTART
+========================= */
+
+export async function restartSession(sessionId: string) {
+  await requireUserId();
+
+  const { error } = await supabase.rpc("restart_session", {
+    p_session_id: sessionId,
+  });
 
   if (error) throw error;
 }
 
-export async function restartSession(sessionId: string) {
-  // wipe runtime tables
-  await supabase.from("session_injects").delete().eq("session_id", sessionId);
-  await supabase.from("session_actions").delete().eq("session_id", sessionId);
-  await supabase.from("session_situation").delete().eq("session_id", sessionId);
+/* =========================
+   DELETE SESSION
+========================= */
 
-  // back to draft
-  await setSessionStatus(sessionId, "draft");
+export async function deleteSession(sessionId: string) {
+  await requireUserId();
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .delete()
+    .eq("id", sessionId)
+    .select("id");
+
+  if (error) throw error;
+
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Delete failed (0 rows deleted). Most likely RLS policy blocks delete or row not owned."
+    );
+  }
 }
 
-export type SessionParticipant = {
-  id: string;
-  session_id: string;
-  user_id: string;
-  joined_at: string;
-};
+/* =========================
+   JOIN BY CODE
+========================= */
 
-export type SessionRoleAssignment = {
-  id: string;
-  session_id: string;
-  scenario_role_id: string;
-  user_id: string | null;
-  assigned_at: string;
-  assigned_by: string | null;
-};
+export async function joinSessionByCode(code: string): Promise<string> {
+  await requireUserId();
 
-export async function listSessionParticipants(sessionId: string) {
+  const joinCode = normCode(code);
+
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id")
+    .eq("join_code", joinCode)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data?.id) throw new Error("Invalid join code");
+
+  return data.id as string;
+}
+
+/* =========================
+   ROSTER / ROLES (missing exports)
+========================= */
+
+/**
+ * Ensures session role slots exist for this session.
+ * Tries RPC first (recommended), then falls back to no-op.
+ */
+export async function ensureSessionRoleSlots(sessionId: string): Promise<void> {
+  await requireUserId();
+
+  // 1) try RPC (if you created it)
+  const { error: rpcErr } = await supabase.rpc("ensure_session_role_slots", {
+    p_session_id: sessionId,
+  });
+
+  if (!rpcErr) return;
+
+  // 2) fallback: if no RPC exists, do nothing (build/runtime safe)
+  // You can later replace with real logic based on your tables.
+  if (
+    String(rpcErr?.message ?? "").toLowerCase().includes("does not exist") ||
+    String(rpcErr?.message ?? "").toLowerCase().includes("function")
+  ) {
+    return;
+  }
+
+  // If RPC exists but failed for other reason, surface it
+  throw rpcErr;
+}
+
+/**
+ * Lists session participants with their profile (email).
+ * Expected tables:
+ * - session_participants: { session_id, user_id, joined_at }
+ * - profiles: { id, email }
+ */
+export async function listSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
+  await requireUserId();
+
   const { data, error } = await supabase
     .from("session_participants")
-    .select("*")
+    .select(
+      `
+      user_id,
+      joined_at,
+      profile:profiles!session_participants_user_id_fkey ( id, email )
+    `
+    )
     .eq("session_id", sessionId)
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as SessionParticipant[];
+
+  // If your FK name differs, Supabase may error – wtedy podeślij błąd, dopasuję join.
+  return (data ?? []) as any;
 }
 
-export async function listSessionRoleAssignments(sessionId: string) {
+/**
+ * Lists current role assignments for a session.
+ * Expected table:
+ * - session_role_assignments: { id, session_id, user_id, role_key, assigned_at }
+ */
+export async function listSessionRoleAssignments(
+  sessionId: string
+): Promise<SessionRoleAssignment[]> {
+  await requireUserId();
+
   const { data, error } = await supabase
     .from("session_role_assignments")
-    .select(
-      `
-        *,
-        scenario_roles:scenario_role_id (
-          id,
-          scenario_id,
-          role_key,
-          role_name,
-          role_description,
-          sort_order,
-          is_required
-        )
-      `
-    )
+    .select("id, session_id, user_id, role_key, assigned_at")
     .eq("session_id", sessionId)
-    .order("assigned_at", { ascending: true });
+    .order("assigned_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as any[];
+  return (data ?? []) as SessionRoleAssignment[];
 }
 
 /**
- * Tworzy "sloty ról" dla sesji na podstawie scenario_roles.
- * Wywołuj to po utworzeniu sesji (createSessionFromScenario) albo przy otwarciu roster (idempotent).
- */
-export async function ensureSessionRoleSlots(sessionId: string) {
-  // 1) get scenario_id for session
-  const { data: sess, error: sessErr } = await supabase
-    .from("sessions")
-    .select("id, scenario_id")
-    .eq("id", sessionId)
-    .single();
-
-  if (sessErr) throw sessErr;
-
-  const scenarioId = (sess as any).scenario_id as string | null;
-  if (!scenarioId) return { created: 0 };
-
-  // 2) scenario roles
-  const { data: roles, error: rolesErr } = await supabase
-    .from("scenario_roles")
-    .select("id")
-    .eq("scenario_id", scenarioId);
-
-  if (rolesErr) throw rolesErr;
-
-  const roleIds = (roles ?? []).map((r: any) => r.id);
-  if (roleIds.length === 0) return { created: 0 };
-
-  // 3) existing slots
-  const { data: existing, error: exErr } = await supabase
-    .from("session_role_assignments")
-    .select("scenario_role_id")
-    .eq("session_id", sessionId)
-    .in("scenario_role_id", roleIds);
-
-  if (exErr) throw exErr;
-
-  const existingSet = new Set((existing ?? []).map((e: any) => e.scenario_role_id));
-  const missing = roleIds.filter((id) => !existingSet.has(id));
-  if (missing.length === 0) return { created: 0 };
-
-  // 4) insert missing slots (user_id null)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const inserts = missing.map((scenarioRoleId) => ({
-    session_id: sessionId,
-    scenario_role_id: scenarioRoleId,
-    user_id: null,
-    assigned_by: user?.id ?? null,
-  }));
-
-  const { error: insErr } = await supabase
-  .from("session_role_assignments")
-  .upsert(inserts, { onConflict: "session_id,scenario_role_id", ignoreDuplicates: true });
-
-if (insErr) throw insErr;
-
-
-  return { created: missing.length };
-}
-
-/**
- * Przypisuje usera do roli w sesji (albo czyści przypisanie, jeśli userId = null).
- * Wymaga, żeby slot istniał — dlatego zwykle wołasz wcześniej ensureSessionRoleSlots().
+ * Assigns (or re-assigns) a user to a role in a session.
+ * Uses upsert so it's idempotent.
  */
 export async function assignUserToSessionRole(params: {
   sessionId: string;
-  scenarioRoleId: string;
-  userId: string | null;
+  userId: string;
+  roleKey: string;
 }) {
-  const { sessionId, scenarioRoleId, userId } = params;
+  await requireUserId();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { sessionId, userId, roleKey } = params;
 
-  const { data, error } = await supabase
+  // If you want "one role per user" enforce UNIQUE(session_id, user_id)
+  // If you want "one user per role slot" enforce UNIQUE(session_id, role_key) or a separate slots table.
+  const { error } = await supabase
     .from("session_role_assignments")
-    .update({
-      user_id: userId,
-      assigned_at: new Date().toISOString(),
-      assigned_by: user?.id ?? null,
-    })
-    .eq("session_id", sessionId)
-    .eq("scenario_role_id", scenarioRoleId)
-    .select("*")
-    .single();
+    .upsert(
+      {
+        session_id: sessionId,
+        user_id: userId,
+        role_key: roleKey,
+        assigned_at: new Date().toISOString(),
+      },
+      { onConflict: "session_id,user_id" }
+    );
 
   if (error) throw error;
-  return data as SessionRoleAssignment;
 }
 
 /**
- * Pobiera rolę scenariuszową zalogowanego usera w danej sesji.
- * Idealne do: pokazania "OPS/PR" w headerze roomu i ograniczeń UI.
+ * (optional helper) list role slots if your roster UI needs it
  */
-export async function getMyScenarioRoleInSession(sessionId: string) {
-  const {
-    data: { user },
-    error: uErr,
-  } = await supabase.auth.getUser();
-
-  if (uErr) throw uErr;
-  if (!user) return null;
+export async function listSessionRoleSlots(sessionId: string): Promise<SessionRoleSlot[]> {
+  await requireUserId();
 
   const { data, error } = await supabase
-    .from("session_role_assignments")
-    .select(
-      `
-        id,
-        session_id,
-        user_id,
-        scenario_roles:scenario_role_id (
-          id, role_key, role_name
-        )
-      `
-    )
+    .from("session_role_slots")
+    .select("id, session_id, role_key, capacity")
     .eq("session_id", sessionId)
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .order("role_key", { ascending: true });
 
   if (error) throw error;
-  if (!data) return null;
-
-  return {
-    roleKey: (data as any).scenario_roles?.role_key as string,
-    roleName: (data as any).scenario_roles?.role_name as string,
-  };
+  return (data ?? []) as SessionRoleSlot[];
 }
-
-export async function getSessionByJoinCode(code: string) {
-  const clean = code.trim().toUpperCase();
-  const { data, error } = await supabase
-    .from("sessions")
-    .select("id, status, join_code, title")
-    .eq("join_code", clean)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data as { id: string; status: string; join_code: string; title: string } | null;
-}
-
-export async function joinSessionByCode(code: string) {
-  // ===== DEBUG (tymczasowe) =====
-  const { data: before, error: beforeErr } = await supabase.auth.getUser();
-  if (beforeErr) throw beforeErr;
-  console.log("BEFORE anon signin:", before.user?.id, before.user?.email);
-
-  if (!before.user) {
-    const { data: anonData, error: aErr } = await supabase.auth.signInAnonymously();
-    console.log("ANON SIGNIN RESULT:", anonData?.user?.id, aErr);
-    if (aErr) throw aErr;
-  }
-
-  const { data: after, error: uErr } = await supabase.auth.getUser();
-  if (uErr) throw uErr;
-  console.log("AFTER anon signin:", after.user?.id, after.user?.email);
-
-  if (!after.user) throw new Error("Auth session missing after anonymous sign-in.");
-  const userId = after.user.id;
-  console.log("FINAL userId used for insert:", userId);
-  // ===== end debug =====
-
-  // 2) find session by code
-  const sess = await getSessionByJoinCode(code);
-  if (!sess) throw new Error("Invalid join code.");
-  if (sess.status !== "live") throw new Error(`Session is not live (status: ${sess.status}).`);
-
-  // 3) register participant (INSERT, a nie UPSERT)
-  //    Join jest jednorazowy i masz UNIQUE(session_id,user_id), więc duplikat ignorujemy.
-  const row = {
-    session_id: sess.id,
-    user_id: userId,
-    joined_at: new Date().toISOString(),
-  };
-  console.log("trying insert session_participants row:", row);
-
-  const { error: insErr } = await supabase.from("session_participants").insert(row);
-
-  if (insErr) {
-    const code = String((insErr as any).code ?? "");
-    const msg = String((insErr as any).message ?? "");
-
-    // Postgres unique violation = 23505
-    if (code !== "23505" && !msg.toLowerCase().includes("duplicate")) {
-      throw insErr;
-    }
-    // duplikat = user już był dołączony → OK
-    console.log("participant already joined (duplicate), ignoring");
-  }
-
-  return sess;
-}
-

@@ -1,85 +1,51 @@
+// lib/useRequireAuth.ts
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { supabase } from "./supabaseClient";
 
-export function useRequireAuth(options?: {
-  redirectTo?: string; // default: "/login"
-}) {
+export function useRequireAuth(opts?: { redirectTo?: string }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const redirectTo = options?.redirectTo ?? "/login";
-
+  const redirectTo = opts?.redirectTo ?? "/login";
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
 
-    async function run() {
-      setLoading(true);
+    async function boot() {
+      const { data } = await supabase.auth.getUser();
+      if (!alive) return;
+      const u = data.user;
 
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (error) throw error;
-
-        const u = data.user;
-
-        if (!u) {
-          // Nie redirectuj, jeśli już jesteś na /login (bez pętli)
-          if (pathname !== redirectTo) router.replace(redirectTo);
-          if (mounted) {
-            setUserId(null);
-            setUserEmail(null);
-            setLoading(false);
-          }
-          return;
-        }
-
-        if (mounted) {
-          setUserId(u.id);
-          setUserEmail(u.email ?? null);
-          setLoading(false);
-        }
-      } catch {
-        // Przy błędzie zachowaj się jak "brak sesji"
-        if (pathname !== redirectTo) router.replace(redirectTo);
-        if (mounted) {
-          setUserId(null);
-          setUserEmail(null);
-          setLoading(false);
-        }
+      if (!u) {
+        setLoading(false);
+        router.replace(redirectTo);
+        return;
       }
+
+      setUserId(u.id);
+      setEmail(u.email ?? null);
+      setLoading(false);
     }
 
-    run();
+    boot();
 
-    // Bonus: reaguj na logout/login w innych tabach
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) {
-        if (pathname !== redirectTo) router.replace(redirectTo);
-        if (mounted) {
-          setUserId(null);
-          setUserEmail(null);
-          setLoading(false);
-        }
-      } else {
-        if (mounted) {
-          setUserId(session.user.id);
-          setUserEmail(session.user.email ?? null);
-          setLoading(false);
-        }
-      }
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      const u = session?.user ?? null;
+      setUserId(u?.id ?? null);
+      setEmail(u?.email ?? null);
+      setLoading(false);
+      if (!u) router.replace(redirectTo);
     });
 
     return () => {
-      mounted = false;
+      alive = false;
       sub.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, pathname, redirectTo]);
+  }, [router, redirectTo]);
 
-  return { loading, userId, userEmail };
+  return { loading, userId, email };
 }

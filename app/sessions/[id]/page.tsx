@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
+import { supabase } from "@/lib/supabaseClient";
+import type { Scenario } from "@/lib/scenarios";
+
 import {
   getSessionSituation,
+  updateCasualties,
   type SessionSituation,
   type SessionInject,
   getSessionActions,
@@ -13,7 +17,6 @@ import {
 } from "@/lib/sessions";
 
 import SituationCard from "@/app/components/SituationCard";
-import CasualtyEditor from "@/app/components/CasualtyEditor";
 import MessageDetail from "@/app/components/MessageDetail";
 import FacilitatorControls from "@/app/components/FacilitatorControls";
 import AddInjectForm from "@/app/components/AddInjectForm";
@@ -50,6 +53,7 @@ export default function SessionParticipantPage() {
   const isMobile = useMediaQuery("(max-width: 1100px)");
 
   const [situation, setSituation] = useState<SessionSituation | null>(null);
+  const [scenario, setScenario] = useState<Scenario | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<FeedTab>("inbox");
@@ -67,12 +71,36 @@ export default function SessionParticipantPage() {
   const [actionsError, setActionsError] = useState<string | null>(null);
   const [comment, setComment] = useState("");
 
-  // Collapsible casualties editor
-  const [casualtiesOpen, setCasualtiesOpen] = useState(false);
-
   // Notes (simple local notepad)
   const [notes, setNotes] = useState("");
   const [notesSaved, setNotesSaved] = useState<"idle" | "saved">("idle");
+
+  // Facilitator tools popover
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  // Role gating
+  const [isFacilitator, setIsFacilitator] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
+
+  // Session owner (fallback facilitator)
+  const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
+
+  // Top bar clock (live clock for now)
+  const [liveClock, setLiveClock] = useState<string>("");
+
+  useEffect(() => {
+    const tick = () =>
+      setLiveClock(
+        new Date().toLocaleTimeString(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      );
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     try {
@@ -96,6 +124,82 @@ export default function SessionParticipantPage() {
     return () => clearTimeout(t);
   }, [notes, sessionId]);
 
+  // Close tools popover on Escape / outside click
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setToolsOpen(false);
+    }
+    function onClick() {
+      if (toolsOpen) setToolsOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("click", onClick);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("click", onClick);
+    };
+  }, [toolsOpen]);
+
+  // Load role (with owner fallback)
+  useEffect(() => {
+    if (!validSessionId) return;
+
+    let alive = true;
+
+    (async () => {
+      try {
+        setRoleLoading(true);
+
+        const { data: u } = await supabase.auth.getUser();
+        const authUserId = u.user?.id;
+
+        if (!authUserId) {
+          if (alive) setIsFacilitator(false);
+          return;
+        }
+
+        // Fallback: session owner is facilitator
+        if (sessionOwnerId && sessionOwnerId === authUserId) {
+          if (alive) setIsFacilitator(true);
+          return;
+        }
+
+        // Pull all assignments for the session and match on common keys client-side.
+        const { data, error } = await supabase
+          .from("session_role_assignments")
+          .select("*")
+          .eq("session_id", sessionId);
+
+        if (error) throw error;
+
+        const rows = (data ?? []) as any[];
+
+        const match = rows.find((r) => {
+          const roleKey = r?.role_key ?? r?.role ?? r?.role_id ?? null;
+          const uid =
+            r?.user_id ??
+            r?.member_id ??
+            r?.profile_id ??
+            r?.participant_id ??
+            r?.owner_id ??
+            null;
+
+          return roleKey === "facilitator" && uid === authUserId;
+        });
+
+        if (alive) setIsFacilitator(Boolean(match));
+      } catch {
+        if (alive) setIsFacilitator(false);
+      } finally {
+        if (alive) setRoleLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, validSessionId, sessionOwnerId]);
+
   // Load situation (COP)
   useEffect(() => {
     if (!validSessionId) return;
@@ -105,13 +209,90 @@ export default function SessionParticipantPage() {
     getSessionSituation(sessionId)
       .then((s) => {
         if (!alive) return;
-        if (!s) {
-          setError("No session_situation row for this session.");
-          return;
-        }
         setSituation(s);
       })
       .catch((e) => alive && setError(e?.message ?? "Failed to load situation"));
+
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, validSessionId]);
+
+  // Load scenario fallback (sessions.scenario_id -> scenarios.*) + owner (safe)
+  useEffect(() => {
+    if (!validSessionId) return;
+    let alive = true;
+
+    (async () => {
+      try {
+        // 1) scenario_id (should exist)
+        const { data: sess1, error: sessErr1 } = await supabase
+          .from("sessions")
+          .select("scenario_id")
+          .eq("id", sessionId)
+          .single();
+
+        if (sessErr1) throw sessErr1;
+
+        const scenarioId =
+          (sess1 as any)?.scenario_id ??
+          (sess1 as any)?.scenario ??
+          (sess1 as any)?.scenarioId ??
+          null;
+
+        // 2) owner lookup (best-effort; missing column must NOT crash)
+        const ownerCandidates = [
+          "owner_id",
+          "created_by",
+          "created_by_id",
+          "owner",
+          "user_id",
+        ] as const;
+
+        let ownerId: string | null = null;
+
+        for (const col of ownerCandidates) {
+          const { data, error } = await supabase
+            .from("sessions")
+            .select(col)
+            .eq("id", sessionId)
+            .single();
+
+          if (!error) {
+            const v = (data as any)?.[col];
+            if (typeof v === "string" && v) ownerId = v;
+            break; // column exists (even if null)
+          }
+        }
+
+        if (alive) setSessionOwnerId(ownerId);
+
+        // 3) load scenario
+        if (!scenarioId) {
+          if (alive) setScenario(null);
+          return;
+        }
+
+        const { data: sc, error: scErr } = await supabase
+          .from("scenarios")
+          .select("*")
+          .eq("id", scenarioId)
+          .single();
+
+        if (scErr) throw scErr;
+
+        if (alive) setScenario(sc as Scenario);
+      } catch (e: any) {
+        if (alive) {
+          setScenario(null);
+          setError(
+            (prev) =>
+              prev ??
+              (e?.message ? `Scenario load: ${e.message}` : "Scenario load failed")
+          );
+        }
+      }
+    })();
 
     return () => {
       alive = false;
@@ -144,15 +325,13 @@ export default function SessionParticipantPage() {
       const saved = await addSessionAction({
         sessionId,
         sessionInjectId: selectedItem.id,
-        source: activeTab, // should be "inbox" for these buttons
+        source: activeTab,
         actionType,
         comment: comment.trim() ? comment.trim() : null,
       });
 
-      // prepend to log
       setActions((prev) => [saved, ...prev]);
 
-      // CONSEQUENCE (MVP): after ACT, generate a new official inject
       if (actionType === "act") {
         const title = `Update: action taken on "${selectedItem.injects?.title ?? "message"}"`;
         const body =
@@ -178,7 +357,6 @@ export default function SessionParticipantPage() {
     if (!selectedItem) return;
 
     try {
-      // log as an action (MVP mapping: confirm -> act, deny -> ignore)
       const saved = await addSessionAction({
         sessionId,
         sessionInjectId: selectedItem.id,
@@ -244,11 +422,8 @@ export default function SessionParticipantPage() {
     );
   }
 
-  if (!situation) return <>Loading…</>;
-
   const feed = (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Filters */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
         <input
           value={search}
@@ -325,7 +500,6 @@ export default function SessionParticipantPage() {
         </button>
       </div>
 
-      {/* List */}
       {activeTab === "inbox" ? (
         <Inbox
           sessionId={sessionId}
@@ -354,29 +528,198 @@ export default function SessionParticipantPage() {
     </div>
   );
 
-  const lastUpdatedAt = situation.updated_at
-    ? new Date(situation.updated_at).toLocaleString()
-    : "—";
-  const lastUpdatedBy = situation.updated_by ? String(situation.updated_by) : null;
+  const workspaceGrid = isMobile ? "1fr" : "340px minmax(520px, 1fr) 360px";
 
-  const workspaceGrid = isMobile
-    ? "1fr"
-    : "340px minmax(520px, 1fr) 360px";
+  const sessionTitle = scenario?.title ? scenario.title : "Session";
+  const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
 
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Facilitator tools (later hide by role) */}
+      {/* TOP BAR + CLOCK */}
       <div
         style={{
-          background: "white",
+          position: "sticky",
+          top: 10,
+          zIndex: 50,
+          background: "rgba(255,255,255,0.92)",
           border: "1px solid rgba(0,0,0,0.10)",
           borderRadius: 16,
           padding: 12,
+          backdropFilter: "blur(8px)",
+          boxShadow: "0 12px 28px rgba(11,18,32,0.10)",
         }}
       >
-        <FacilitatorControls sessionId={sessionId} />
-        <div style={{ height: 10 }} />
-        <AddInjectForm sessionId={sessionId} />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.15 }}>
+              {sessionTitle}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                fontWeight: 800,
+                color: "rgba(0,0,0,0.55)",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+              title={sessionMeta}
+            >
+              {sessionMeta}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              justifyContent: isMobile ? "flex-start" : "flex-end",
+              alignItems: "center",
+              flexWrap: "wrap",
+            }}
+          >
+            {/* Clock */}
+            <div
+              style={{
+                padding: "9px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "white",
+                fontSize: 12,
+                fontWeight: 900,
+              }}
+              title="Live clock (local)"
+            >
+              ⏱ {liveClock}
+            </div>
+
+            {/* Facilitator tools (role gated) */}
+            {roleLoading ? (
+              <div
+                style={{
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,0.14)",
+                  background: "white",
+                  fontSize: 12,
+                  fontWeight: 900,
+                  opacity: 0.7,
+                }}
+              >
+                Loading role…
+              </div>
+            ) : isFacilitator ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setToolsOpen((v) => !v);
+                }}
+                style={{
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,0.14)",
+                  background: "white",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                Facilitator tools
+              </button>
+            ) : null}
+
+            {isMobile && (
+              <button
+                onClick={() => setFeedOpen(true)}
+                style={{
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,0.14)",
+                  background: "white",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                Open feed
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Tools popover */}
+        {isFacilitator && toolsOpen ? (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              marginTop: 10,
+              borderTop: "1px solid rgba(0,0,0,0.08)",
+              paddingTop: 10,
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                background: "white",
+                border: "1px solid rgba(0,0,0,0.10)",
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: 13, marginBottom: 8 }}>
+                In-session controls
+              </div>
+              <FacilitatorControls sessionId={sessionId} />
+            </div>
+
+            <div
+              style={{
+                background: "white",
+                border: "1px solid rgba(0,0,0,0.10)",
+                borderRadius: 14,
+                padding: 12,
+              }}
+            >
+              <div style={{ fontWeight: 950, fontSize: 13, marginBottom: 8 }}>
+                New inject
+              </div>
+              <AddInjectForm sessionId={sessionId} />
+            </div>
+
+            <div
+              style={{
+                gridColumn: isMobile ? "auto" : "1 / -1",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                onClick={() => setToolsOpen(false)}
+                style={{
+                  padding: "9px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(0,0,0,0.14)",
+                  background: "white",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  fontWeight: 900,
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Context */}
@@ -388,85 +731,20 @@ export default function SessionParticipantPage() {
           padding: 12,
         }}
       >
-        <SituationCard situation={situation} />
-
-        {/* Casualties editor toggle (right-aligned on desktop, full-width on mobile) */}
-        <div
-          style={{
-            marginTop: 10,
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "340px 1fr 360px",
-            gap: 12,
-            alignItems: "start",
+        <SituationCard
+          scenario={scenario}
+          situation={situation}
+          onUpdateCasualties={async (p) => {
+            const next = await updateCasualties({
+              sessionId,
+              injured: p.injured,
+              fatalities: p.fatalities,
+              uninjured: p.uninjured,
+              unknown: p.unknown,
+            });
+            setSituation(next);
           }}
-        >
-          {!isMobile ? <div /> : null}
-          {!isMobile ? <div /> : null}
-
-          <div
-            style={{
-              borderRadius: 14,
-              border: "1px solid rgba(0,0,0,0.10)",
-              background: "rgba(0,0,0,0.02)",
-              padding: 12,
-            }}
-          >
-            <button
-              onClick={() => setCasualtiesOpen((v) => !v)}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: casualtiesOpen
-                  ? "2px solid #2563eb"
-                  : "1px solid rgba(0,0,0,0.14)",
-                background: "white",
-                cursor: "pointer",
-                fontWeight: 900,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <span>Update casualties</span>
-              <span
-                style={{
-                  opacity: 0.7,
-                  transform: casualtiesOpen ? "rotate(180deg)" : "rotate(0deg)",
-                  transition: "transform 180ms ease",
-                  display: "inline-block",
-                }}
-              >
-                ▼
-              </span>
-            </button>
-
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 11,
-                color: "rgba(0,0,0,0.55)",
-                fontWeight: 800,
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <span>Last updated: {lastUpdatedAt}</span>
-              <span>{lastUpdatedBy ? `By: ${lastUpdatedBy}` : ""}</span>
-            </div>
-
-            {casualtiesOpen && (
-              <div style={{ marginTop: 10 }}>
-                <CasualtyEditor
-                  situation={situation}
-                  editable={true}
-                  onUpdated={(next: SessionSituation) => setSituation(next)}
-                />
-              </div>
-            )}
-          </div>
-        </div>
+        />
       </div>
 
       {/* Workspace */}
@@ -478,7 +756,7 @@ export default function SessionParticipantPage() {
           alignItems: "start",
         }}
       >
-        {/* LEFT: Tabs + Feed */}
+        {/* LEFT */}
         <div
           style={{
             background: "white",
@@ -533,7 +811,6 @@ export default function SessionParticipantPage() {
               </button>
             </div>
 
-            {/* Mobile: open drawer */}
             {isMobile && (
               <button
                 onClick={() => setFeedOpen(true)}
@@ -551,11 +828,10 @@ export default function SessionParticipantPage() {
             )}
           </div>
 
-          {/* Desktop feed */}
           {!isMobile ? feed : null}
         </div>
 
-        {/* MIDDLE: Detail + Actions (linked) */}
+        {/* MIDDLE */}
         <div
           style={{
             background: "white",
@@ -577,22 +853,11 @@ export default function SessionParticipantPage() {
             <MessageDetail item={selectedItem} mode={activeTab} />
           </div>
 
-          <div
-            style={{
-              borderTop: "1px solid rgba(0,0,0,0.08)",
-              paddingTop: 12,
-            }}
-          >
+          <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
               <div style={{ fontWeight: 900, fontSize: 14 }}>Actions</div>
               <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-                {selectedItem ? (
-                  <>
-                    For: <span style={{ fontWeight: 900 }}>{selectedItem.injects?.title ?? "Message"}</span>
-                  </>
-                ) : (
-                  <>Pick a message to act</>
-                )}
+                {selectedItem ? <>Ready</> : <>Pick a message to act</>}
               </div>
             </div>
 
@@ -697,9 +962,7 @@ export default function SessionParticipantPage() {
 
             <div style={{ marginTop: 10, fontSize: 12, color: "rgba(0,0,0,0.60)" }}>
               {selectedItem ? (
-                <>
-                  Responding to: <code>{selectedItem.injects?.title ?? selectedItem.id}</code>
-                </>
+                <>Select a message to enable context-aware actions.</>
               ) : (
                 <>Select a message to enable context-aware actions.</>
               )}
@@ -707,7 +970,7 @@ export default function SessionParticipantPage() {
           </div>
         </div>
 
-        {/* RIGHT: Notes */}
+        {/* RIGHT */}
         <div
           style={{
             background: "white",
@@ -759,7 +1022,7 @@ export default function SessionParticipantPage() {
         </div>
       </div>
 
-      {/* Bottom log */}
+      {/* LOG SECTION (bottom) */}
       <div
         style={{
           background: "white",
@@ -768,106 +1031,100 @@ export default function SessionParticipantPage() {
           padding: 12,
         }}
       >
-        <h3 style={{ marginTop: 0 }}>Log</h3>
-
-        {actionsLoading && <div>Loading…</div>}
-        {actionsError && <div style={{ color: "crimson" }}>{actionsError}</div>}
-        {!actionsLoading && !actionsError && actions.length === 0 && (
-          <div>No actions recorded yet.</div>
-        )}
-
-        {actions.slice(0, 12).map((a) => (
-          <div
-            key={a.id}
-            style={{
-              padding: "10px 10px",
-              borderRadius: 14,
-              border: "1px solid rgba(0,0,0,0.10)",
-              background: "white",
-              marginBottom: 8,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontWeight: 900, fontSize: 12 }}>
-                {a.action_type.toUpperCase()}{" "}
-                <span style={{ color: "rgba(0,0,0,0.55)" }}>({a.source})</span>
-                {a.session_inject_id ? (
-                  <span style={{ color: "rgba(0,0,0,0.55)" }}> · {a.session_inject_id}</span>
-                ) : null}
-              </div>
-              <div style={{ fontSize: 11, color: "rgba(0,0,0,0.55)", fontWeight: 700 }}>
-                {new Date(a.created_at).toLocaleString()}
-              </div>
-            </div>
-
-            {a.comment ? (
-              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,0.78)" }}>
-                {a.comment}
-              </div>
-            ) : null}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+          <h3 style={{ margin: 0 }}>Log</h3>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
+            {actionsLoading ? "Loading…" : `${actions.length} entries`}
           </div>
-        ))}
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          {actionsError ? (
+            <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 800 }}>{actionsError}</div>
+          ) : null}
+
+          {actionsLoading ? (
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Loading…</div>
+          ) : actions.length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.7 }}>No actions yet.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {actions.map((a) => (
+                <div
+                  key={a.id}
+                  style={{
+                    border: "1px solid rgba(0,0,0,0.10)",
+                    borderRadius: 12,
+                    padding: 10,
+                    background: "rgba(0,0,0,0.02)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ fontWeight: 900, fontSize: 12 }}>
+                      {a.action_type.toUpperCase()} <span style={{ opacity: 0.6 }}>· {a.source}</span>
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 800 }}>
+                      {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
+                    </div>
+                  </div>
+                  {a.comment ? (
+                    <div style={{ marginTop: 6, fontSize: 12, whiteSpace: "pre-wrap", opacity: 0.85 }}>
+                      {a.comment}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Mobile drawer */}
-      {isMobile && feedOpen && (
+      {/* MOBILE FEED DRAWER */}
+      {isMobile && feedOpen ? (
         <div
           onClick={() => setFeedOpen(false)}
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.40)",
-            zIndex: 200,
+            background: "rgba(0,0,0,0.35)",
+            zIndex: 100,
             display: "flex",
-            justifyContent: "flex-start",
+            justifyContent: "flex-end",
           }}
-          role="dialog"
-          aria-modal="true"
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: "min(92vw, 420px)",
+              width: "min(520px, 92vw)",
               height: "100%",
-              background: "rgba(255,255,255,0.96)",
-              borderRight: "1px solid rgba(0,0,0,0.10)",
-              boxShadow: "20px 0 40px rgba(0,0,0,0.20)",
+              background: "white",
               padding: 12,
-              overflowY: "auto",
+              borderLeft: "1px solid rgba(0,0,0,0.10)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div style={{ fontWeight: 900, fontSize: 13 }}>
-                {activeTab === "inbox" ? "Inbox" : "Pulse"} · Feed
-              </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div style={{ fontWeight: 950 }}>Feed</div>
               <button
                 onClick={() => setFeedOpen(false)}
                 style={{
-                  padding: "9px 10px",
+                  padding: "8px 10px",
                   borderRadius: 12,
                   border: "1px solid rgba(0,0,0,0.14)",
                   background: "white",
                   cursor: "pointer",
-                  fontSize: 12,
                   fontWeight: 900,
                 }}
               >
                 Close
               </button>
             </div>
-
             {feed}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

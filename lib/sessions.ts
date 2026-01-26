@@ -1,3 +1,4 @@
+// lib/sessions.ts
 import { supabase } from "./supabaseClient";
 
 /* ========================= TYPES ========================= */
@@ -66,6 +67,34 @@ export async function getSessionSituation(sessionId: string) {
 
   if (error) throw error;
   return data as SessionSituation | null;
+}
+
+/* ========================= SESSION META ========================= */
+
+export async function getSessionScenarioId(sessionId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("scenario_id")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return ((data as any)?.scenario_id ?? null) as string | null;
+}
+
+/* ========================= CREATE SESSION (seed from scenario) ========================= */
+
+export async function createSessionFromScenario(params: {
+  scenarioId: string;
+  title: string;
+}): Promise<string> {
+  const { data, error } = await supabase.rpc("create_session_from_scenario", {
+    p_scenario_id: params.scenarioId,
+    p_title: params.title,
+  });
+
+  if (error) throw error;
+  return data as string; // session_id
 }
 
 /* ========================= INBOX (session_injects) – paginated ========================= */
@@ -242,7 +271,7 @@ export async function sendInjectToSession(
 
 /* ========================= FACILITATOR: deliverDueInjects (MVP) ========================= */
 
-export async function deliverDueInjects(sessionId: string) {
+export async function deliverDueInjects(sessionId: string): Promise<{ delivered: number }> {
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
     .select("id, scenario_id")
@@ -278,6 +307,7 @@ export async function deliverDueInjects(sessionId: string) {
 
   const alreadySet = new Set((already ?? []).map((r: any) => r.inject_id));
   const toDeliver = dueRows.filter((r) => !alreadySet.has(r.inject_id));
+
   if (toDeliver.length === 0) return { delivered: 0 };
 
   const inserts = toDeliver.map((r) => ({

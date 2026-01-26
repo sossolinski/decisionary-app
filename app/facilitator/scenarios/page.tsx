@@ -6,6 +6,7 @@ import {
   listScenarios,
   createScenario,
   deleteScenario,
+  duplicateScenario,
   Scenario,
   listFacilitators,
   transferScenarioOwnership,
@@ -26,6 +27,8 @@ export default function FacilitatorScenariosPage() {
 
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
+
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -53,10 +56,7 @@ export default function FacilitatorScenariosPage() {
   async function load() {
     setError(null);
     try {
-      const [scs, facs] = await Promise.all([
-        listScenarios(),
-        listFacilitators(),
-      ]);
+      const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
       setScenarios(scs);
       setFacilitators(facs ?? []);
     } catch (e: any) {
@@ -90,6 +90,20 @@ export default function FacilitatorScenariosPage() {
       setScenarios((prev) => prev.filter((s) => s.id !== id));
     } catch (e: any) {
       setError(e?.message ?? "Delete failed");
+    }
+  }
+
+  async function onDuplicate(id: string) {
+    setError(null);
+    setDuplicatingId(id);
+
+    try {
+      const copy = await duplicateScenario(id);
+      setScenarios((prev) => [copy, ...prev]);
+    } catch (e: any) {
+      setError(e?.message ?? "Duplicate failed");
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -281,9 +295,7 @@ export default function FacilitatorScenariosPage() {
                     {s.description ? (
                       <div style={{ opacity: 0.75, marginBottom: 8 }}>{s.description}</div>
                     ) : (
-                      <div style={{ opacity: 0.5, marginBottom: 8, fontSize: 13 }}>
-                        No description
-                      </div>
+                      <div style={{ opacity: 0.5, marginBottom: 8, fontSize: 13 }}>No description</div>
                     )}
                   </div>
 
@@ -300,6 +312,22 @@ export default function FacilitatorScenariosPage() {
                       }}
                     >
                       Open
+                    </button>
+
+                    <button
+                      onClick={() => onDuplicate(s.id)}
+                      disabled={duplicatingId === s.id}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(0,0,0,0.15)",
+                        background: "rgba(0,0,0,0.03)",
+                        fontWeight: 800,
+                        cursor: duplicatingId === s.id ? "not-allowed" : "pointer",
+                        opacity: duplicatingId === s.id ? 0.6 : 1,
+                      }}
+                    >
+                      {duplicatingId === s.id ? "..." : "Duplicate"}
                     </button>
 
                     <button
