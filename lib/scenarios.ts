@@ -60,6 +60,24 @@ export type ScenarioRole = {
 };
 
 /* =========================
+   HELPERS
+========================= */
+
+// Supabase embed can come back as object OR array (depending on query shape / typing)
+// Normalize to a single object for our ScenarioInject type.
+function normalizeInject(v: any): Inject | null {
+  if (!v) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+function normalizeScenarioInjectRow(row: any): ScenarioInject {
+  return {
+    ...row,
+    injects: normalizeInject(row.injects),
+  } as ScenarioInject;
+}
+
+/* =========================
    SCENARIO CRUD
 ========================= */
 
@@ -123,7 +141,9 @@ export async function listScenarioInjects(
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as ScenarioInject[];
+
+  // ✅ normalize injects embed to Inject | null (not Inject[])
+  return (data ?? []).map(normalizeScenarioInjectRow);
 }
 
 export async function createInject(params: {
@@ -193,7 +213,9 @@ export async function attachInjectToScenario(params: {
     .single();
 
   if (error) throw error;
-  return data as ScenarioInject;
+
+  // ✅ normalize injects embed
+  return normalizeScenarioInjectRow(data);
 }
 
 export async function detachScenarioInject(scenarioInjectId: string) {
