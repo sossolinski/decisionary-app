@@ -41,8 +41,8 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const sess = await joinSessionByCode(joinCode);
-      router.replace(`/sessions/${sess.id}`);
+      const sessionId = await joinSessionByCode(joinCode);
+      router.replace(`/sessions/${sessionId}`);
     } catch (err: any) {
       setMsg(err?.message ?? "Join failed.");
     } finally {
