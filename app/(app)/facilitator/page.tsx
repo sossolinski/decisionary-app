@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
-import { getMyRole } from "../../lib/users";
+import { supabase } from "@/lib/supabaseClient";
+import { getMyRole } from "@/lib/users";
 
 export default function FacilitatorHome() {
   const router = useRouter();

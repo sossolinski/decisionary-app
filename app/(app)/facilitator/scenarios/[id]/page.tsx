@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { getMyRole } from "../../../../lib/users";
+import { getMyRole } from "@/lib/users";
 import {
   Scenario,
   ScenarioInject,
@@ -18,7 +18,7 @@ import {
   createScenarioRole,
   updateScenarioRole,
   deleteScenarioRole,
-} from "../../../../lib/scenarios";
+} from "@/lib/scenarios";
 
 function asInt(v: string) {
   const n = parseInt(v, 10);

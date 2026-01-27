@@ -13,8 +13,8 @@ import {
   shareScenario,
   revokeScenarioShare,
   FacilitatorProfile,
-} from "../../../lib/facilitator";
-import { getMyRole } from "../../../lib/users";
+} from "@/lib/facilitator";
+import { getMyRole } from "@/lib/users";
 
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
