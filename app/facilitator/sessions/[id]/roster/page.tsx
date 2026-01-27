@@ -5,13 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import { getMyRole } from "@/lib/users";
-
-// Zakładam, że dopisałeś te funkcje do lib/sessionsRuntime.ts zgodnie z naszym krokiem 2.
-// Jeśli nazwy masz inne — podmień importy.
 import {
   ensureSessionRoleSlots,
   listSessionParticipants,
-  listSessionRoleAssignments,
   assignUserToSessionRole,
 } from "@/lib/sessionsRuntime";
 
@@ -22,13 +18,23 @@ type ProfileLite = {
   display_name?: string | null;
 };
 
+type ScenarioRole = {
+  id: string;
+  scenario_id: string;
+  role_key: string;
+  role_name: string | null;
+  role_description: string | null;
+  is_required: boolean | null;
+  sort_order: number | null;
+};
+
 function labelForProfile(p?: ProfileLite | null) {
   if (!p) return "Unknown user";
   return (
     p.display_name ||
     p.full_name ||
     p.email ||
-    `${p.id.slice(0, 8)}…`
+    (p.id ? `${p.id.slice(0, 8)}…` : "Unknown user")
   );
 }
 
@@ -38,31 +44,33 @@ export default function SessionRosterPage() {
   const sessionId = params?.id ?? "";
 
   const [loading, setLoading] = useState(true);
-  const [busyRoleId, setBusyRoleId] = useState<string | null>(null);
+  const [busyRoleKey, setBusyRoleKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // participants
   const [participants, setParticipants] = useState<
-    { user_id: string; joined_at: string }[]
+    { user_id: string; joined_at: string | null }[]
   >([]);
 
   // profiles map (user_id -> profile)
   const [profiles, setProfiles] = useState<Record<string, ProfileLite>>({});
 
-  // assignments rows (join z scenario_roles)
-  const [assignments, setAssignments] = useState<any[]>([]);
+  // scenario roles
+  const [roles, setRoles] = useState<ScenarioRole[]>([]);
+
+  // assignments map: role_key -> user_id
+  const [assignmentByRoleKey, setAssignmentByRoleKey] = useState<
+    Record<string, string | null>
+  >({});
 
   const participantOptions = useMemo(() => {
-    // sort: display name then join time
-    const rows = participants
+    return participants
       .map((p) => ({
         userId: p.user_id,
         joinedAt: p.joined_at,
         label: labelForProfile(profiles[p.user_id]),
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-
-    return rows;
   }, [participants, profiles]);
 
   async function loadAll() {
@@ -82,15 +90,52 @@ export default function SessionRosterPage() {
         return;
       }
 
-      // ensure slots exist (idempotent)
+      // ensure slots exist (idempotent; if RPC missing, it no-ops)
       await ensureSessionRoleSlots(sessionId);
+
+      // read session -> scenario_id
+      const { data: sess, error: sErr } = await supabase
+        .from("sessions")
+        .select("id, scenario_id")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      if (sErr) throw sErr;
+      const scenarioId = (sess as any)?.scenario_id as string | null;
+
+      // roles from scenario
+      if (scenarioId) {
+        const { data: r, error: rErr } = await supabase
+          .from("scenario_roles")
+          .select(
+            "id, scenario_id, role_key, role_name, role_description, is_required, sort_order"
+          )
+          .eq("scenario_id", scenarioId);
+
+        if (rErr) throw rErr;
+
+        const sorted = ((r ?? []) as ScenarioRole[]).slice().sort((a, b) => {
+          const ao = a.sort_order ?? 1000;
+          const bo = b.sort_order ?? 1000;
+          if (ao !== bo) return ao - bo;
+          return (a.role_name ?? "").localeCompare(b.role_name ?? "");
+        });
+
+        setRoles(sorted);
+      } else {
+        setRoles([]);
+      }
 
       // participants (who joined)
       const parts = await listSessionParticipants(sessionId);
-      setParticipants(parts.map((p: any) => ({ user_id: p.user_id, joined_at: p.joined_at })));
+      const cleanParts = (parts ?? []).map((p: any) => ({
+        user_id: p.user_id,
+        joined_at: p.joined_at ?? null,
+      }));
+      setParticipants(cleanParts);
 
       // fetch profiles for nicer dropdown labels
-      const userIds = Array.from(new Set(parts.map((p: any) => p.user_id)));
+      const userIds = Array.from(new Set(cleanParts.map((p) => p.user_id)));
       if (userIds.length > 0) {
         const { data: profs, error: pErr } = await supabase
           .from("profiles")
@@ -108,18 +153,19 @@ export default function SessionRosterPage() {
         setProfiles({});
       }
 
-      // assignments (slots + scenario role info)
-      const rows = await listSessionRoleAssignments(sessionId);
-      // sort by scenario_roles.sort_order then name
-      const sorted = [...rows].sort((a: any, b: any) => {
-        const ao = a.scenario_roles?.sort_order ?? 1000;
-        const bo = b.scenario_roles?.sort_order ?? 1000;
-        if (ao !== bo) return ao - bo;
-        const an = a.scenario_roles?.role_name ?? "";
-        const bn = b.scenario_roles?.role_name ?? "";
-        return an.localeCompare(bn);
+      // assignments
+      const { data: aRows, error: aErr } = await supabase
+        .from("session_role_assignments")
+        .select("role_key, user_id")
+        .eq("session_id", sessionId);
+
+      if (aErr) throw aErr;
+
+      const amap: Record<string, string | null> = {};
+      (aRows ?? []).forEach((row: any) => {
+        amap[row.role_key] = row.user_id ?? null;
       });
-      setAssignments(sorted);
+      setAssignmentByRoleKey(amap);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -132,254 +178,318 @@ export default function SessionRosterPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  async function onAssign(scenarioRoleId: string, userId: string | null) {
+  async function refreshAssignmentsOnly() {
     if (!sessionId) return;
-    setBusyRoleId(scenarioRoleId);
+    const { data: aRows, error: aErr } = await supabase
+      .from("session_role_assignments")
+      .select("role_key, user_id")
+      .eq("session_id", sessionId);
+
+    if (aErr) throw aErr;
+
+    const amap: Record<string, string | null> = {};
+    (aRows ?? []).forEach((row: any) => {
+      amap[row.role_key] = row.user_id ?? null;
+    });
+    setAssignmentByRoleKey(amap);
+  }
+
+  async function onAssign(roleKey: string, userId: string) {
+    if (!sessionId) return;
+
+    setBusyRoleKey(roleKey);
     setError(null);
 
     try {
+      // IMPORTANT: userId must be string (not null) – fixes Vercel TS build
       await assignUserToSessionRole({
         sessionId,
-        scenarioRoleId,
+        roleKey,
         userId,
       });
 
-      // refresh assignments only (fast)
-      const rows = await listSessionRoleAssignments(sessionId);
-      const sorted = [...rows].sort((a: any, b: any) => {
-        const ao = a.scenario_roles?.sort_order ?? 1000;
-        const bo = b.scenario_roles?.sort_order ?? 1000;
-        if (ao !== bo) return ao - bo;
-        const an = a.scenario_roles?.role_name ?? "";
-        const bn = b.scenario_roles?.role_name ?? "";
-        return an.localeCompare(bn);
-      });
-      setAssignments(sorted);
+      await refreshAssignmentsOnly();
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
-      setBusyRoleId(null);
+      setBusyRoleKey(null);
+    }
+  }
+
+  async function onClear(roleKey: string) {
+    if (!sessionId) return;
+
+    setBusyRoleKey(roleKey);
+    setError(null);
+
+    try {
+      const { error: dErr } = await supabase
+        .from("session_role_assignments")
+        .delete()
+        .eq("session_id", sessionId)
+        .eq("role_key", roleKey);
+
+      if (dErr) throw dErr;
+
+      await refreshAssignmentsOnly();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusyRoleKey(null);
     }
   }
 
   if (loading) {
-    return <div style={{ padding: 24 }}>Loading roster…</div>;
+    return <div style={{ padding: 16 }}>Loading roster…</div>;
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: "24px auto", padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0 }}>Roster</h1>
-          <div style={{ fontSize: 13, opacity: 0.7, marginTop: 6 }}>
-            Assign participants to scenario roles for this session.
-          </div>
-        </div>
+    <div style={{ padding: 16, maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <h1 style={{ margin: 0 }}>Roster</h1>
 
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => router.push(`/sessions/${sessionId}`)}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Back to room
-          </button>
+        <button
+          onClick={() => router.push(`/sessions/${sessionId}`)}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "white",
+            cursor: "pointer",
+            fontWeight: 700,
+          }}
+        >
+          Back to room
+        </button>
 
-          <button
-            onClick={loadAll}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
-          >
-            Refresh
-          </button>
-        </div>
+        <button
+          onClick={() => loadAll()}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            background: "white",
+            cursor: "pointer",
+            fontWeight: 700,
+          }}
+        >
+          Refresh
+        </button>
       </div>
 
+      <p style={{ marginTop: 6, opacity: 0.75 }}>
+        Assign participants to scenario roles for this session.
+      </p>
+
       {error && (
-        <div style={{ marginTop: 12, color: "#b91c1c" }}>
+        <div
+          style={{
+            marginTop: 12,
+            padding: 10,
+            borderRadius: 12,
+            background: "#fee2e2",
+          }}
+        >
           {error}
         </div>
       )}
 
-      {/* Participants panel */}
       <div
         style={{
-          marginTop: 16,
-          border: "1px solid rgba(0,0,0,0.12)",
-          borderRadius: 12,
-          padding: 14,
-          background: "white",
+          display: "grid",
+          gridTemplateColumns: "1fr 2fr",
+          gap: 14,
+          marginTop: 14,
         }}
       >
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Participants</div>
-        {participants.length === 0 ? (
-          <div style={{ opacity: 0.75 }}>
-            Nobody joined yet. Share the join code and ask participants to join first.
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 6 }}>
-            {participants
-              .slice()
-              .sort((a, b) =>
-                labelForProfile(profiles[a.user_id]).localeCompare(labelForProfile(profiles[b.user_id]))
-              )
-              .map((p) => (
-                <div key={p.user_id} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ fontWeight: 700 }}>{labelForProfile(profiles[p.user_id])}</div>
-                  <div style={{ fontSize: 12, opacity: 0.65 }}>
-                    Joined: {new Date(p.joined_at).toLocaleString()}
+        {/* Participants */}
+        <div
+          style={{
+            background: "white",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 14,
+            padding: 12,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Participants</h2>
+
+          {participants.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>
+              Nobody joined yet. Share the join code and ask participants to join
+              first.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {participants
+                .slice()
+                .sort((a, b) =>
+                  labelForProfile(profiles[a.user_id]).localeCompare(
+                    labelForProfile(profiles[b.user_id])
+                  )
+                )
+                .map((p) => (
+                  <div
+                    key={p.user_id}
+                    style={{
+                      padding: 10,
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 900 }}>
+                      {labelForProfile(profiles[p.user_id])}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75 }}>
+                      Joined:{" "}
+                      {p.joined_at
+                        ? new Date(p.joined_at).toLocaleString()
+                        : "(unknown)"}
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.6 }}>
+                      {p.user_id}
+                    </div>
                   </div>
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
+                ))}
+            </div>
+          )}
+        </div>
 
-      {/* Roles / Assignments */}
-      <div style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 800, marginBottom: 8 }}>Role assignments</div>
+        {/* Roles */}
+        <div
+          style={{
+            background: "white",
+            border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 14,
+            padding: 12,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Role assignments</h2>
 
-        {assignments.length === 0 ? (
-          <div style={{ opacity: 0.75 }}>
-            No scenario roles found. Add roles in the scenario editor first.
-          </div>
-        ) : (
-          <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, overflow: "hidden" }}>
-            {assignments.map((row: any) => {
-              const role = row.scenario_roles;
-              const roleId = role?.id as string;
-              const roleName = role?.role_name ?? "Role";
-              const roleKey = role?.role_key ?? "";
-              const required = !!role?.is_required;
+          {roles.length === 0 ? (
+            <div style={{ opacity: 0.75 }}>
+              No scenario roles found. Add roles in the scenario editor first.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {roles.map((role) => {
+                const roleKey = role.role_key;
+                const roleName = role.role_name ?? "Role";
+                const required = !!role.is_required;
 
-              const assignedUserId = row.user_id as string | null;
-              const assignedLabel = assignedUserId
-                ? labelForProfile(profiles[assignedUserId]) || `${assignedUserId.slice(0, 8)}…`
-                : "Unassigned";
+                const assignedUserId = assignmentByRoleKey[roleKey] ?? null;
+                const assignedLabel = assignedUserId
+                  ? labelForProfile(profiles[assignedUserId]) ||
+                    `${assignedUserId.slice(0, 8)}…`
+                  : "Unassigned";
 
-              const disabled = busyRoleId === roleId;
+                const disabled = busyRoleKey === roleKey;
 
-              return (
-                <div
-                  key={row.id}
-                  style={{
-                    padding: 12,
-                    borderBottom: "1px solid rgba(0,0,0,0.08)",
-                    display: "grid",
-                    gridTemplateColumns: "1fr 340px",
-                    gap: 12,
-                    alignItems: "center",
-                    background: "white",
-                  }}
-                >
-                  <div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                      <div style={{ fontWeight: 800 }}>{roleName}</div>
-
-                      {required ? (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(0,0,0,0.12)",
-                            opacity: 0.85,
-                          }}
-                        >
-                          REQUIRED
-                        </span>
-                      ) : (
-                        <span
-                          style={{
-                            fontSize: 12,
-                            padding: "2px 8px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(0,0,0,0.12)",
-                            opacity: 0.65,
-                          }}
-                        >
-                          OPTIONAL
-                        </span>
-                      )}
-
-                      {roleKey ? (
-                        <span style={{ fontSize: 12, opacity: 0.65 }}>
-                          key: <code>{roleKey}</code>
-                        </span>
-                      ) : null}
+                return (
+                  <div
+                    key={roleKey}
+                    style={{
+                      padding: 12,
+                      borderRadius: 14,
+                      border: "1px solid rgba(0,0,0,0.12)",
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 900, fontSize: 16 }}>
+                        {roleName}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        {required ? "REQUIRED" : "OPTIONAL"}
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.7 }}>
+                        key: <code>{roleKey}</code>
+                      </div>
                     </div>
 
-                    {role?.role_description ? (
-                      <div style={{ marginTop: 6, opacity: 0.75 }}>
-                        {role.role_description}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 6, opacity: 0.55 }}>
-                        (no description)
-                      </div>
-                    )}
-                  </div>
+                    <div style={{ marginTop: 6, opacity: 0.8 }}>
+                      {role.role_description?.trim()
+                        ? role.role_description
+                        : "(no description)"}
+                    </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
-                    <select
-                      value={assignedUserId ?? ""}
-                      disabled={disabled}
-                      onChange={(e) => onAssign(roleId, e.target.value ? e.target.value : null)}
+                    <div
                       style={{
-                        width: "100%",
-                        padding: "10px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: disabled ? "rgba(0,0,0,0.03)" : "white",
-                        cursor: disabled ? "not-allowed" : "pointer",
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 10,
+                        alignItems: "center",
+                        marginTop: 10,
                       }}
                     >
-                      <option value="">{participants.length ? "Unassigned" : "Unassigned (no participants)"}</option>
-                      {participantOptions.map((p) => (
-                        <option key={p.userId} value={p.userId}>
-                          {p.label}
+                      <select
+                        value={assignedUserId ?? ""}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          if (!next) return; // don't send null/empty to assignUserToSessionRole
+                          onAssign(roleKey, next);
+                        }}
+                        disabled={disabled || participants.length === 0}
+                        style={{
+                          width: "100%",
+                          padding: "10px 10px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(0,0,0,0.15)",
+                          background: disabled
+                            ? "rgba(0,0,0,0.03)"
+                            : "white",
+                          cursor:
+                            disabled || participants.length === 0
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      >
+                        <option value="">
+                          {participants.length
+                            ? "Unassigned"
+                            : "Unassigned (no participants)"}
                         </option>
-                      ))}
-                    </select>
+                        {participantOptions.map((p) => (
+                          <option key={p.userId} value={p.userId}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
 
-                    <button
-                      onClick={() => onAssign(roleId, null)}
-                      disabled={disabled || !assignedUserId}
-                      style={{
-                        padding: "10px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "white",
-                        cursor: disabled || !assignedUserId ? "not-allowed" : "pointer",
-                        opacity: disabled || !assignedUserId ? 0.5 : 1,
-                        whiteSpace: "nowrap",
-                      }}
-                      title={`Clear assignment (currently: ${assignedLabel})`}
-                    >
-                      Clear
-                    </button>
+                      <button
+                        onClick={() => onClear(roleKey)}
+                        disabled={disabled || !assignedUserId}
+                        style={{
+                          padding: "10px 10px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(0,0,0,0.15)",
+                          background: "white",
+                          cursor:
+                            disabled || !assignedUserId
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity: disabled || !assignedUserId ? 0.5 : 1,
+                          whiteSpace: "nowrap",
+                          fontWeight: 800,
+                        }}
+                        title={`Clear assignment (currently: ${assignedLabel})`}
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+                      Current: <strong>{assignedLabel}</strong>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
 
-      <div style={{ marginTop: 14, fontSize: 12, opacity: 0.65 }}>
-        Tip: participants must join first (join code) before you can assign them to roles (MVP).
+          <div style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+            Tip: participants must join first (join code) before you can assign
+            them to roles (MVP).
+          </div>
+        </div>
       </div>
     </div>
   );
