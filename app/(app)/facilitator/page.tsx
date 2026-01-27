@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { getMyRole } from "@/lib/users";
+import { LogOut, PlayCircle, FileText } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function FacilitatorHome() {
   const router = useRouter();
@@ -28,42 +32,79 @@ export default function FacilitatorHome() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800 }}>Facilitator Panel</h1>
-        <button onClick={logout} style={{ padding: "8px 12px" }}>
+    <div className="mx-auto w-full max-w-5xl">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Facilitator Panel</h1>
+          <p className="text-sm text-muted-foreground">
+            Start sessions, manage scenarios and keep your exercises organized.
+          </p>
+        </div>
+
+        <Button variant="outline" className="w-full md:w-auto rounded-2xl" onClick={logout}>
+          <LogOut className="mr-2 h-4 w-4" />
           Log out
-        </button>
+        </Button>
       </div>
 
-      {msg && <p style={{ marginTop: 10, color: "#b91c1c" }}>{msg}</p>}
-
-      <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
-          <h2 style={{ fontWeight: 700, marginBottom: 8 }}>Sessions</h2>
-          <p style={{ opacity: 0.8, marginBottom: 10 }}>
-            List sessions you can start, restart and open.
-          </p>
-          <button
-            onClick={() => router.push("/facilitator/sessions")}
-            style={{ padding: "9px 12px" }}
-          >
-            Open Sessions
-          </button>
+      {msg && (
+        <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {msg}
         </div>
+      )}
 
-        <div style={{ border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
-          <h2 style={{ fontWeight: 700, marginBottom: 8 }}>Scenarios</h2>
-          <p style={{ opacity: 0.8, marginBottom: 10 }}>
-            Create/edit scenarios, injects and initial situation.
-          </p>
-          <button
-            onClick={() => router.push("/facilitator/scenarios")}
-            style={{ padding: "9px 12px" }}
-          >
-            Open Scenarios
-          </button>
-        </div>
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10">
+                <PlayCircle className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base">Sessions</CardTitle>
+                <CardDescription>
+                  Start, restart and open existing sessions.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Button
+              className="w-full rounded-2xl"
+              onClick={() => router.push("/facilitator/sessions")}
+            >
+              Open Sessions
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-base">Scenarios</CardTitle>
+                <CardDescription>
+                  Create and edit scenarios, injects and initial situation.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Button
+              className="w-full rounded-2xl"
+              onClick={() => router.push("/facilitator/scenarios")}
+            >
+              Open Scenarios
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mt-6 text-xs text-muted-foreground">
+        Tip: add tags and severity levels to injects to make facilitation faster.
       </div>
     </div>
   );
