@@ -6,8 +6,6 @@ export default function ParticipantPage() {
   const { loading, userId, email } = useRequireAuth();
 
   if (loading) return <div style={{ padding: 24 }}>Loading…</div>;
-
-  // useRequireAuth zrobi redirect gdy brak usera, to tylko fallback
   if (!userId) return <div>Not authenticated</div>;
 
   return (

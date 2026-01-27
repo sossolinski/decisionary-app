@@ -26,7 +26,6 @@ export default function LoginPage() {
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-
       router.replace("/facilitator");
     } catch (err: any) {
       setMsg(err?.message ?? "Login failed.");
@@ -41,7 +40,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const sessionId = await joinSessionByCode(joinCode);
+      const sessionId = await joinSessionByCode(joinCode); // ✅ zwraca string
       router.replace(`/sessions/${sessionId}`);
     } catch (err: any) {
       setMsg(err?.message ?? "Join failed.");
@@ -51,121 +50,120 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 920, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>Decisionary</h1>
+    <div style={{ maxWidth: 520, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ marginTop: 0 }}>Decisionary</h1>
 
       {msg && (
         <div
           style={{
-            marginBottom: 16,
-            padding: 12,
+            margin: "12px 0",
+            padding: 10,
             borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.12)",
+            background: "#fee2e2",
           }}
         >
           {msg}
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      <div style={{ display: "grid", gap: 18 }}>
         {/* Facilitator */}
-        <form
-          onSubmit={handleFacilitatorLogin}
+        <div
           style={{
-            padding: 16,
-            borderRadius: 16,
             border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 14,
+            padding: 14,
+            background: "white",
           }}
         >
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Facilitator</h2>
+          <h2 style={{ marginTop: 0 }}>Facilitator</h2>
 
-          <label style={{ display: "block", marginBottom: 6 }}>Email</label>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@company.com"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.2)",
-            }}
-          />
+          <form onSubmit={handleFacilitatorLogin} style={{ display: "grid", gap: 10 }}>
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@company.com"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
 
-          <label style={{ display: "block", marginTop: 12, marginBottom: 6 }}>Password</label>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            placeholder="••••••••"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.2)",
-            }}
-          />
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="••••••••"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 14,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.2)",
-              cursor: "pointer",
-              width: "100%",
-            }}
-          >
-            {loading ? "…" : "Sign in"}
-          </button>
-        </form>
+            <button
+              disabled={loading}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+                background: "white",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontWeight: 800,
+              }}
+            >
+              {loading ? "…" : "Sign in"}
+            </button>
+          </form>
+        </div>
 
         {/* Participant */}
-        <form
-          onSubmit={handleJoin}
+        <div
           style={{
-            padding: 16,
-            borderRadius: 16,
             border: "1px solid rgba(0,0,0,0.12)",
+            borderRadius: 14,
+            padding: 14,
+            background: "white",
           }}
         >
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>Participant</h2>
+          <h2 style={{ marginTop: 0 }}>Participant</h2>
 
-          <label style={{ display: "block", marginBottom: 6 }}>Join code</label>
-          <input
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            placeholder="AB12CD"
-            autoCapitalize="characters"
-            style={{
-              width: "100%",
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.2)",
-            }}
-          />
+          <form onSubmit={handleJoin} style={{ display: "grid", gap: 10 }}>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="AB12CD"
+              autoCapitalize="characters"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+              }}
+            />
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              marginTop: 14,
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.2)",
-              cursor: "pointer",
-              width: "100%",
-            }}
-          >
-            {loading ? "…" : "Join session"}
-          </button>
+            <button
+              disabled={loading}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid rgba(0,0,0,0.2)",
+                background: "white",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontWeight: 800,
+              }}
+            >
+              {loading ? "…" : "Join session"}
+            </button>
+          </form>
 
-          <div style={{ marginTop: 10, opacity: 0.7, fontSize: 13 }}>
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
             Joining creates an anonymous session (no email required).
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );
