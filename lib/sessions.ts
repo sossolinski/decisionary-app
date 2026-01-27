@@ -63,6 +63,24 @@ export type PagedResult<T> = {
 };
 
 /* =========================
+   HELPERS
+========================= */
+
+// Supabase embed can sometimes come back as object OR array depending on query shape.
+// Normalize to a single object for our types.
+function normalizeInject(v: any): Inject | null {
+  if (!v) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+function normalizeSessionInjectRow(row: any): SessionInject {
+  return {
+    ...row,
+    injects: normalizeInject(row.injects),
+  } as SessionInject;
+}
+
+/* =========================
    SITUATION
 ========================= */
 
@@ -172,7 +190,7 @@ export async function getSessionInbox(
   if (error) throw error;
 
   return {
-    items: (data ?? []) as SessionInject[],
+    items: (data ?? []).map(normalizeSessionInjectRow) as SessionInject[],
     total: count ?? 0,
     page,
   };
