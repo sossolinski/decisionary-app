@@ -144,7 +144,7 @@ export default function AppTopbar({
             </button>
 
             {open && (
-              <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-lg">
+              <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[var(--radius)] border border-border popover-solid shadow-lg">
                 <div className="px-3 py-2 text-xs text-muted-foreground">
                   Signed in as <div className="truncate font-medium text-foreground">{email ?? "—"}</div>
                 </div>

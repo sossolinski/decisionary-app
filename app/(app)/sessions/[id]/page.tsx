@@ -17,8 +17,7 @@ import {
 
 import SituationCard from "@/app/components/SituationCard";
 import MessageDetail from "@/app/components/MessageDetail";
-import FacilitatorControls from "@/app/components/FacilitatorControls";
-import AddInjectForm from "@/app/components/AddInjectForm";
+import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
 import Inbox from "@/app/components/Inbox";
 import PulseFeed from "@/app/components/PulseFeed";
 
@@ -31,7 +30,6 @@ import {
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-
 import { Filter, X } from "lucide-react";
 
 function isUuid(v: string) {
@@ -67,8 +65,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm font-semibold text-foreground
-                 focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+      className="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm font-semibold text-foreground focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
     >
       {children}
     </select>
@@ -86,14 +83,12 @@ function Chip({
 }) {
   return (
     <button
-      type="button"
       onClick={onClear}
-      title={title ?? "Clear"}
-      className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold
-                 text-foreground hover:bg-secondary transition"
+      title={title}
+      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted/40"
     >
-      <span className="truncate">{label}</span>
-      <X size={14} className="shrink-0 text-muted-foreground" />
+      {label}
+      <X className="h-3.5 w-3.5 opacity-70" />
     </button>
   );
 }
@@ -116,6 +111,7 @@ export default function SessionParticipantPage() {
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>(null); // only Inbox
+
   const [feedOpen, setFeedOpen] = useState(false); // mobile drawer
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -138,6 +134,10 @@ export default function SessionParticipantPage() {
   // Live clock
   const [liveClock, setLiveClock] = useState("");
 
+  // Exercise clock (T=0 at sessions.started_at)
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [exerciseClock, setExerciseClock] = useState<string>("T=—");
+
   useEffect(() => {
     const tick = () =>
       setLiveClock(
@@ -151,6 +151,53 @@ export default function SessionParticipantPage() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Load started_at for exercise clock (best-effort; missing column must NOT crash)
+  async function refreshStartedAt() {
+    if (!validSessionId) return;
+    try {
+      const { data, error } = await supabase
+        .from("sessions")
+        .select("started_at")
+        .eq("id", sessionId)
+        .maybeSingle();
+      if (!error) {
+        const v = (data as any)?.started_at ?? null;
+        setStartedAt(typeof v === "string" && v ? v : null);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    refreshStartedAt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, validSessionId]);
+
+  useEffect(() => {
+    const tick = () => {
+      if (!startedAt) {
+        setExerciseClock("T=—");
+        return;
+      }
+      const t0 = new Date(startedAt).getTime();
+      const now = Date.now();
+      if (Number.isNaN(t0)) {
+        setExerciseClock("T=—");
+        return;
+      }
+      const diffMs = Math.max(0, now - t0);
+      const totalSec = Math.floor(diffMs / 1000);
+      const hh = String(Math.floor(totalSec / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((totalSec % 3600) / 60)).padStart(2, "0");
+      const ss = String(totalSec % 60).padStart(2, "0");
+      setExerciseClock(`T+${hh}:${mm}:${ss}`);
+    };
+    tick();
+    const t = setInterval(tick, 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
 
   // Close tools popover on Escape / outside click
   useEffect(() => {
@@ -208,6 +255,7 @@ export default function SessionParticipantPage() {
         if (error) throw error;
 
         const rows = (data ?? []) as any[];
+
         const match = rows.find((r) => {
           const roleKey = r?.role_key ?? r?.role ?? r?.role_id ?? null;
           const uid =
@@ -263,6 +311,7 @@ export default function SessionParticipantPage() {
           .select("scenario_id")
           .eq("id", sessionId)
           .single();
+
         if (sessErr1) throw sessErr1;
 
         const scenarioId =
@@ -279,6 +328,7 @@ export default function SessionParticipantPage() {
           "owner",
           "user_id",
         ] as const;
+
         let ownerId: string | null = null;
 
         for (const col of ownerCandidates) {
@@ -309,6 +359,7 @@ export default function SessionParticipantPage() {
           .single();
 
         if (scErr) throw scErr;
+
         if (alive) setScenario(sc as Scenario);
       } catch (e: any) {
         if (alive) {
@@ -330,6 +381,7 @@ export default function SessionParticipantPage() {
   useEffect(() => {
     if (!validSessionId) return;
     let alive = true;
+
     setActionsLoading(true);
     setActionsError(null);
 
@@ -367,6 +419,7 @@ export default function SessionParticipantPage() {
         const title = `Update: action taken on "${
           selectedItem.injects?.title ?? "message"
         }"`;
+
         const body =
           `Decision recorded.\n\n` +
           `Action: ACT\n` +
@@ -430,9 +483,9 @@ export default function SessionParticipantPage() {
 
   if (!validSessionId) {
     return (
-      <div className="space-y-2">
+      <div className="p-6">
         <h2 className="text-lg font-semibold">Invalid session id</h2>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           This URL parameter must be a UUID. Go back and paste a valid{" "}
           <code>sessions.id</code> from Supabase.
         </p>
@@ -442,28 +495,30 @@ export default function SessionParticipantPage() {
 
   if (error) {
     return (
-      <div className="space-y-2">
+      <div className="p-6">
         <h2 className="text-lg font-semibold">Error</h2>
-        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{error}</p>
       </div>
     );
   }
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
-  const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
+  const sessionMeta = scenario?.short_description
+    ? scenario.short_description
+    : " ";
 
   const anyFiltersOn =
-    Boolean(search.trim()) ||
-    Boolean(severity) ||
-    (activeTab === "inbox" && Boolean(channel));
+    Boolean(search.trim()) || Boolean(severity) || (activeTab === "inbox" && Boolean(channel));
 
   const LeftPanel = (
-    <Card className="surface shadow-soft border border-[var(--studio-border)] h-full">
-      <CardHeader className="flex flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            variant={activeTab === "inbox" ? "secondary" : "ghost"}
-            size="sm"
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+          <button
+            className={[
+              "px-3 py-2 text-xs font-bold",
+              activeTab === "inbox" ? "bg-muted" : "hover:bg-muted/40",
+            ].join(" ")}
             onClick={() => {
               setActiveTab("inbox");
               setSelectedItem(null);
@@ -471,10 +526,12 @@ export default function SessionParticipantPage() {
             }}
           >
             Inbox
-          </Button>
-          <Button
-            variant={activeTab === "pulse" ? "secondary" : "ghost"}
-            size="sm"
+          </button>
+          <button
+            className={[
+              "px-3 py-2 text-xs font-bold",
+              activeTab === "pulse" ? "bg-muted" : "hover:bg-muted/40",
+            ].join(" ")}
             onClick={() => {
               setActiveTab("pulse");
               setSelectedItem(null);
@@ -483,158 +540,124 @@ export default function SessionParticipantPage() {
             }}
           >
             Pulse
-          </Button>
+          </button>
         </div>
 
         {isMobile ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => setFeedOpen(false)}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setFeedOpen(false)}>
             Close
           </Button>
         ) : null}
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-3">
-        {/* Search + Filters button */}
-        <div className="flex items-center gap-2">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search title/body/sender…"
-            className="flex-1"
-          />
+      {/* Search + Filters button */}
+      <div className="flex items-center gap-2">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search title/body/sender…"
+          className="flex-1"
+        />
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-label="Filters"
+          title="Filters"
+        >
+          <Filter className="h-4 w-4" />
+        </Button>
+      </div>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 w-9 p-0"
-            onClick={() => setFiltersOpen((v) => !v)}
-            aria-label="Filters"
-            title="Filters"
-          >
-            <Filter size={18} />
-          </Button>
-        </div>
+      {/* Chips row */}
+      <div className="flex flex-wrap items-center gap-2">
+        {!anyFiltersOn ? (
+          <span className="text-xs font-semibold text-muted-foreground">
+            No filters
+          </span>
+        ) : (
+          <>
+            {search.trim() ? (
+              <Chip label={`Search: ${search.trim()}`} onClear={() => setSearch("")} title="Clear search" />
+            ) : null}
+            {severity ? (
+              <Chip label={`Severity: ${severity}`} onClear={() => setSeverity(null)} title="Clear severity" />
+            ) : null}
+            {activeTab === "inbox" && channel ? (
+              <Chip label={`Channel: ${channel}`} onClear={() => setChannel(null)} title="Clear channel" />
+            ) : null}
 
-        {/* Chips row */}
-        <div className="flex flex-wrap items-center gap-2">
-          {!anyFiltersOn ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              No filters
-            </span>
-          ) : (
-            <>
-              {search.trim() ? (
-                <Chip
-                  label={`Search: ${search.trim()}`}
-                  onClear={() => setSearch("")}
-                  title="Clear search"
-                />
-              ) : null}
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              Clear all
+            </Button>
+          </>
+        )}
+      </div>
 
-              {severity ? (
-                <Chip
-                  label={`Severity: ${severity}`}
-                  onClear={() => setSeverity(null)}
-                  title="Clear severity"
-                />
-              ) : null}
-
-              {activeTab === "inbox" && channel ? (
-                <Chip
-                  label={`Channel: ${channel}`}
-                  onClear={() => setChannel(null)}
-                  title="Clear channel"
-                />
-              ) : null}
-
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="inline-flex items-center rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold
-                           text-muted-foreground hover:bg-secondary transition"
-                title="Clear all"
-              >
-                Clear all
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Collapsible Filters panel */}
-        {filtersOpen ? (
-          <div className="space-y-3 rounded-[var(--radius)] border border-border bg-muted/30 p-3">
-            <Select
-              value={severity ?? ""}
-              onChange={(v) => setSeverity(v ? v : null)}
-            >
+      {/* Collapsible Filters panel */}
+      {filtersOpen ? (
+        <Card className="surface border border-border">
+          <CardContent className="space-y-3 p-3">
+            <Select value={severity ?? ""} onChange={(v) => setSeverity(v ? v : null)}>
               <option value="">Severity: All</option>
-              <option value="LOW">Severity: LOW</option>
-              <option value="MEDIUM">Severity: MEDIUM</option>
-              <option value="HIGH">Severity: HIGH</option>
-              <option value="CRITICAL">Severity: CRITICAL</option>
+              <option value="low">Severity: LOW</option>
+              <option value="medium">Severity: MEDIUM</option>
+              <option value="high">Severity: HIGH</option>
+              <option value="critical">Severity: CRITICAL</option>
             </Select>
 
             {activeTab === "inbox" ? (
-              <Select
-                value={channel ?? ""}
-                onChange={(v) => setChannel(v ? v : null)}
-              >
+              <Select value={channel ?? ""} onChange={(v) => setChannel(v ? v : null)}>
                 <option value="">Channel: All (non-pulse)</option>
-                <option value="OPS">Channel: OPS</option>
-                <option value="MEDIA">Channel: MEDIA</option>
-                <option value="SOCIAL">Channel: SOCIAL</option>
+                <option value="ops">Channel: OPS</option>
+                <option value="media">Channel: MEDIA</option>
+                <option value="social">Channel: SOCIAL</option>
               </Select>
             ) : null}
 
-            <div className="flex gap-2">
-              <Button variant="ghost" className="flex-1" onClick={clearFilters}>
+            <div className="flex items-center justify-between gap-2">
+              <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear
               </Button>
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={() => setFiltersOpen(false)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setFiltersOpen(false)}>
                 Done
               </Button>
             </div>
-          </div>
-        ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
-        <div className="pt-1">
-          {activeTab === "inbox" ? (
-            <Inbox
-              sessionId={sessionId}
-              mode="inbox"
-              selectedId={selectedItem?.id ?? null}
-              onSelect={(item) => {
-                setSelectedItem(item);
-                if (isMobile) setFeedOpen(false);
-              }}
-              channel={channel}
-              severity={severity}
-              search={search}
-            />
-          ) : (
-            <PulseFeed
-              sessionId={sessionId}
-              selectedId={selectedItem?.id ?? null}
-              onSelect={(item) => {
-                setSelectedItem(item);
-                if (isMobile) setFeedOpen(false);
-              }}
-              severity={severity}
-              search={search}
-            />
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      {activeTab === "inbox" ? (
+        <Inbox
+          sessionId={sessionId}
+          selectedId={selectedItem?.id ?? null}
+          onSelect={(item) => {
+            setSelectedItem(item);
+            if (isMobile) setFeedOpen(false);
+          }}
+          channel={channel}
+          severity={severity}
+          search={search}
+        />
+      ) : (
+        <PulseFeed
+          sessionId={sessionId}
+          selectedId={selectedItem?.id ?? null}
+          onSelect={(item) => {
+            setSelectedItem(item);
+            if (isMobile) setFeedOpen(false);
+          }}
+          severity={severity}
+          search={search}
+        />
+      )}
+    </div>
   );
+
+  const selectedActions = useMemo(() => {
+    if (!selectedItem) return [];
+    return actions.filter((a) => a.session_inject_id === selectedItem.id);
+  }, [actions, selectedItem]);
 
   const MiddlePanel = (
     <div className="space-y-3">
@@ -646,95 +669,29 @@ export default function SessionParticipantPage() {
               {selectedItem ? "Selected" : "No selection"}
             </CardDescription>
           </div>
+
+          {selectedItem ? (
+            <span className="text-xs font-semibold text-muted-foreground">
+              Actions: {actionsLoading ? "…" : selectedActions.length}
+            </span>
+          ) : null}
         </CardHeader>
+
         <CardContent>
-          <MessageDetail item={selectedItem} mode={activeTab} />
-        </CardContent>
-      </Card>
-
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle>Actions</CardTitle>
-            <CardDescription>
-              {selectedItem ? "Ready" : "Pick a message to act"}
-            </CardDescription>
-          </div>
-
-          {actionsLoading ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              Loading…
-            </span>
-          ) : actionsError ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              {actionsError}
-            </span>
-          ) : (
-            <span className="text-xs font-semibold text-muted-foreground">
-              {actions.length ? `${actions.length} logged` : "No log yet"}
-            </span>
-          )}
-        </CardHeader>
-
-        <CardContent className="space-y-3">
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder={
-              activeTab === "pulse"
-                ? "Optional comment (why confirm/deny)"
-                : "Optional comment (what you did / why)"
-            }
-            className="min-h-[88px] w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm
-                       focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+          <MessageDetail
+            item={selectedItem}
+            mode={activeTab}
+            actions={selectedActions}
+            actionsLoading={actionsLoading}
+            actionsError={actionsError}
+            comment={comment}
+            onCommentChange={setComment}
+            onIgnore={() => doAction("ignore")}
+            onEscalate={() => doAction("escalate")}
+            onAct={() => doAction("act")}
+            onConfirm={() => doPulseDecision("confirm")}
+            onDeny={() => doPulseDecision("deny")}
           />
-
-          {activeTab === "pulse" ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="primary"
-                onClick={() => doPulseDecision("confirm")}
-                disabled={!selectedItem}
-              >
-                Confirm
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => doPulseDecision("deny")}
-                disabled={!selectedItem}
-              >
-                Deny
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              <Button
-                variant="ghost"
-                onClick={() => doAction("ignore")}
-                disabled={!selectedItem}
-              >
-                Ignore
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => doAction("escalate")}
-                disabled={!selectedItem}
-              >
-                Escalate
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => doAction("act")}
-                disabled={!selectedItem}
-              >
-                Act
-              </Button>
-            </div>
-          )}
-
-          <p className="text-xs font-semibold text-muted-foreground">
-            Select a message to enable context-aware actions.
-          </p>
         </CardContent>
       </Card>
     </div>
@@ -753,6 +710,10 @@ export default function SessionParticipantPage() {
           <div className="flex shrink-0 items-center gap-2">
             <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold">
               ⏱ {liveClock}
+            </div>
+
+            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold">
+              {exerciseClock}
             </div>
 
             {roleLoading ? (
@@ -774,13 +735,11 @@ export default function SessionParticipantPage() {
 
                 {toolsOpen ? (
                   <div
+                    className="absolute right-0 top-10 z-50 w-[min(760px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius)] border border-border popover-solid shadow-soft"
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute right-0 mt-2 w-[560px] max-w-[90vw] overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-soft"
                   >
-                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                      <div className="text-sm font-semibold">
-                        In-session controls
-                      </div>
+                    <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
+                      <div className="text-sm font-bold">Facilitator panel</div>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -790,21 +749,10 @@ export default function SessionParticipantPage() {
                       </Button>
                     </div>
 
-                    <div className="grid gap-4 p-4 md:grid-cols-2">
-                      <div className="space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">
-                          Controls
-                        </div>
-                        <FacilitatorControls sessionId={sessionId} />
-                      </div>
+                   <div className="p-4">
+                   <FacilitatorToolsPanel sessionId={sessionId} scenarioId={scenario?.id ?? null} />
+                  </div>
 
-                      <div className="space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">
-                          New inject
-                        </div>
-                        <AddInjectForm sessionId={sessionId} />
-                      </div>
-                    </div>
                   </div>
                 ) : null}
               </div>
@@ -832,26 +780,22 @@ export default function SessionParticipantPage() {
               uninjured: number;
               unknown: number;
             }) => {
-              const next = await updateCasualties({
+              if (!validSessionId) return;
+              const s = await updateCasualties({
                 sessionId,
                 injured: p.injured,
                 fatalities: p.fatalities,
                 uninjured: p.uninjured,
                 unknown: p.unknown,
               });
-              setSituation(next);
+              setSituation(s);
             }}
           />
         </CardContent>
       </Card>
 
-      {/* WORKSPACE */}
-      <div
-        className={[
-          "grid gap-3",
-          isMobile ? "grid-cols-1" : "grid-cols-[360px_minmax(520px,1fr)]",
-        ].join(" ")}
-      >
+      {/* MAIN LAYOUT */}
+      <div className="grid gap-3 lg:grid-cols-[360px_1fr]">
         {!isMobile ? <div>{LeftPanel}</div> : null}
         <div>{MiddlePanel}</div>
       </div>

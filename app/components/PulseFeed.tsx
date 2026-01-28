@@ -11,6 +11,7 @@ type Props = {
 
   severity?: string | null;
   search?: string;
+  autoSelectFirst?: boolean;
 };
 
 function clampText(s: string, max = 160) {
@@ -39,12 +40,12 @@ function makeSeenKey(sessionId: string, severity: string | null) {
 function loadSeen(key: string): Set<string> {
   try {
     const raw = sessionStorage.getItem(key);
-    if (!raw) return new Set<string>();
+    if (!raw) return new Set();
     const arr = JSON.parse(raw) as unknown;
-    if (!Array.isArray(arr)) return new Set<string>();
-    return new Set<string>(arr.filter((x) => typeof x === "string") as string[]);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x) => typeof x === "string") as string[]);
   } catch {
-    return new Set<string>();
+    return new Set();
   }
 }
 
@@ -60,13 +61,14 @@ export default function PulseFeed({
   onSelect,
   severity = null,
   search = "",
+  autoSelectFirst = true,
 }: Props) {
   const pageSize = 5;
 
   const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
 
+  const [page, setPage] = useState(1);
   const pageRef = useRef(1);
   useEffect(() => {
     pageRef.current = page;
@@ -82,6 +84,7 @@ export default function PulseFeed({
   // UNREAD
   const seenKey = useMemo(() => makeSeenKey(sessionId, severity), [sessionId, severity]);
   const [seen, setSeen] = useState<Set<string>>(() => new Set());
+
   useEffect(() => {
     setSeen(loadSeen(seenKey));
   }, [seenKey]);
@@ -125,9 +128,11 @@ export default function PulseFeed({
       const prev = prevIdsRef.current;
       const nextIds = new Set(next.map((x) => x.id));
       const added: string[] = [];
+
       nextIds.forEach((id) => {
         if (!prev.has(id)) added.push(id);
       });
+
       prevIdsRef.current = nextIds;
 
       if (added.length) {
@@ -162,7 +167,6 @@ export default function PulseFeed({
   function requestReload() {
     // coalesce multiple realtime events to one reload
     if (reloadTimerRef.current) return;
-
     reloadTimerRef.current = setTimeout(() => {
       reloadTimerRef.current = null;
       load(pageRef.current);
@@ -176,6 +180,7 @@ export default function PulseFeed({
     setPage(1);
     pageRef.current = 1;
     prevIdsRef.current = new Set();
+
     pendingReloadRef.current = false;
     inFlightRef.current = false;
 
@@ -209,7 +214,6 @@ export default function PulseFeed({
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
-
     return items.filter((it) => {
       const t = it.injects?.title ?? "";
       const b = it.injects?.body ?? "";
@@ -229,10 +233,33 @@ export default function PulseFeed({
     });
   }
 
+  // Auto-open first available item (and keep selection valid when filters/pages change)
+  useEffect(() => {
+    if (!autoSelectFirst) return;
+    if (loading) return;
+    if (!visible.length) return;
+
+    const ids = new Set(visible.map((x) => x.id));
+    if (selectedId && ids.has(selectedId)) return;
+
+    markSeen(visible[0].id);
+    onSelect(visible[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSelectFirst, loading, visible, selectedId]);
+
   return (
     <div className="space-y-2">
-      {err ? <div className="text-sm text-destructive">{err}</div> : null}
-      {loading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
+      {err ? (
+        <div className="rounded-[var(--radius)] border border-border bg-destructive/5 p-3 text-xs font-semibold text-destructive">
+          {err}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="rounded-[var(--radius)] border border-border bg-card p-3 text-xs font-semibold text-muted-foreground">
+          Loading…
+        </div>
+      ) : null}
 
       {!loading &&
         visible.map((item) => {
@@ -240,17 +267,14 @@ export default function PulseFeed({
 
           const title = item.injects?.title?.trim() || "Pulse post";
           const preview = item.injects?.body ? clampText(item.injects.body, 160) : "";
+
           const metaLeft =
-            [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
-            "Unknown source";
+            [item.injects?.sender_name, item.injects?.sender_org]
+              .filter(Boolean)
+              .join(" · ") || "Unknown source";
 
-          const channelTag = item.injects?.channel
-            ? String(item.injects.channel).toUpperCase()
-            : null;
-
-          const sevTag = item.injects?.severity
-            ? String(item.injects.severity).toUpperCase()
-            : null;
+          const channelTag = item.injects?.channel ? String(item.injects.channel).toUpperCase() : null;
+          const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
 
           const time = fmtTime(item.delivered_at);
 
@@ -260,48 +284,46 @@ export default function PulseFeed({
           return (
             <button
               key={item.id}
-              type="button"
               onClick={() => {
                 markSeen(item.id);
                 onSelect(item);
               }}
               className={[
                 "w-full text-left rounded-[var(--radius)] border px-3 py-3 transition",
-                active ? "border-foreground/30 bg-muted/40" : "border-border bg-card hover:bg-muted/30",
+                active
+                  ? "border-foreground/30 bg-muted/40"
+                  : "border-border bg-card hover:bg-muted/30",
                 flash ? "shadow-soft ring-2 ring-foreground/10" : "",
               ].join(" ")}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">
-                    {title}{" "}
+                  <div className="truncate text-sm font-bold">{title}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
                     {unread ? (
-                      <span className="ml-2 rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                      <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-bold">
                         UNREAD
                       </span>
                     ) : null}
                     {flash ? (
-                      <span className="ml-2 rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                      <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-bold">
                         NEW
                       </span>
                     ) : null}
-                  </div>
-
-                  <div className="mt-1 flex flex-wrap gap-1">
                     {channelTag ? (
-                      <span className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-semibold">
+                      <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-bold">
                         {channelTag}
                       </span>
                     ) : null}
                     {sevTag ? (
-                      <span className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-semibold">
+                      <span className="rounded-full border border-border bg-background px-2 py-0.5 text-[10px] font-bold">
                         {sevTag}
                       </span>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="shrink-0 text-[10px] font-semibold text-muted-foreground">
+                <div className="shrink-0 text-[10px] font-bold text-muted-foreground">
                   {time}
                 </div>
               </div>
@@ -310,7 +332,7 @@ export default function PulseFeed({
                 {preview ? preview : "(no content)"}
               </div>
 
-              <div className="mt-2 text-[10px] font-semibold text-muted-foreground">
+              <div className="mt-2 text-[10px] font-bold text-muted-foreground">
                 {metaLeft}
               </div>
             </button>
@@ -318,16 +340,18 @@ export default function PulseFeed({
         })}
 
       {!loading && visible.length === 0 ? (
-        <div className="text-sm text-muted-foreground">No pulse items matching filters.</div>
+        <div className="rounded-[var(--radius)] border border-border bg-card p-3 text-xs font-semibold text-muted-foreground">
+          No pulse items matching filters.
+        </div>
       ) : null}
 
       {/* Pagination */}
-      <div className="mt-2 flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 pt-2">
         <div className="text-xs font-semibold text-muted-foreground">
           Page {page} / {totalPages}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"

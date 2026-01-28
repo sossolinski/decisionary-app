@@ -8,7 +8,13 @@ import { deliverDueInjects } from "@/lib/sessions";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 
-export default function FacilitatorControls({ sessionId }: { sessionId: string }) {
+export default function FacilitatorControls({
+  sessionId,
+  onStarted,
+}: {
+  sessionId: string;
+  onStarted?: () => void;
+}) {
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -19,8 +25,12 @@ export default function FacilitatorControls({ sessionId }: { sessionId: string }
     const { error } = await supabase.rpc("start_session", { p_session_id: sessionId });
 
     setLoading(false);
+
     if (error) setMsg(error.message);
-    else setMsg("Exercise started (T=0)");
+    else {
+      setMsg("Exercise started (T=0)");
+      onStarted?.();
+    }
   }
 
   async function deliverScheduled() {
@@ -39,15 +49,15 @@ export default function FacilitatorControls({ sessionId }: { sessionId: string }
 
   return (
     <Card className="surface shadow-soft border border-[var(--studio-border)]">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">Facilitator tools</CardTitle>
-        <CardDescription className="text-sm">
+      <CardHeader>
+        <CardTitle className="text-sm">Facilitator tools</CardTitle>
+        <CardDescription className="text-xs">
           Quick controls for running the exercise and releasing scheduled injects.
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap gap-2">
+      <CardContent className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
           <Button variant="primary" onClick={startExercise} disabled={loading}>
             {loading ? "..." : "Start exercise"}
           </Button>
@@ -58,7 +68,7 @@ export default function FacilitatorControls({ sessionId }: { sessionId: string }
         </div>
 
         {msg ? (
-          <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground">
+          <div className="rounded-[var(--radius)] border border-border bg-muted/30 p-2 text-xs font-semibold">
             {msg}
           </div>
         ) : null}

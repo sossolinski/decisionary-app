@@ -71,10 +71,8 @@
 
     /* shadows + ring strings */
     --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.14);
-
     --studio-shadow: 0 1px 2px hsl(220 20% 20% / 0.06),
       0 10px 30px hsl(220 20% 20% / 0.06);
-
     --studio-shadow2: 0 2px 8px hsl(220 20% 20% / 0.06),
       0 18px 50px hsl(220 20% 20% / 0.08);
 
@@ -120,24 +118,23 @@
     --studio-bg: hsl(var(--background));
     --studio-text: hsl(var(--foreground));
 
-    --studio-surface: hsl(var(--card) / 0.70);
+    --studio-surface: hsl(var(--card) / 0.7);
     --studio-surface2: hsl(var(--card) / 0.85);
 
-    --studio-muted: hsl(var(--foreground) / 0.70);
+    --studio-muted: hsl(var(--foreground) / 0.7);
     --studio-muted2: hsl(var(--foreground) / 0.55);
 
     --studio-border: hsl(220 10% 22% / 0.85);
     --studio-border-strong: hsl(220 10% 26% / 0.95);
 
-    --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.20);
-
+    --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.2);
     --studio-shadow: 0 10px 28px hsl(0 0% 0% / 0.25);
     --studio-shadow2: 0 18px 50px hsl(0 0% 0% / 0.35);
 
     --studio-highlight: linear-gradient(
       180deg,
       hsl(var(--card) / 0.88),
-      hsl(var(--card) / 0.70)
+      hsl(var(--card) / 0.7)
     );
   }
 
@@ -290,6 +287,7 @@
     box-shadow: var(--studio-shadow2);
   }
 
+  /* glass */
   .surface {
     background: var(--studio-surface);
     backdrop-filter: blur(16px);
@@ -298,5 +296,18 @@
 
   .surface2 {
     background: var(--studio-surface2);
+  }
+
+  /* ✅ NEW: solid (for popovers/modals/overlays) */
+  .surface-solid {
+    background: hsl(var(--card) / 0.96);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .popover-solid {
+    background: hsl(var(--popover) / 0.98);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
