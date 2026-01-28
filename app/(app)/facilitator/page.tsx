@@ -6,8 +6,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { getMyRole } from "@/lib/users";
 import { LogOut, PlayCircle, FileText } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 
 export default function FacilitatorHome() {
   const router = useRouter();

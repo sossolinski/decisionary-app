@@ -99,9 +99,7 @@ export async function getSessionSituation(sessionId: string) {
    SESSION META
 ========================= */
 
-export async function getSessionScenarioId(
-  sessionId: string
-): Promise<string | null> {
+export async function getSessionScenarioId(sessionId: string): Promise<string | null> {
   const { data, error } = await supabase
     .from("sessions")
     .select("scenario_id")
@@ -196,22 +194,41 @@ export async function getSessionInbox(
   };
 }
 
-export function subscribeInbox(sessionId: string, cb: () => void) {
+/**
+ * Realtime subscription with coalescing (debounce) to avoid UI thrash.
+ * - listens only to INSERT on session_injects (new delivered messages)
+ * - multiple events within debounce window -> single cb() call
+ */
+export function subscribeInbox(sessionId: string, cb: () => void, debounceMs = 250) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return; // already scheduled
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
   const ch = supabase
     .channel(`session_injects:${sessionId}`)
     .on(
       "postgres_changes",
       {
-        event: "*",
+        event: "INSERT",
         schema: "public",
         table: "session_injects",
         filter: `session_id=eq.${sessionId}`,
       },
-      () => cb()
+      () => fire()
     )
     .subscribe();
 
   return () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
     supabase.removeChannel(ch);
   };
 }
@@ -232,9 +249,9 @@ export async function getSessionPulse(
   });
 }
 
-export function subscribePulse(sessionId: string, cb: () => void) {
+export function subscribePulse(sessionId: string, cb: () => void, debounceMs = 250) {
   // Same underlying table (session_injects)
-  return subscribeInbox(sessionId, cb);
+  return subscribeInbox(sessionId, cb, debounceMs);
 }
 
 /* =========================
@@ -327,9 +344,7 @@ export async function sendInjectToSession(
    FACILITATOR: deliverDueInjects (MVP)
 ========================= */
 
-export async function deliverDueInjects(
-  sessionId: string
-): Promise<{ delivered: number }> {
+export async function deliverDueInjects(sessionId: string): Promise<{ delivered: number }> {
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
     .select("id, scenario_id")
@@ -368,10 +383,11 @@ export async function deliverDueInjects(
 
   if (toDeliver.length === 0) return { delivered: 0 };
 
+  const nowIso = new Date().toISOString();
   const inserts = toDeliver.map((r) => ({
     session_id: sessionId,
     inject_id: r.inject_id,
-    delivered_at: new Date().toISOString(),
+    delivered_at: nowIso,
   }));
 
   const { error: insErr } = await supabase.from("session_injects").insert(inserts);

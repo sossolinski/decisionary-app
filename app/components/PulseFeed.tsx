@@ -2,19 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessions";
+import { Button } from "@/app/components/ui/button";
 
 type Props = {
   sessionId: string;
   selectedId: string | null;
   onSelect: (item: SessionInject) => void;
 
-  // filters
   severity?: string | null;
   search?: string;
 };
 
 function clampText(s: string, max = 160) {
-  const clean = s.replace(/\s+/g, " ").trim();
+  const clean = (s ?? "").replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + "…";
 }
@@ -39,11 +39,12 @@ function makeSeenKey(sessionId: string, severity: string | null) {
 function loadSeen(key: string): Set<string> {
   try {
     const raw = sessionStorage.getItem(key);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as string[];
-    return new Set(Array.isArray(arr) ? arr : []);
+    if (!raw) return new Set<string>();
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return new Set<string>();
+    return new Set<string>(arr.filter((x) => typeof x === "string") as string[]);
   } catch {
-    return new Set();
+    return new Set<string>();
   }
 }
 
@@ -53,29 +54,34 @@ function saveSeen(key: string, set: Set<string>) {
   } catch {}
 }
 
-export default function PulseFeed({ sessionId, selectedId, onSelect, severity = null, search = "" }: Props) {
+export default function PulseFeed({
+  sessionId,
+  selectedId,
+  onSelect,
+  severity = null,
+  search = "",
+}: Props) {
   const pageSize = 5;
 
   const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
 
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-
   const pageRef = useRef(1);
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
 
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
   // NEW flash
-  const [flashIds, setFlashIds] = useState<Set<string>>(new Set());
+  const [flashIds, setFlashIds] = useState<Set<string>>(() => new Set());
   const prevIdsRef = useRef<Set<string>>(new Set());
 
   // UNREAD
   const seenKey = useMemo(() => makeSeenKey(sessionId, severity), [sessionId, severity]);
   const [seen, setSeen] = useState<Set<string>>(() => new Set());
-
   useEffect(() => {
     setSeen(loadSeen(seenKey));
   }, [seenKey]);
@@ -83,7 +89,24 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const pages = rangePages(totalPages, page);
 
+  // =========================
+  // anti-load-storm guards
+  // =========================
+  const inFlightRef = useRef(false);
+  const pendingReloadRef = useRef(false);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   async function load(p = page) {
+    if (!sessionId) return;
+
+    // if a load is already running, just mark pending and exit
+    if (inFlightRef.current) {
+      pendingReloadRef.current = true;
+      return;
+    }
+
+    inFlightRef.current = true;
+
     try {
       setErr(null);
       setLoading(true);
@@ -93,8 +116,12 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
 
       setItems(next);
       setTotal(res.total ?? 0);
-      setPage(res.page ?? p);
 
+      const nextPage = res.page ?? p;
+      setPage(nextPage);
+      pageRef.current = nextPage;
+
+      // flash NEW (diff current list vs previous)
       const prev = prevIdsRef.current;
       const nextIds = new Set(next.map((x) => x.id));
       const added: string[] = [];
@@ -109,6 +136,7 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
           added.forEach((id) => merged.add(id));
           return merged;
         });
+
         window.setTimeout(() => {
           setFlashIds((old) => {
             const copy = new Set(old);
@@ -121,21 +149,54 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
       setErr(e?.message ?? "Failed to load pulse");
     } finally {
       setLoading(false);
+      inFlightRef.current = false;
+
+      // if something requested reload during the load, run exactly once
+      if (pendingReloadRef.current) {
+        pendingReloadRef.current = false;
+        load(pageRef.current);
+      }
     }
+  }
+
+  function requestReload() {
+    // coalesce multiple realtime events to one reload
+    if (reloadTimerRef.current) return;
+
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      load(pageRef.current);
+    }, 250);
   }
 
   useEffect(() => {
     if (!sessionId) return;
 
+    // reset state on filter/session change
     setPage(1);
+    pageRef.current = 1;
     prevIdsRef.current = new Set();
+    pendingReloadRef.current = false;
+    inFlightRef.current = false;
+
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+
     load(1);
 
     const unsub = subscribePulse(sessionId, () => {
-      load(pageRef.current);
+      requestReload();
     });
 
-    return () => unsub?.();
+    return () => {
+      if (reloadTimerRef.current) {
+        clearTimeout(reloadTimerRef.current);
+        reloadTimerRef.current = null;
+      }
+      unsub?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, severity]);
 
@@ -148,6 +209,7 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
+
     return items.filter((it) => {
       const t = it.injects?.title ?? "";
       const b = it.injects?.body ?? "";
@@ -168,174 +230,134 @@ export default function PulseFeed({ sessionId, selectedId, onSelect, severity = 
   }
 
   return (
-    <>
-      {err && (
-        <div style={{ padding: 10, borderRadius: 12, background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", marginBottom: 10 }}>
-          {err}
-        </div>
-      )}
-
-      {loading && <div style={{ padding: 8 }}>Loading…</div>}
+    <div className="space-y-2">
+      {err ? <div className="text-sm text-destructive">{err}</div> : null}
+      {loading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
 
       {!loading &&
-        visible.map((p) => {
-          const active = selectedId === p.id;
+        visible.map((item) => {
+          const active = selectedId === item.id;
 
-          const title = p.injects?.title?.trim() || "Pulse post";
-          const preview = p.injects?.body ? clampText(p.injects.body, 160) : "";
+          const title = item.injects?.title?.trim() || "Pulse post";
+          const preview = item.injects?.body ? clampText(item.injects.body, 160) : "";
           const metaLeft =
-            [p.injects?.sender_name, p.injects?.sender_org].filter(Boolean).join(" · ") ||
+            [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
             "Unknown source";
 
-          const channelTag = p.injects?.channel ? String(p.injects.channel).toUpperCase() : null;
-          const sevTag = p.injects?.severity ? String(p.injects.severity).toUpperCase() : null;
+          const channelTag = item.injects?.channel
+            ? String(item.injects.channel).toUpperCase()
+            : null;
 
-          const time = fmtTime(p.delivered_at);
+          const sevTag = item.injects?.severity
+            ? String(item.injects.severity).toUpperCase()
+            : null;
 
-          const unread = !seen.has(p.id);
-          const flash = flashIds.has(p.id);
+          const time = fmtTime(item.delivered_at);
+
+          const unread = !seen.has(item.id);
+          const flash = flashIds.has(item.id);
 
           return (
             <button
-              key={p.id}
+              key={item.id}
+              type="button"
               onClick={() => {
-                markSeen(p.id);
-                onSelect(p);
+                markSeen(item.id);
+                onSelect(item);
               }}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                padding: "10px 10px",
-                borderRadius: 14,
-                border: active ? "1px solid rgba(0,0,0,0.28)" : "1px solid rgba(0,0,0,0.12)",
-                background: active ? "rgba(0,0,0,0.04)" : "white",
-                cursor: "pointer",
-                marginBottom: 8,
-                boxShadow: flash ? "0 0 0 3px rgba(34,197,94,0.18)" : "none",
-              }}
+              className={[
+                "w-full text-left rounded-[var(--radius)] border px-3 py-3 transition",
+                active ? "border-foreground/30 bg-muted/40" : "border-border bg-card hover:bg-muted/30",
+                flash ? "shadow-soft ring-2 ring-foreground/10" : "",
+              ].join(" ")}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
-                <div style={{ fontWeight: 800, fontSize: 13 }}>
-                  {title}
-                  {unread && (
-                    <span
-                      style={{
-                        marginLeft: 8,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(0,0,0,0.14)",
-                        background: "rgba(0,0,0,0.04)",
-                      }}
-                    >
-                      UNREAD
-                    </span>
-                  )}
-                  {flash && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 11,
-                        fontWeight: 900,
-                        padding: "3px 8px",
-                        borderRadius: 999,
-                        border: "1px solid rgba(34,197,94,0.35)",
-                        background: "rgba(34,197,94,0.10)",
-                      }}
-                    >
-                      NEW
-                    </span>
-                  )}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">
+                    {title}{" "}
+                    {unread ? (
+                      <span className="ml-2 rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                        UNREAD
+                      </span>
+                    ) : null}
+                    {flash ? (
+                      <span className="ml-2 rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                        NEW
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {channelTag ? (
+                      <span className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-semibold">
+                        {channelTag}
+                      </span>
+                    ) : null}
+                    {sevTag ? (
+                      <span className="rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-semibold">
+                        {sevTag}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  {channelTag && (
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
-                      {channelTag}
-                    </span>
-                  )}
-                  {sevTag && (
-                    <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(0,0,0,0.12)", background: "rgba(0,0,0,0.03)" }}>
-                      {sevTag}
-                    </span>
-                  )}
+                <div className="shrink-0 text-[10px] font-semibold text-muted-foreground">
+                  {time}
                 </div>
               </div>
 
-              <div style={{ marginTop: 6, fontSize: 12, color: "rgba(0,0,0,0.74)" }}>
-                {preview ? preview : <span style={{ color: "rgba(0,0,0,0.45)" }}>(no content)</span>}
+              <div className="mt-2 text-xs text-muted-foreground">
+                {preview ? preview : "(no content)"}
               </div>
 
-              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "rgba(0,0,0,0.55)", fontWeight: 700 }}>
-                <span>{metaLeft}</span>
-                <span>{time}</span>
+              <div className="mt-2 text-[10px] font-semibold text-muted-foreground">
+                {metaLeft}
               </div>
             </button>
           );
         })}
 
-      {!loading && visible.length === 0 && (
-        <div style={{ padding: 10, color: "rgba(0,0,0,0.6)" }}>No pulse items matching filters.</div>
-      )}
+      {!loading && visible.length === 0 ? (
+        <div className="text-sm text-muted-foreground">No pulse items matching filters.</div>
+      ) : null}
 
       {/* Pagination */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 8 }}>
-        <div style={{ fontSize: 12, color: "rgba(0,0,0,0.65)", fontWeight: 700 }}>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-muted-foreground">
           Page {page} / {totalPages}
         </div>
 
-        <div style={{ display: "flex", gap: 6 }}>
-          <button
-            onClick={() => setPage((x) => Math.max(1, x - 1))}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: page <= 1 ? "not-allowed" : "pointer",
-              opacity: page <= 1 ? 0.5 : 1,
-              fontWeight: 700,
-            }}
           >
             {"<<"}
-          </button>
+          </Button>
 
           {pages.map((p) => (
-            <button
+            <Button
               key={p}
+              variant={p === page ? "secondary" : "ghost"}
+              size="sm"
               onClick={() => setPage(p)}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.12)",
-                background: p === page ? "rgba(0,0,0,0.06)" : "white",
-                fontWeight: p === page ? 900 : 700,
-                cursor: "pointer",
-              }}
             >
               {p}
-            </button>
+            </Button>
           ))}
 
-          <button
-            onClick={() => setPage((x) => Math.min(totalPages, x + 1))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page >= totalPages}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 10,
-              border: "1px solid rgba(0,0,0,0.12)",
-              background: "white",
-              cursor: page >= totalPages ? "not-allowed" : "pointer",
-              opacity: page >= totalPages ? 0.5 : 1,
-              fontWeight: 700,
-            }}
           >
             {">>"}
-          </button>
+          </Button>
         </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Button } from "@/app/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/app/components/ui/sheet";
 
 type NavItem = { href: string; label: string };
 

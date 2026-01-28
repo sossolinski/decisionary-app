@@ -4,17 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { joinSessionByCode } from "@/lib/sessionsRuntime";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+import { Card } from "@/app/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
 
-  // Facilitator login
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
-  // Participant join
   const [joinCode, setJoinCode] = useState("");
-
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -22,7 +21,6 @@ export default function LoginPage() {
     e.preventDefault();
     setMsg(null);
     setLoading(true);
-
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
@@ -38,9 +36,8 @@ export default function LoginPage() {
     e.preventDefault();
     setMsg(null);
     setLoading(true);
-
     try {
-      const sessionId = await joinSessionByCode(joinCode); // ✅ zwraca string
+      const sessionId = await joinSessionByCode(joinCode);
       router.replace(`/sessions/${sessionId}`);
     } catch (err: any) {
       setMsg(err?.message ?? "Join failed.");
@@ -50,121 +47,62 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 520, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ marginTop: 0 }}>Decisionary</h1>
-
-      {msg && (
-        <div
-          style={{
-            margin: "12px 0",
-            padding: 10,
-            borderRadius: 12,
-            background: "#fee2e2",
-          }}
-        >
-          {msg}
+    <main className="min-h-screen grid place-items-center p-6">
+      <div className="w-full max-w-md space-y-4">
+        <div className="text-center space-y-1">
+          <div className="text-2xl font-bold tracking-tight">Decisionary</div>
+          <div className="text-sm text-muted-foreground">
+            Tabletop simulation platform
+          </div>
         </div>
-      )}
 
-      <div style={{ display: "grid", gap: 18 }}>
-        {/* Facilitator */}
-        <div
-          style={{
-            border: "1px solid rgba(0,0,0,0.12)",
-            borderRadius: 14,
-            padding: 14,
-            background: "white",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Facilitator</h2>
+        {msg && (
+          <div className="rounded-[var(--radius)] border border-border bg-secondary px-3 py-2 text-sm">
+            {msg}
+          </div>
+        )}
 
-          <form onSubmit={handleFacilitatorLogin} style={{ display: "grid", gap: 10 }}>
-            <input
+        <Card className="p-4 space-y-3">
+          <div className="text-sm font-semibold">Facilitator</div>
+          <form onSubmit={handleFacilitatorLogin} className="space-y-2">
+            <Input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
+              autoComplete="email"
             />
-
-            <input
+            <Input
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
               placeholder="••••••••"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
+              autoComplete="current-password"
             />
-
-            <button
-              disabled={loading}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-                background: "white",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: 800,
-              }}
-            >
+            <Button type="submit" variant="primary" disabled={loading} className="w-full">
               {loading ? "…" : "Sign in"}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
 
-        {/* Participant */}
-        <div
-          style={{
-            border: "1px solid rgba(0,0,0,0.12)",
-            borderRadius: 14,
-            padding: 14,
-            background: "white",
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Participant</h2>
-
-          <form onSubmit={handleJoin} style={{ display: "grid", gap: 10 }}>
-            <input
+        <Card className="p-4 space-y-2">
+          <div className="text-sm font-semibold">Participant</div>
+          <form onSubmit={handleJoin} className="space-y-2">
+            <Input
               value={joinCode}
               onChange={(e) => setJoinCode(e.target.value)}
               placeholder="AB12CD"
               autoCapitalize="characters"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-              }}
             />
-
-            <button
-              disabled={loading}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid rgba(0,0,0,0.2)",
-                background: "white",
-                cursor: loading ? "not-allowed" : "pointer",
-                fontWeight: 800,
-              }}
-            >
+            <Button type="submit" variant="secondary" disabled={loading} className="w-full">
               {loading ? "…" : "Join session"}
-            </button>
+            </Button>
           </form>
 
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+          <div className="text-xs text-muted-foreground">
             Joining creates an anonymous session (no email required).
           </div>
-        </div>
+        </Card>
       </div>
-    </div>
+    </main>
   );
 }

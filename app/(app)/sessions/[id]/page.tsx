@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import type { Scenario } from "@/lib/scenarios";
-
 import {
   getSessionSituation,
   updateCasualties,
@@ -23,6 +22,18 @@ import AddInjectForm from "@/app/components/AddInjectForm";
 import Inbox from "@/app/components/Inbox";
 import PulseFeed from "@/app/components/PulseFeed";
 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+
+import { Filter, X } from "lucide-react";
+
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     v
@@ -33,7 +44,6 @@ type FeedTab = "inbox" | "pulse";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
-
   useEffect(() => {
     const m = window.matchMedia(query);
     const onChange = () => setMatches(m.matches);
@@ -41,8 +51,51 @@ function useMediaQuery(query: string) {
     m.addEventListener?.("change", onChange);
     return () => m.removeEventListener?.("change", onChange);
   }, [query]);
-
   return matches;
+}
+
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm font-semibold text-foreground
+                 focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+    >
+      {children}
+    </select>
+  );
+}
+
+function Chip({
+  label,
+  onClear,
+  title,
+}: {
+  label: string;
+  onClear: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title={title ?? "Clear"}
+      className="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold
+                 text-foreground hover:bg-secondary transition"
+    >
+      <span className="truncate">{label}</span>
+      <X size={14} className="shrink-0 text-muted-foreground" />
+    </button>
+  );
 }
 
 export default function SessionParticipantPage() {
@@ -64,16 +117,13 @@ export default function SessionParticipantPage() {
   const [severity, setSeverity] = useState<string | null>(null);
   const [channel, setChannel] = useState<string | null>(null); // only Inbox
   const [feedOpen, setFeedOpen] = useState(false); // mobile drawer
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Actions + log state
   const [actions, setActions] = useState<SessionAction[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
   const [comment, setComment] = useState("");
-
-  // Notes (simple local notepad)
-  const [notes, setNotes] = useState("");
-  const [notesSaved, setNotesSaved] = useState<"idle" | "saved">("idle");
 
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -85,8 +135,8 @@ export default function SessionParticipantPage() {
   // Session owner (fallback facilitator)
   const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
 
-  // Top bar clock (live clock for now)
-  const [liveClock, setLiveClock] = useState<string>("");
+  // Live clock
+  const [liveClock, setLiveClock] = useState("");
 
   useEffect(() => {
     const tick = () =>
@@ -101,28 +151,6 @@ export default function SessionParticipantPage() {
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, []);
-
-  useEffect(() => {
-    try {
-      const key = `decisionary_notes_${sessionId}`;
-      const existing = localStorage.getItem(key);
-      if (existing) setNotes(existing);
-    } catch {}
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    const t = setTimeout(() => {
-      try {
-        const key = `decisionary_notes_${sessionId}`;
-        localStorage.setItem(key, notes);
-        setNotesSaved("saved");
-        setTimeout(() => setNotesSaved("idle"), 900);
-      } catch {}
-    }, 350);
-
-    return () => clearTimeout(t);
-  }, [notes, sessionId]);
 
   // Close tools popover on Escape / outside click
   useEffect(() => {
@@ -140,10 +168,18 @@ export default function SessionParticipantPage() {
     };
   }, [toolsOpen]);
 
+  // Close filters on Escape (quality-of-life)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setFiltersOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Load role (with owner fallback)
   useEffect(() => {
     if (!validSessionId) return;
-
     let alive = true;
 
     (async () => {
@@ -164,7 +200,6 @@ export default function SessionParticipantPage() {
           return;
         }
 
-        // Pull all assignments for the session and match on common keys client-side.
         const { data, error } = await supabase
           .from("session_role_assignments")
           .select("*")
@@ -173,7 +208,6 @@ export default function SessionParticipantPage() {
         if (error) throw error;
 
         const rows = (data ?? []) as any[];
-
         const match = rows.find((r) => {
           const roleKey = r?.role_key ?? r?.role ?? r?.role_id ?? null;
           const uid =
@@ -183,7 +217,6 @@ export default function SessionParticipantPage() {
             r?.participant_id ??
             r?.owner_id ??
             null;
-
           return roleKey === "facilitator" && uid === authUserId;
         });
 
@@ -225,13 +258,11 @@ export default function SessionParticipantPage() {
 
     (async () => {
       try {
-        // 1) scenario_id (should exist)
         const { data: sess1, error: sessErr1 } = await supabase
           .from("sessions")
           .select("scenario_id")
           .eq("id", sessionId)
           .single();
-
         if (sessErr1) throw sessErr1;
 
         const scenarioId =
@@ -240,7 +271,7 @@ export default function SessionParticipantPage() {
           (sess1 as any)?.scenarioId ??
           null;
 
-        // 2) owner lookup (best-effort; missing column must NOT crash)
+        // owner lookup (best-effort; missing column must NOT crash)
         const ownerCandidates = [
           "owner_id",
           "created_by",
@@ -248,7 +279,6 @@ export default function SessionParticipantPage() {
           "owner",
           "user_id",
         ] as const;
-
         let ownerId: string | null = null;
 
         for (const col of ownerCandidates) {
@@ -267,7 +297,6 @@ export default function SessionParticipantPage() {
 
         if (alive) setSessionOwnerId(ownerId);
 
-        // 3) load scenario
         if (!scenarioId) {
           if (alive) setScenario(null);
           return;
@@ -280,15 +309,13 @@ export default function SessionParticipantPage() {
           .single();
 
         if (scErr) throw scErr;
-
         if (alive) setScenario(sc as Scenario);
       } catch (e: any) {
         if (alive) {
           setScenario(null);
-          setError(
-            (prev) =>
-              prev ??
-              (e?.message ? `Scenario load: ${e.message}` : "Scenario load failed")
+          setError((prev) =>
+            prev ??
+            (e?.message ? `Scenario load: ${e.message}` : "Scenario load failed")
           );
         }
       }
@@ -303,7 +330,6 @@ export default function SessionParticipantPage() {
   useEffect(() => {
     if (!validSessionId) return;
     let alive = true;
-
     setActionsLoading(true);
     setActionsError(null);
 
@@ -317,7 +343,12 @@ export default function SessionParticipantPage() {
     };
   }, [sessionId, validSessionId]);
 
-  // Inbox actions
+  function clearFilters() {
+    setSearch("");
+    setSeverity(null);
+    setChannel(null);
+  }
+
   async function doAction(actionType: "ignore" | "escalate" | "act") {
     if (!selectedItem) return;
 
@@ -333,7 +364,9 @@ export default function SessionParticipantPage() {
       setActions((prev) => [saved, ...prev]);
 
       if (actionType === "act") {
-        const title = `Update: action taken on "${selectedItem.injects?.title ?? "message"}"`;
+        const title = `Update: action taken on "${
+          selectedItem.injects?.title ?? "message"
+        }"`;
         const body =
           `Decision recorded.\n\n` +
           `Action: ACT\n` +
@@ -352,7 +385,6 @@ export default function SessionParticipantPage() {
     }
   }
 
-  // Pulse decisions -> official comms into Inbox
   async function doPulseDecision(decision: "confirm" | "deny") {
     if (!selectedItem) return;
 
@@ -394,19 +426,13 @@ export default function SessionParticipantPage() {
     }
   }
 
-  function clearFilters() {
-    setSearch("");
-    setSeverity(null);
-    setChannel(null);
-  }
-
   if (!sessionId) return <>Loading…</>;
 
   if (!validSessionId) {
     return (
-      <div style={{ padding: 16 }}>
-        <h2>Invalid session id</h2>
-        <p>
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Invalid session id</h2>
+        <p className="text-sm text-muted-foreground">
           This URL parameter must be a UUID. Go back and paste a valid{" "}
           <code>sessions.id</code> from Supabase.
         </p>
@@ -416,712 +442,368 @@ export default function SessionParticipantPage() {
 
   if (error) {
     return (
-      <div style={{ padding: 16 }}>
-        <strong>Error:</strong> {error}
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold">Error</h2>
+        <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
   }
 
-  const feed = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search title/body/sender…"
-          style={{
-            width: "100%",
-            padding: "9px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.14)",
-            background: "white",
-            fontSize: 12,
-            fontWeight: 700,
-            outline: "none",
-          }}
-        />
-
-        <select
-          value={severity ?? ""}
-          onChange={(e) => setSeverity(e.target.value ? e.target.value : null)}
-          style={{
-            width: "100%",
-            padding: "9px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.14)",
-            background: "white",
-            fontSize: 12,
-            fontWeight: 800,
-            outline: "none",
-          }}
-        >
-          <option value="">Severity: All</option>
-          <option value="low">Severity: LOW</option>
-          <option value="medium">Severity: MEDIUM</option>
-          <option value="high">Severity: HIGH</option>
-          <option value="critical">Severity: CRITICAL</option>
-        </select>
-
-        {activeTab === "inbox" && (
-          <select
-            value={channel ?? ""}
-            onChange={(e) => setChannel(e.target.value ? e.target.value : null)}
-            style={{
-              width: "100%",
-              padding: "9px 10px",
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.14)",
-              background: "white",
-              fontSize: 12,
-              fontWeight: 800,
-              outline: "none",
-            }}
-          >
-            <option value="">Channel: All (non-pulse)</option>
-            <option value="ops">Channel: OPS</option>
-            <option value="media">Channel: MEDIA</option>
-            <option value="social">Channel: SOCIAL</option>
-          </select>
-        )}
-
-        <button
-          onClick={clearFilters}
-          style={{
-            padding: "9px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.14)",
-            background: "white",
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 900,
-          }}
-        >
-          Clear filters
-        </button>
-      </div>
-
-      {activeTab === "inbox" ? (
-        <Inbox
-          sessionId={sessionId}
-          mode="inbox"
-          selectedId={selectedItem?.id ?? null}
-          onSelect={(item: SessionInject) => {
-            setSelectedItem(item);
-            if (isMobile) setFeedOpen(false);
-          }}
-          channel={channel}
-          severity={severity}
-          search={search}
-        />
-      ) : (
-        <PulseFeed
-          sessionId={sessionId}
-          selectedId={selectedItem?.id ?? null}
-          onSelect={(item: SessionInject) => {
-            setSelectedItem(item);
-            if (isMobile) setFeedOpen(false);
-          }}
-          severity={severity}
-          search={search}
-        />
-      )}
-    </div>
-  );
-
-  const workspaceGrid = isMobile ? "1fr" : "340px minmax(520px, 1fr) 360px";
-
   const sessionTitle = scenario?.title ? scenario.title : "Session";
   const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
 
-  return (
-    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* TOP BAR + CLOCK */}
-      <div
-        style={{
-          position: "sticky",
-          top: 10,
-          zIndex: 50,
-          background: "rgba(255,255,255,0.92)",
-          border: "1px solid rgba(0,0,0,0.10)",
-          borderRadius: 16,
-          padding: 12,
-          backdropFilter: "blur(8px)",
-          boxShadow: "0 12px 28px rgba(11,18,32,0.10)",
-        }}
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
-            gap: 10,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.15 }}>
-              {sessionTitle}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                fontWeight: 800,
-                color: "rgba(0,0,0,0.55)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-              title={sessionMeta}
-            >
-              {sessionMeta}
-            </div>
-          </div>
+  const anyFiltersOn =
+    Boolean(search.trim()) || Boolean(severity) || (activeTab === "inbox" && Boolean(channel));
 
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              justifyContent: isMobile ? "flex-start" : "flex-end",
-              alignItems: "center",
-              flexWrap: "wrap",
+  const LeftPanel = (
+    <Card className="h-full">
+      <CardHeader className="flex flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Button
+            variant={activeTab === "inbox" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => {
+              setActiveTab("inbox");
+              setSelectedItem(null);
+              setFiltersOpen(false);
             }}
           >
-            {/* Clock */}
-            <div
-              style={{
-                padding: "9px 10px",
-                borderRadius: 12,
-                border: "1px solid rgba(0,0,0,0.14)",
-                background: "white",
-                fontSize: 12,
-                fontWeight: 900,
-              }}
-              title="Live clock (local)"
-            >
-              ⏱ {liveClock}
-            </div>
-
-            {/* Facilitator tools (role gated) */}
-            {roleLoading ? (
-              <div
-                style={{
-                  padding: "9px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  fontSize: 12,
-                  fontWeight: 900,
-                  opacity: 0.7,
-                }}
-              >
-                Loading role…
-              </div>
-            ) : isFacilitator ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setToolsOpen((v) => !v);
-                }}
-                style={{
-                  padding: "9px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
-              >
-                Facilitator tools
-              </button>
-            ) : null}
-
-            {isMobile && (
-              <button
-                onClick={() => setFeedOpen(true)}
-                style={{
-                  padding: "9px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
-              >
-                Open feed
-              </button>
-            )}
-          </div>
+            Inbox
+          </Button>
+          <Button
+            variant={activeTab === "pulse" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => {
+              setActiveTab("pulse");
+              setSelectedItem(null);
+              setChannel(null);
+              setFiltersOpen(false);
+            }}
+          >
+            Pulse
+          </Button>
         </div>
 
-        {/* Tools popover */}
-        {isFacilitator && toolsOpen ? (
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              marginTop: 10,
-              borderTop: "1px solid rgba(0,0,0,0.08)",
-              paddingTop: 10,
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-              gap: 12,
-            }}
+        {isMobile ? (
+          <Button variant="secondary" size="sm" onClick={() => setFeedOpen(false)}>
+            Close
+          </Button>
+        ) : null}
+      </CardHeader>
+
+      <CardContent className="space-y-3">
+        {/* Search + Filters button */}
+        <div className="flex items-center gap-2">
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title/body/sender…"
+            className="flex-1"
+          />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 w-9 p-0"
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-label="Filters"
+            title="Filters"
           >
-            <div
-              style={{
-                background: "white",
-                border: "1px solid rgba(0,0,0,0.10)",
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              <div style={{ fontWeight: 950, fontSize: 13, marginBottom: 8 }}>
-                In-session controls
-              </div>
-              <FacilitatorControls sessionId={sessionId} />
-            </div>
+            <Filter size={18} />
+          </Button>
+        </div>
 
-            <div
-              style={{
-                background: "white",
-                border: "1px solid rgba(0,0,0,0.10)",
-                borderRadius: 14,
-                padding: 12,
-              }}
-            >
-              <div style={{ fontWeight: 950, fontSize: 13, marginBottom: 8 }}>
-                New inject
-              </div>
-              <AddInjectForm sessionId={sessionId} />
-            </div>
+        {/* Chips row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {!anyFiltersOn ? (
+            <span className="text-xs font-semibold text-muted-foreground">No filters</span>
+          ) : (
+            <>
+              {search.trim() ? (
+                <Chip
+                  label={`Search: ${search.trim()}`}
+                  onClear={() => setSearch("")}
+                  title="Clear search"
+                />
+              ) : null}
 
-            <div
-              style={{
-                gridColumn: isMobile ? "auto" : "1 / -1",
-                display: "flex",
-                justifyContent: "flex-end",
-              }}
-            >
+              {severity ? (
+                <Chip
+                  label={`Severity: ${severity}`}
+                  onClear={() => setSeverity(null)}
+                  title="Clear severity"
+                />
+              ) : null}
+
+              {activeTab === "inbox" && channel ? (
+                <Chip
+                  label={`Channel: ${channel}`}
+                  onClear={() => setChannel(null)}
+                  title="Clear channel"
+                />
+              ) : null}
+
               <button
-                onClick={() => setToolsOpen(false)}
-                style={{
-                  padding: "9px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  fontWeight: 900,
-                }}
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center rounded-full border border-border bg-background px-2 py-1 text-xs font-semibold
+                           text-muted-foreground hover:bg-secondary transition"
+                title="Clear all"
               >
-                Close
+                Clear all
               </button>
+            </>
+          )}
+        </div>
+
+        {/* Collapsible Filters panel */}
+        {filtersOpen ? (
+          <div className="space-y-3 rounded-[var(--radius)] border border-border bg-muted/30 p-3">
+            <Select value={severity ?? ""} onChange={(v) => setSeverity(v ? v : null)}>
+              <option value="">Severity: All</option>
+              <option value="LOW">Severity: LOW</option>
+              <option value="MEDIUM">Severity: MEDIUM</option>
+              <option value="HIGH">Severity: HIGH</option>
+              <option value="CRITICAL">Severity: CRITICAL</option>
+            </Select>
+
+            {activeTab === "inbox" ? (
+              <Select value={channel ?? ""} onChange={(v) => setChannel(v ? v : null)}>
+                <option value="">Channel: All (non-pulse)</option>
+                <option value="OPS">Channel: OPS</option>
+                <option value="MEDIA">Channel: MEDIA</option>
+                <option value="SOCIAL">Channel: SOCIAL</option>
+              </Select>
+            ) : null}
+
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={clearFilters}>
+                Clear
+              </Button>
+              <Button variant="secondary" className="flex-1" onClick={() => setFiltersOpen(false)}>
+                Done
+              </Button>
             </div>
           </div>
         ) : null}
-      </div>
 
-      {/* Context */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid rgba(0,0,0,0.10)",
-          borderRadius: 16,
-          padding: 12,
-        }}
-      >
-        <SituationCard
-          scenario={scenario}
-          situation={situation}
-          onUpdateCasualties={async (p) => {
-            const next = await updateCasualties({
-              sessionId,
-              injured: p.injured,
-              fatalities: p.fatalities,
-              uninjured: p.uninjured,
-              unknown: p.unknown,
-            });
-            setSituation(next);
-          }}
-        />
-      </div>
-
-      {/* Workspace */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: workspaceGrid,
-          gap: 12,
-          alignItems: "start",
-        }}
-      >
-        {/* LEFT */}
-        <div
-          style={{
-            background: "white",
-            border: "1px solid rgba(0,0,0,0.10)",
-            borderRadius: 16,
-            padding: 12,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                padding: 6,
-                borderRadius: 14,
-                border: "1px solid rgba(0,0,0,0.12)",
-                background: "rgba(0,0,0,0.03)",
+        <div className="pt-1">
+          {activeTab === "inbox" ? (
+            <Inbox
+              sessionId={sessionId}
+              mode="inbox"
+              selectedId={selectedItem?.id ?? null}
+              onSelect={(item) => {
+                setSelectedItem(item);
+                if (isMobile) setFeedOpen(false);
               }}
-            >
-              <button
-                onClick={() => {
-                  setActiveTab("inbox");
-                  setSelectedItem(null);
-                }}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  background: activeTab === "inbox" ? "white" : "transparent",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                Inbox
-              </button>
-              <button
-                onClick={() => {
-                  setActiveTab("pulse");
-                  setSelectedItem(null);
-                  setChannel(null);
-                }}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 10,
-                  border: "1px solid rgba(0,0,0,0.12)",
-                  background: activeTab === "pulse" ? "white" : "transparent",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                Pulse
-              </button>
-            </div>
-
-            {isMobile && (
-              <button
-                onClick={() => setFeedOpen(true)}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                Feed
-              </button>
-            )}
-          </div>
-
-          {!isMobile ? feed : null}
-        </div>
-
-        {/* MIDDLE */}
-        <div
-          style={{
-            background: "white",
-            border: "1px solid rgba(0,0,0,0.10)",
-            borderRadius: 16,
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-          }}
-        >
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-              <h3 style={{ marginTop: 0, marginBottom: 6 }}>Message detail</h3>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-                {selectedItem ? "Selected" : "No selection"}
-              </div>
-            </div>
-            <MessageDetail item={selectedItem} mode={activeTab} />
-          </div>
-
-          <div style={{ borderTop: "1px solid rgba(0,0,0,0.08)", paddingTop: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 900, fontSize: 14 }}>Actions</div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-                {selectedItem ? <>Ready</> : <>Pick a message to act</>}
-              </div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder={
-                  activeTab === "pulse"
-                    ? "Optional comment (why confirm/deny)"
-                    : "Optional comment (what you did / why)"
-                }
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.15)",
-                  minHeight: 70,
-                }}
-              />
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              {activeTab === "pulse" ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button
-                    onClick={() => doPulseDecision("confirm")}
-                    disabled={!selectedItem}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      cursor: selectedItem ? "pointer" : "not-allowed",
-                      opacity: selectedItem ? 1 : 0.5,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Confirm
-                  </button>
-                  <button
-                    onClick={() => doPulseDecision("deny")}
-                    disabled={!selectedItem}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      cursor: selectedItem ? "pointer" : "not-allowed",
-                      opacity: selectedItem ? 1 : 0.5,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Deny
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <button
-                    onClick={() => doAction("ignore")}
-                    disabled={!selectedItem}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      cursor: selectedItem ? "pointer" : "not-allowed",
-                      opacity: selectedItem ? 1 : 0.5,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Ignore
-                  </button>
-                  <button
-                    onClick={() => doAction("escalate")}
-                    disabled={!selectedItem}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      cursor: selectedItem ? "pointer" : "not-allowed",
-                      opacity: selectedItem ? 1 : 0.5,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Escalate
-                  </button>
-                  <button
-                    onClick={() => doAction("act")}
-                    disabled={!selectedItem}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      cursor: selectedItem ? "pointer" : "not-allowed",
-                      opacity: selectedItem ? 1 : 0.5,
-                      fontWeight: 800,
-                    }}
-                  >
-                    Act
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 12, color: "rgba(0,0,0,0.60)" }}>
-              {selectedItem ? (
-                <>Select a message to enable context-aware actions.</>
-              ) : (
-                <>Select a message to enable context-aware actions.</>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT */}
-        <div
-          style={{
-            background: "white",
-            border: "1px solid rgba(0,0,0,0.10)",
-            borderRadius: 16,
-            padding: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            minHeight: 220,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-            <h3 style={{ margin: 0 }}>Notes</h3>
-            <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-              {notesSaved === "saved" ? "Saved" : " "}
-            </div>
-          </div>
-
-          <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-            {selectedItem ? (
-              <>
-                Linked to: <span style={{ fontWeight: 900 }}>{selectedItem.injects?.title ?? "Message"}</span>
-              </>
-            ) : (
-              <>Session notes (no message selected)</>
-            )}
-          </div>
-
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Write your facilitator notes here…"
-            style={{
-              width: "100%",
-              minHeight: 260,
-              resize: "vertical",
-              padding: 10,
-              borderRadius: 12,
-              border: "1px solid rgba(0,0,0,0.15)",
-              fontSize: 13,
-              lineHeight: 1.4,
-            }}
-          />
-
-          <div style={{ fontSize: 12, color: "rgba(0,0,0,0.55)", fontWeight: 800 }}>
-            Auto-saves locally for this session.
-          </div>
-        </div>
-      </div>
-
-      {/* LOG SECTION (bottom) */}
-      <div
-        style={{
-          background: "white",
-          border: "1px solid rgba(0,0,0,0.10)",
-          borderRadius: 16,
-          padding: 12,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-          <h3 style={{ margin: 0 }}>Log</h3>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "rgba(0,0,0,0.55)" }}>
-            {actionsLoading ? "Loading…" : `${actions.length} entries`}
-          </div>
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          {actionsError ? (
-            <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 800 }}>{actionsError}</div>
-          ) : null}
-
-          {actionsLoading ? (
-            <div style={{ fontSize: 12, opacity: 0.7 }}>Loading…</div>
-          ) : actions.length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.7 }}>No actions yet.</div>
+              channel={channel}
+              severity={severity}
+              search={search}
+            />
           ) : (
-            <div style={{ display: "grid", gap: 8 }}>
-              {actions.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    border: "1px solid rgba(0,0,0,0.10)",
-                    borderRadius: 12,
-                    padding: 10,
-                    background: "rgba(0,0,0,0.02)",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontWeight: 900, fontSize: 12 }}>
-                      {a.action_type.toUpperCase()} <span style={{ opacity: 0.6 }}>· {a.source}</span>
-                    </div>
-                    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 800 }}>
-                      {a.created_at ? new Date(a.created_at).toLocaleString() : ""}
-                    </div>
-                  </div>
-                  {a.comment ? (
-                    <div style={{ marginTop: 6, fontSize: 12, whiteSpace: "pre-wrap", opacity: 0.85 }}>
-                      {a.comment}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
-            </div>
+            <PulseFeed
+              sessionId={sessionId}
+              selectedId={selectedItem?.id ?? null}
+              onSelect={(item) => {
+                setSelectedItem(item);
+                if (isMobile) setFeedOpen(false);
+              }}
+              severity={severity}
+              search={search}
+            />
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+
+  const MiddlePanel = (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>Message detail</CardTitle>
+            <CardDescription>{selectedItem ? "Selected" : "No selection"}</CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <MessageDetail item={selectedItem} mode={activeTab} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>Actions</CardTitle>
+            <CardDescription>{selectedItem ? "Ready" : "Pick a message to act"}</CardDescription>
+          </div>
+
+          {actionsLoading ? (
+            <span className="text-xs font-semibold text-muted-foreground">Loading…</span>
+          ) : actionsError ? (
+            <span className="text-xs font-semibold text-muted-foreground">{actionsError}</span>
+          ) : (
+            <span className="text-xs font-semibold text-muted-foreground">
+              {actions.length ? `${actions.length} logged` : "No log yet"}
+            </span>
+          )}
+        </CardHeader>
+
+        <CardContent className="space-y-3">
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder={
+              activeTab === "pulse"
+                ? "Optional comment (why confirm/deny)"
+                : "Optional comment (what you did / why)"
+            }
+            className="min-h-[88px] w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm
+                       focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+          />
+
+          {activeTab === "pulse" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="primary"
+                onClick={() => doPulseDecision("confirm")}
+                disabled={!selectedItem}
+              >
+                Confirm
+              </Button>
+              <Button variant="danger" onClick={() => doPulseDecision("deny")} disabled={!selectedItem}>
+                Deny
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <Button variant="ghost" onClick={() => doAction("ignore")} disabled={!selectedItem}>
+                Ignore
+              </Button>
+              <Button variant="secondary" onClick={() => doAction("escalate")} disabled={!selectedItem}>
+                Escalate
+              </Button>
+              <Button variant="primary" onClick={() => doAction("act")} disabled={!selectedItem}>
+                Act
+              </Button>
+            </div>
+          )}
+
+          <p className="text-xs font-semibold text-muted-foreground">
+            Select a message to enable context-aware actions.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* HEADER */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div className="min-w-0">
+            <CardTitle className="text-lg">{sessionTitle}</CardTitle>
+            <CardDescription className="mt-1">{sessionMeta}</CardDescription>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold">
+              ⏱ {liveClock}
+            </div>
+
+            {roleLoading ? (
+              <div className="text-xs font-semibold text-muted-foreground">Loading role…</div>
+            ) : isFacilitator ? (
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setToolsOpen((v) => !v);
+                  }}
+                >
+                  Facilitator tools
+                </Button>
+
+                {toolsOpen ? (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 mt-2 w-[560px] max-w-[90vw] overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-soft"
+                  >
+                    <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                      <div className="text-sm font-semibold">In-session controls</div>
+                      <Button variant="ghost" size="sm" onClick={() => setToolsOpen(false)}>
+                        Close
+                      </Button>
+                    </div>
+
+                    <div className="grid gap-4 p-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground">Controls</div>
+                        <FacilitatorControls sessionId={sessionId} />
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold text-muted-foreground">New inject</div>
+                        <AddInjectForm sessionId={sessionId} />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {isMobile ? (
+              <Button variant="secondary" size="sm" onClick={() => setFeedOpen(true)}>
+                Open feed
+              </Button>
+            ) : null}
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <SituationCard
+            situation={situation}
+            scenario={scenario}
+            onUpdateCasualties={async (p: {
+              injured: number;
+              fatalities: number;
+              uninjured: number;
+              unknown: number;
+            }) => {
+              const next = await updateCasualties({
+                sessionId,
+                injured: p.injured,
+                fatalities: p.fatalities,
+                uninjured: p.uninjured,
+                unknown: p.unknown,
+              });
+              setSituation(next);
+            }}
+          />
+        </CardContent>
+      </Card>
+
+      {/* WORKSPACE */}
+      <div
+        className={[
+          "grid gap-4",
+          isMobile ? "grid-cols-1" : "grid-cols-[360px_minmax(520px,1fr)]",
+        ].join(" ")}
+      >
+        {!isMobile ? <div>{LeftPanel}</div> : null}
+        <div>{MiddlePanel}</div>
       </div>
 
       {/* MOBILE FEED DRAWER */}
       {isMobile && feedOpen ? (
-        <div
-          onClick={() => setFeedOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            zIndex: 100,
-            display: "flex",
-            justifyContent: "flex-end",
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(520px, 92vw)",
-              height: "100%",
-              background: "white",
-              padding: 12,
-              borderLeft: "1px solid rgba(0,0,0,0.10)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 950 }}>Feed</div>
-              <button
-                onClick={() => setFeedOpen(false)}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(0,0,0,0.14)",
-                  background: "white",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                }}
-              >
-                Close
-              </button>
-            </div>
-            {feed}
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setFeedOpen(false)} />
+          <div className="absolute inset-x-0 bottom-0 top-14 p-4">
+            <div className="h-full">{LeftPanel}</div>
           </div>
         </div>
       ) : null}

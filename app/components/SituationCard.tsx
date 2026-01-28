@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SessionSituation } from "@/lib/sessions";
 import type { Scenario } from "@/lib/scenarios";
+
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -49,84 +52,6 @@ function fmtTimeLoose(v: string | null | undefined) {
   return String(v);
 }
 
-function Box({
-  title,
-  children,
-  footer,
-}: {
-  title: string;
-  children: React.ReactNode;
-  footer?: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        borderRadius: 14,
-        border: "1px solid rgba(0,0,0,0.10)",
-        background: "rgba(0,0,0,0.02)",
-        padding: 12,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div style={{ fontSize: 12, fontWeight: 950 }}>{title}</div>
-      <div style={{ display: "grid", gap: 6 }}>{children}</div>
-      {footer ? (
-        <div
-          style={{
-            marginTop: 4,
-            paddingTop: 10,
-            borderTop: "1px dashed rgba(0,0,0,0.15)",
-          }}
-        >
-          {footer}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function Row({ k, v }: { k: string; v: string }) {
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "110px 1fr",
-        gap: 10,
-        alignItems: "baseline",
-        padding: "4px 0",
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.55)" }}>
-        {k}
-      </div>
-      <div style={{ fontSize: 12, fontWeight: 900, color: "rgba(0,0,0,0.82)" }}>
-        {v}
-      </div>
-    </div>
-  );
-}
-
-function SmallStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | null | undefined;
-}) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-      <span style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.55)" }}>
-        {label}
-      </span>
-      <span style={{ fontSize: 12, fontWeight: 900, color: "rgba(0,0,0,0.82)" }}>
-        {typeof value === "number" ? value : "—"}
-      </span>
-    </div>
-  );
-}
-
 function numOr(prev: number, raw: string) {
   const t = raw.trim();
   if (t === "") return prev;
@@ -135,41 +60,48 @@ function numOr(prev: number, raw: string) {
   return Math.max(0, Math.floor(n));
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
+function StatRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="grid grid-cols-[110px_1fr] gap-3 py-1">
+      <div className="text-[11px] font-semibold text-muted-foreground">{k}</div>
+      <div className="text-sm font-semibold text-foreground">{v}</div>
+    </div>
+  );
+}
+
+function SmallStat({ label, value }: { label: string; value: number | null | undefined }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
+      <span className="text-sm font-semibold text-foreground">
+        {typeof value === "number" ? value : "—"}
+      </span>
+    </div>
+  );
+}
+
+function SectionShell({
+  title,
+  right,
+  children,
+  footer,
 }: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "grid", gap: 6 }}>
-      <span style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.62)" }}>
-        {label}
-      </span>
-      <input
-        type="number"
-        min={0}
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          width: "100%",
-          padding: "8px 10px",
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.15)",
-          background: "white",
-          fontWeight: 850,
-          fontSize: 12,
-          outline: "none",
-        }}
-      />
-    </label>
+    <div className="rounded-[var(--radius)] border border-border bg-card p-4 shadow-soft">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold text-foreground">{title}</div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="grid gap-2">{children}</div>
+      {footer ? (
+        <div className="mt-3 border-t border-dashed border-border pt-3">{footer}</div>
+      ) : null}
+    </div>
   );
 }
 
@@ -213,42 +145,24 @@ export default function SituationCard({
     setUnknown(String(scenario?.unknown ?? 0));
   }, [situation?.updated_at, scenario?.id]);
 
-  const hasScenarioFallback =
-    !!scenario &&
-    (scenario.situation_type ||
-      scenario.short_description ||
-      scenario.location ||
-      typeof scenario.injured === "number" ||
-      typeof scenario.fatalities === "number" ||
-      typeof scenario.uninjured === "number" ||
-      typeof scenario.unknown === "number" ||
-      scenario.event_date ||
-      scenario.event_time ||
-      scenario.timezone);
+  const hasScenarioFallback = useMemo(() => {
+    return (
+      !!scenario &&
+      (scenario.situation_type ||
+        scenario.short_description ||
+        scenario.location ||
+        typeof scenario.injured === "number" ||
+        typeof scenario.fatalities === "number" ||
+        typeof scenario.uninjured === "number" ||
+        typeof scenario.unknown === "number" ||
+        scenario.event_date ||
+        scenario.event_time ||
+        scenario.timezone)
+    );
+  }, [scenario]);
 
   if (!situation && !hasScenarioFallback) {
-    return (
-      <div
-        style={{
-          padding: 14,
-          borderRadius: 16,
-          border: "1px solid rgba(0,0,0,0.10)",
-          background: "white",
-        }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 950 }}>Situation</div>
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 12,
-            color: "rgba(0,0,0,0.55)",
-            fontWeight: 700,
-          }}
-        >
-          Loading…
-        </div>
-      </div>
-    );
+    return <div className="text-sm font-semibold text-muted-foreground">Loading…</div>;
   }
 
   const s = situation;
@@ -270,6 +184,7 @@ export default function SituationCard({
 
   async function onSave() {
     if (!onUpdateCasualties) return;
+
     setErr(null);
     setSaving(true);
 
@@ -297,16 +212,7 @@ export default function SituationCard({
 
   const casualtiesFooter =
     s && (updatedAt || updatedBy) ? (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 10,
-          fontSize: 11,
-          color: "rgba(0,0,0,0.55)",
-          fontWeight: 850,
-        }}
-      >
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
         <span>{updatedAt ? `Last updated: ${updatedAt}` : ""}</span>
         <span>{updatedBy ? `By: ${updatedBy}` : ""}</span>
       </div>
@@ -314,149 +220,111 @@ export default function SituationCard({
 
   return (
     <div
-      style={{
-        padding: 14,
-        borderRadius: 16,
-        border: "1px solid rgba(0,0,0,0.10)",
-        background: "white",
-      }}
+      className={[
+        "grid gap-4",
+        isMobile ? "grid-cols-1" : "grid-cols-[320px_minmax(360px,1fr)_260px]",
+      ].join(" ")}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "baseline",
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ fontSize: 12, fontWeight: 950 }}>
-          Situation{" "}
-          {scenario?.title ? (
-            <span style={{ opacity: 0.6 }}>· {scenario.title}</span>
-          ) : null}
+      <SectionShell title="Event">
+        <StatRow k="Event name" v={eventName} />
+        <StatRow k="Date" v={date} />
+        <StatRow k="Time" v={time} />
+        <StatRow k="Time zone" v={tz} />
+        <StatRow k="Location" v={location} />
+      </SectionShell>
+
+      <SectionShell title="Event description">
+        <div className="min-h-[72px] whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+          {description}
         </div>
+      </SectionShell>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-          {!s ? (
-            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.45)" }}>
-              Source: <span style={{ fontWeight: 950 }}>Scenario</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(0,0,0,0.45)" }}>
-              Source: <span style={{ fontWeight: 950 }}>Session</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "320px 1fr 260px",
-          gap: 12,
-          alignItems: "start",
-        }}
-      >
-        <Box title="Event">
-          <Row k="Event name" v={eventName} />
-          <Row k="Date" v={date} />
-          <Row k="Time" v={time} />
-          <Row k="Time zone" v={tz} />
-          <Row k="Location" v={location} />
-        </Box>
-
-        <Box title="Event description">
-          <div
-            style={{
-              fontSize: 13,
-              color: "rgba(0,0,0,0.82)",
-              lineHeight: 1.45,
-              whiteSpace: "pre-wrap",
-              minHeight: isMobile ? 0 : 74,
-            }}
-          >
-            {description}
-          </div>
-        </Box>
-
-        <Box title="Casualties" footer={casualtiesFooter}>
-          <SmallStat label="Injured" value={injuredVal ?? null} />
-          <SmallStat label="Fatalities" value={fatalitiesVal ?? null} />
-          <SmallStat label="Uninjured" value={uninjuredVal ?? null} />
-          <SmallStat label="Unknown" value={unknownVal ?? null} />
-
-          <details
-            open={editOpen}
-            onToggle={(e) => setEditOpen((e.target as HTMLDetailsElement).open)}
-            style={{ marginTop: 10 }}
-          >
-            <summary
-              style={{
-                cursor: "pointer",
-                fontWeight: 900,
-                fontSize: 12,
-                listStyle: "none",
-              }}
+      <SectionShell
+        title="Casualties"
+        right={
+          onUpdateCasualties ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditOpen((v) => !v)}
+              disabled={saving}
             >
-              Update casualties ▾
-            </summary>
+              {editOpen ? "Close" : "Edit"}
+            </Button>
+          ) : null
+        }
+        footer={casualtiesFooter}
+      >
+        <SmallStat label="Injured" value={injuredVal ?? null} />
+        <SmallStat label="Fatalities" value={fatalitiesVal ?? null} />
+        <SmallStat label="Uninjured" value={uninjuredVal ?? null} />
+        <SmallStat label="Unknown" value={unknownVal ?? null} />
 
-            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
-                  gap: 10,
-                }}
-              >
-                <Field label="Injured" value={injured} onChange={setInjured} placeholder="e.g. 2" />
-                <Field label="Fatalities" value={fatalities} onChange={setFatalities} placeholder="e.g. 33" />
-                <Field label="Uninjured" value={uninjured} onChange={setUninjured} placeholder="e.g. 20" />
-                <Field label="Unknown" value={unknown} onChange={setUnknown} placeholder="e.g. 1" />
+        {editOpen ? (
+          <div className="mt-3 space-y-3">
+            <div className={["grid gap-3", isMobile ? "grid-cols-1" : "grid-cols-2"].join(" ")}>
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold text-muted-foreground">Injured</div>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={injured}
+                  onChange={(e) => setInjured(e.target.value)}
+                  placeholder="e.g. 2"
+                />
               </div>
 
-              {err ? (
-                <div style={{ fontSize: 12, fontWeight: 900, color: "#b91c1c" }}>{err}</div>
-              ) : null}
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold text-muted-foreground">Fatalities</div>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={fatalities}
+                  onChange={(e) => setFatalities(e.target.value)}
+                  placeholder="e.g. 33"
+                />
+              </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  onClick={onSave}
-                  disabled={!onUpdateCasualties || saving}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(0,0,0,0.15)",
-                    background: "white",
-                    fontWeight: 950,
-                    cursor: !onUpdateCasualties || saving ? "not-allowed" : "pointer",
-                    opacity: !onUpdateCasualties || saving ? 0.6 : 1,
-                  }}
-                >
-                  {saving ? "Saving…" : "Save"}
-                </button>
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold text-muted-foreground">Uninjured</div>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={uninjured}
+                  onChange={(e) => setUninjured(e.target.value)}
+                  placeholder="e.g. 20"
+                />
+              </div>
 
-                <button
-                  onClick={() => setEditOpen(false)}
-                  disabled={saving}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(0,0,0,0.15)",
-                    background: "rgba(0,0,0,0.03)",
-                    fontWeight: 950,
-                    cursor: saving ? "not-allowed" : "pointer",
-                    opacity: saving ? 0.6 : 1,
-                  }}
-                >
-                  Cancel
-                </button>
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold text-muted-foreground">Unknown</div>
+                <Input
+                  type="number"
+                  min={0}
+                  inputMode="numeric"
+                  value={unknown}
+                  onChange={(e) => setUnknown(e.target.value)}
+                  placeholder="e.g. 1"
+                />
               </div>
             </div>
-          </details>
-        </Box>
-      </div>
+
+            {err ? <div className="text-sm font-semibold text-destructive">{err}</div> : null}
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={onSave} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+              <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={saving}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </SectionShell>
     </div>
   );
 }

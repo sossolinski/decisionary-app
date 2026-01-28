@@ -10,10 +10,25 @@ export type ScenarioListItem = {
   title: string;
 };
 
+export type SessionScenarioLite = {
+  id: string;
+  title: string;
+  short_description: string | null;
+
+  event_date: string | null;
+  event_time: string | null;
+  timezone: string | null;
+  location: string | null;
+};
+
 export type Session = {
   id: string;
   title: string | null;
   scenario_id: string | null;
+
+  // populated client-side (2nd query), no FK/embed required
+  scenario: SessionScenarioLite | null;
+
   join_code: string;
   status: "draft" | "live" | "ended" | string;
 
@@ -85,31 +100,63 @@ export async function listScenarios(): Promise<ScenarioListItem[]> {
 }
 
 /* =========================
-   SESSIONS LIST
+   SESSIONS LIST (NO EMBED)
 ========================= */
+
+async function fetchScenarioLiteByIds(ids: string[]): Promise<Map<string, SessionScenarioLite>> {
+  const uniq = Array.from(new Set(ids)).filter(Boolean);
+  const map = new Map<string, SessionScenarioLite>();
+  if (uniq.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from("scenarios")
+    .select("id,title,short_description,event_date,event_time,timezone,location")
+    .in("id", uniq);
+
+  if (error) throw error;
+
+  for (const row of (data ?? []) as any[]) {
+    if (row?.id) map.set(row.id, row as SessionScenarioLite);
+  }
+  return map;
+}
 
 export async function listSessions(): Promise<Session[]> {
   await requireUserId();
 
+  // 1) sessions without any relational embed (fixes schema cache FK error)
   const { data, error } = await supabase
     .from("sessions")
-    .select(
-      `
-      id,
-      title,
-      scenario_id,
-      join_code,
-      status,
-      created_at,
-      created_by,
-      started_at,
-      ended_at
-    `
-    )
+    .select("id,title,scenario_id,join_code,status,created_at,created_by,started_at,ended_at")
     .order("created_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as Session[];
+
+  const rows = (data ?? []) as any[];
+
+  // 2) hydrate scenario lite via separate query (no FK required)
+  const scenarioIds = rows.map((r) => r?.scenario_id).filter(Boolean) as string[];
+  const scenarioMap = await fetchScenarioLiteByIds(scenarioIds);
+
+  return rows.map((r) => {
+    const sid = (r?.scenario_id ?? null) as string | null;
+    const scenario = sid ? scenarioMap.get(sid) ?? null : null;
+
+    const out: Session = {
+      id: r.id,
+      title: r.title ?? null,
+      scenario_id: sid,
+      scenario,
+      join_code: r.join_code,
+      status: r.status,
+      created_at: r.created_at ?? null,
+      created_by: r.created_by ?? null,
+      started_at: r.started_at ?? null,
+      ended_at: r.ended_at ?? null,
+    };
+
+    return out;
+  });
 }
 
 /* =========================
@@ -208,25 +255,18 @@ export async function joinSessionByCode(code: string): Promise<string> {
 }
 
 /* =========================
-   ROSTER / ROLES (missing exports)
+   ROSTER / ROLES
 ========================= */
 
-/**
- * Ensures session role slots exist for this session.
- * Tries RPC first (recommended), then falls back to no-op.
- */
 export async function ensureSessionRoleSlots(sessionId: string): Promise<void> {
   await requireUserId();
 
-  // 1) try RPC (if you created it)
   const { error: rpcErr } = await supabase.rpc("ensure_session_role_slots", {
     p_session_id: sessionId,
   });
 
   if (!rpcErr) return;
 
-  // 2) fallback: if no RPC exists, do nothing (build/runtime safe)
-  // You can later replace with real logic based on your tables.
   if (
     String(rpcErr?.message ?? "").toLowerCase().includes("does not exist") ||
     String(rpcErr?.message ?? "").toLowerCase().includes("function")
@@ -234,16 +274,9 @@ export async function ensureSessionRoleSlots(sessionId: string): Promise<void> {
     return;
   }
 
-  // If RPC exists but failed for other reason, surface it
   throw rpcErr;
 }
 
-/**
- * Lists session participants with their profile (email).
- * Expected tables:
- * - session_participants: { session_id, user_id, joined_at }
- * - profiles: { id, email }
- */
 export async function listSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
   await requireUserId();
 
@@ -260,16 +293,9 @@ export async function listSessionParticipants(sessionId: string): Promise<Sessio
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-
-  // If your FK name differs, Supabase may error – wtedy podeślij błąd, dopasuję join.
   return (data ?? []) as any;
 }
 
-/**
- * Lists current role assignments for a session.
- * Expected table:
- * - session_role_assignments: { id, session_id, user_id, role_key, assigned_at }
- */
 export async function listSessionRoleAssignments(
   sessionId: string
 ): Promise<SessionRoleAssignment[]> {
@@ -285,10 +311,6 @@ export async function listSessionRoleAssignments(
   return (data ?? []) as SessionRoleAssignment[];
 }
 
-/**
- * Assigns (or re-assigns) a user to a role in a session.
- * Uses upsert so it's idempotent.
- */
 export async function assignUserToSessionRole(params: {
   sessionId: string;
   userId: string;
@@ -298,8 +320,6 @@ export async function assignUserToSessionRole(params: {
 
   const { sessionId, userId, roleKey } = params;
 
-  // If you want "one role per user" enforce UNIQUE(session_id, user_id)
-  // If you want "one user per role slot" enforce UNIQUE(session_id, role_key) or a separate slots table.
   const { error } = await supabase
     .from("session_role_assignments")
     .upsert(
@@ -315,9 +335,6 @@ export async function assignUserToSessionRole(params: {
   if (error) throw error;
 }
 
-/**
- * (optional helper) list role slots if your roster UI needs it
- */
 export async function listSessionRoleSlots(sessionId: string): Promise<SessionRoleSlot[]> {
   await requireUserId();
 

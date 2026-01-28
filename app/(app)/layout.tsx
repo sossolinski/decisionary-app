@@ -1,19 +1,25 @@
+// app/(app)/layout.tsx
 import type { ReactNode } from "react";
-import AppSidebar from "@/app/components/AppSidebar";
-import AppTopbar from "@/app/components/AppTopbar";
 
-export default function AppLayout({ children }: { children: ReactNode }) {
+import AppTopbar from "@/app/components/AppTopbar";
+import AppSidebar from "@/app/components/AppSidebar";
+
+export default function AppGroupLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-muted/40 text-foreground">
-      <div className="flex">
-        <AppSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <AppTopbar />
-          <main className="min-w-0 flex-1 px-4 py-4 md:px-6 md:py-6">
-            <div className="mx-auto w-full max-w-6xl">{children}</div>
-          </main>
+    <div className="min-h-screen bg-background text-foreground">
+      <AppTopbar />
+
+      {/* Fixed sidebar (desktop) */}
+      <aside className="hidden md:block fixed left-0 top-14 h-[calc(100vh-3.5rem)] w-72 border-r border-border bg-background">
+        <div className="h-full overflow-y-auto p-4">
+          <AppSidebar />
         </div>
-      </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="min-h-[calc(100vh-3.5rem)] px-4 py-4 md:pl-[18rem]">
+        {children}
+      </main>
     </div>
   );
 }
