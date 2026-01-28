@@ -41,7 +41,7 @@ export default function FacilitatorHome() {
           </p>
         </div>
 
-        <Button variant="outline" className="w-full md:w-auto rounded-2xl" onClick={logout}>
+        <Button variant="secondary" className="w-full md:w-auto rounded-2xl" onClick={logout}>  
           <LogOut className="mr-2 h-4 w-4" />
           Log out
         </Button>

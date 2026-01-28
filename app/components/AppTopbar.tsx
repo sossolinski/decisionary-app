@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import Link from "next/link";
-import { Bell, Search, ChevronDown, User, Settings, LogOut, Mail } from "lucide-react";
+import { Bell, Search, Menu, Mail, ChevronDown, User, Settings, LogOut } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 function titleFromPath(pathname: string) {
@@ -16,7 +15,6 @@ function titleFromPath(pathname: string) {
 }
 
 function getSessionIdFromPath(pathname: string) {
-  // /sessions/:id
   const m = (pathname ?? "").match(/^\/sessions\/([0-9a-f-]{36})(?:\/|$)/i);
   return m?.[1] ?? null;
 }
@@ -25,11 +23,17 @@ function shortId(id: string) {
   return id.slice(0, 8);
 }
 
-export default function AppTopbar() {
+export default function AppTopbar({
+  isMobile,
+  onToggleMobileSidebar,
+}: {
+  isMobile: boolean;
+  onToggleMobileSidebar: () => void;
+}) {
   const router = useRouter();
   const pathname = usePathname();
-  const t = useMemo(() => titleFromPath(pathname), [pathname]);
 
+  const t = useMemo(() => titleFromPath(pathname), [pathname]);
   const sessionId = useMemo(() => getSessionIdFromPath(pathname), [pathname]);
 
   const [open, setOpen] = useState(false);
@@ -68,10 +72,8 @@ export default function AppTopbar() {
       if (!open) return;
       if (e.key === "Escape") setOpen(false);
     }
-
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKeyDown);
-
     return () => {
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKeyDown);
@@ -92,99 +94,76 @@ export default function AppTopbar() {
     "hover:bg-secondary transition focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none";
 
   const accountBtn =
-    [
-      "inline-flex h-9 items-center gap-2",
-      "rounded-[var(--radius)]",
-      "border border-border",
-      "bg-card",
-      "px-3 text-sm font-medium text-foreground",
-      "hover:bg-secondary",
-      "transition",
-      "focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none",
-    ].join(" ");
+    "inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border bg-card px-3 text-sm font-medium " +
+    "text-foreground hover:bg-secondary transition focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none";
 
   const menuItem =
     "flex w-full items-center gap-2 px-3 py-2 text-sm text-foreground hover:bg-secondary transition text-left";
-  const menuItemMuted =
-    "flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-secondary transition text-left";
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      {/* Full width + consistent padding */}
-      <div className="flex h-14 w-full items-center justify-between px-4">
-        <div className="min-w-0">
-          {/* LEFT TITLE */}
-          <div className="truncate text-sm font-semibold text-foreground">
-            Decisionary
-          </div>
+    <div className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-3 px-4 sm:px-6">
+        <div className="flex items-center gap-2">
+          {isMobile ? (
+            <button className={iconBtn} onClick={onToggleMobileSidebar} aria-label="Open menu">
+              <Menu className="h-4 w-4" />
+            </button>
+          ) : null}
 
-          {/* LEFT SUBTITLE */}
-          <div className="truncate text-xs font-semibold text-muted-foreground">
-            {sessionId ? `Session: ${shortId(sessionId)}` : `${t.section} / ${t.page}`}
+          <div className="leading-tight">
+            <div className="text-sm font-semibold">Decisionary</div>
+            <div className="text-xs text-muted-foreground">
+              {sessionId ? `Session: ${shortId(sessionId)}` : `${t.section} / ${t.page}`}
+            </div>
           </div>
         </div>
 
+        <div className="flex-1" />
+
         <div className="flex items-center gap-2">
-          <button type="button" className={iconBtn} title="Search" aria-label="Search">
-            <Search size={18} />
+          <button className={iconBtn} aria-label="Search">
+            <Search className="h-4 w-4" />
+          </button>
+          <button className={iconBtn} aria-label="Notifications">
+            <Bell className="h-4 w-4" />
+          </button>
+          <button className={iconBtn} aria-label="Inbox">
+            <Mail className="h-4 w-4" />
           </button>
 
-          <button type="button" className={iconBtn} title="Notifications" aria-label="Notifications">
-            <Bell size={18} />
-          </button>
-
-          <div ref={wrapRef} className="relative">
+          <div className="relative" ref={wrapRef}>
             <button
-              type="button"
               onClick={() => setOpen((v) => !v)}
               className={accountBtn}
               aria-haspopup="menu"
               aria-expanded={open}
               title="Account"
             >
-              <Mail size={16} className="text-muted-foreground" />
-              <span className="max-w-[240px] truncate">{email ? email : "Account"}</span>
-              <ChevronDown size={16} className="text-muted-foreground" />
+              <span className="max-w-[220px] truncate">{email ? email : "Account"}</span>
+              <ChevronDown className="h-4 w-4 opacity-70" />
             </button>
 
             {open && (
-              <div
-                role="menu"
-                className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-soft"
-              >
-                <div className="px-3 py-2">
-                  <div className="text-xs text-muted-foreground">Signed in as</div>
-                  <div className="truncate text-sm font-medium text-foreground">{email ?? "—"}</div>
+              <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-lg">
+                <div className="px-3 py-2 text-xs text-muted-foreground">
+                  Signed in as <div className="truncate font-medium text-foreground">{email ?? "—"}</div>
                 </div>
-
                 <div className="h-px bg-border" />
-
-                <button type="button" onClick={() => setOpen(false)} className={menuItem} role="menuitem">
-                  <User size={16} className="text-muted-foreground" />
-                  Profile
+                <button className={menuItem} onClick={() => setOpen(false)}>
+                  <User className="h-4 w-4" /> Profile
                 </button>
-
-                <button type="button" onClick={() => setOpen(false)} className={menuItem} role="menuitem">
-                  <Settings size={16} className="text-muted-foreground" />
-                  Settings
+                <button className={menuItem} onClick={() => setOpen(false)}>
+                  <Settings className="h-4 w-4" /> Settings
                 </button>
-
-                <button type="button" onClick={logout} className={menuItem} role="menuitem">
-                  <LogOut size={16} className="text-muted-foreground" />
-                  Log out
-                </button>
-
                 <div className="h-px bg-border" />
-
-                <Link href="/login" onClick={() => setOpen(false)} className={menuItemMuted} role="menuitem">
-                  <Mail size={16} />
-                  Go to login
-                </Link>
+                <button className={menuItem} onClick={logout}>
+                  <LogOut className="h-4 w-4" /> Log out
+                </button>
               </div>
             )}
           </div>
         </div>
       </div>
-    </header>
+    </div>
   );
 }
