@@ -1,110 +1,91 @@
+// app/(app)/facilitator/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+
 import { getMyRole } from "@/lib/users";
-import { LogOut, PlayCircle, FileText } from "lucide-react";
 
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 
-export default function FacilitatorHome() {
+export default function FacilitatorOverviewPage() {
   const router = useRouter();
-  const [msg, setMsg] = useState<string | null>(null);
+
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator") {
-        router.replace("/participant");
-      }
-    })().catch((e) => setMsg(e?.message ?? String(e)));
+      if (!role) return router.replace("/login");
+      if (role !== "facilitator") return router.replace("/participant");
+      setLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  async function logout() {
-    await supabase.auth.signOut();
-    router.replace("/login");
+  if (loading) {
+    return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Facilitator Panel</h1>
-          <p className="text-sm text-muted-foreground">
-            Start sessions, manage scenarios and keep your exercises organized.
-          </p>
-        </div>
-
-        <Button variant="secondary" className="w-full md:w-auto rounded-2xl" onClick={logout}>  
-          <LogOut className="mr-2 h-4 w-4" />
-          Log out
-        </Button>
+    <div className="space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Facilitator</h1>
+        <p className="text-sm text-muted-foreground">Manage scenarios and run sessions.</p>
       </div>
 
-      {msg && (
-        <div className="mt-4 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {msg}
-        </div>
-      )}
-
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10">
-                <PlayCircle className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-base">Sessions</CardTitle>
-                <CardDescription>
-                  Start, restart and open existing sessions.
-                </CardDescription>
-              </div>
-            </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Scenarios</CardTitle>
+            <CardDescription className="text-sm">
+              Build and maintain your scenario library.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button
-              className="w-full rounded-2xl"
-              onClick={() => router.push("/facilitator/sessions")}
-            >
-              Open Sessions
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => router.push("/facilitator/scenarios")}>
+              Open scenarios
+            </Button>
+            <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")}>
+              Manage sharing
             </Button>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-2xl bg-primary/10">
-                <FileText className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <CardTitle className="text-base">Scenarios</CardTitle>
-                <CardDescription>
-                  Create and edit scenarios, injects and initial situation.
-                </CardDescription>
-              </div>
-            </div>
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Sessions</CardTitle>
+            <CardDescription className="text-sm">
+              Create sessions from scenarios and facilitate exercises.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button
-              className="w-full rounded-2xl"
-              onClick={() => router.push("/facilitator/scenarios")}
-            >
-              Open Scenarios
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => router.push("/facilitator/sessions")}>
+              Open sessions
+            </Button>
+            <Button variant="secondary" onClick={() => router.push("/facilitator/sessions")}>
+              Roster & controls
             </Button>
           </CardContent>
         </Card>
-      </div>
 
-      <div className="mt-6 text-xs text-muted-foreground">
-        Tip: add tags and severity levels to injects to make facilitation faster.
+        <Card className="surface shadow-soft border border-[var(--studio-border)] lg:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Participant join</CardTitle>
+            <CardDescription className="text-sm">
+              Share join code with participants to enter an active session.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button variant="primary" onClick={() => router.push("/join")}>
+              Go to join page
+            </Button>
+            <Button variant="secondary" onClick={() => router.push("/participant")}>
+              Participant view
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

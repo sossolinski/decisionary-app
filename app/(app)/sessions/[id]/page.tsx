@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -453,10 +453,12 @@ export default function SessionParticipantPage() {
   const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
 
   const anyFiltersOn =
-    Boolean(search.trim()) || Boolean(severity) || (activeTab === "inbox" && Boolean(channel));
+    Boolean(search.trim()) ||
+    Boolean(severity) ||
+    (activeTab === "inbox" && Boolean(channel));
 
   const LeftPanel = (
-    <Card className="h-full">
+    <Card className="surface shadow-soft border border-[var(--studio-border)] h-full">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button
@@ -485,7 +487,11 @@ export default function SessionParticipantPage() {
         </div>
 
         {isMobile ? (
-          <Button variant="secondary" size="sm" onClick={() => setFeedOpen(false)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setFeedOpen(false)}
+          >
             Close
           </Button>
         ) : null}
@@ -516,7 +522,9 @@ export default function SessionParticipantPage() {
         {/* Chips row */}
         <div className="flex flex-wrap items-center gap-2">
           {!anyFiltersOn ? (
-            <span className="text-xs font-semibold text-muted-foreground">No filters</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              No filters
+            </span>
           ) : (
             <>
               {search.trim() ? (
@@ -559,7 +567,10 @@ export default function SessionParticipantPage() {
         {/* Collapsible Filters panel */}
         {filtersOpen ? (
           <div className="space-y-3 rounded-[var(--radius)] border border-border bg-muted/30 p-3">
-            <Select value={severity ?? ""} onChange={(v) => setSeverity(v ? v : null)}>
+            <Select
+              value={severity ?? ""}
+              onChange={(v) => setSeverity(v ? v : null)}
+            >
               <option value="">Severity: All</option>
               <option value="LOW">Severity: LOW</option>
               <option value="MEDIUM">Severity: MEDIUM</option>
@@ -568,7 +579,10 @@ export default function SessionParticipantPage() {
             </Select>
 
             {activeTab === "inbox" ? (
-              <Select value={channel ?? ""} onChange={(v) => setChannel(v ? v : null)}>
+              <Select
+                value={channel ?? ""}
+                onChange={(v) => setChannel(v ? v : null)}
+              >
                 <option value="">Channel: All (non-pulse)</option>
                 <option value="OPS">Channel: OPS</option>
                 <option value="MEDIA">Channel: MEDIA</option>
@@ -580,7 +594,11 @@ export default function SessionParticipantPage() {
               <Button variant="ghost" className="flex-1" onClick={clearFilters}>
                 Clear
               </Button>
-              <Button variant="secondary" className="flex-1" onClick={() => setFiltersOpen(false)}>
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={() => setFiltersOpen(false)}
+              >
                 Done
               </Button>
             </div>
@@ -619,12 +637,14 @@ export default function SessionParticipantPage() {
   );
 
   const MiddlePanel = (
-    <div className="space-y-4">
-      <Card>
+    <div className="space-y-3">
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle>Message detail</CardTitle>
-            <CardDescription>{selectedItem ? "Selected" : "No selection"}</CardDescription>
+            <CardDescription>
+              {selectedItem ? "Selected" : "No selection"}
+            </CardDescription>
           </div>
         </CardHeader>
         <CardContent>
@@ -632,17 +652,23 @@ export default function SessionParticipantPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle>Actions</CardTitle>
-            <CardDescription>{selectedItem ? "Ready" : "Pick a message to act"}</CardDescription>
+            <CardDescription>
+              {selectedItem ? "Ready" : "Pick a message to act"}
+            </CardDescription>
           </div>
 
           {actionsLoading ? (
-            <span className="text-xs font-semibold text-muted-foreground">Loading…</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Loading…
+            </span>
           ) : actionsError ? (
-            <span className="text-xs font-semibold text-muted-foreground">{actionsError}</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              {actionsError}
+            </span>
           ) : (
             <span className="text-xs font-semibold text-muted-foreground">
               {actions.length ? `${actions.length} logged` : "No log yet"}
@@ -672,19 +698,35 @@ export default function SessionParticipantPage() {
               >
                 Confirm
               </Button>
-              <Button variant="danger" onClick={() => doPulseDecision("deny")} disabled={!selectedItem}>
+              <Button
+                variant="danger"
+                onClick={() => doPulseDecision("deny")}
+                disabled={!selectedItem}
+              >
                 Deny
               </Button>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              <Button variant="ghost" onClick={() => doAction("ignore")} disabled={!selectedItem}>
+              <Button
+                variant="ghost"
+                onClick={() => doAction("ignore")}
+                disabled={!selectedItem}
+              >
                 Ignore
               </Button>
-              <Button variant="secondary" onClick={() => doAction("escalate")} disabled={!selectedItem}>
+              <Button
+                variant="secondary"
+                onClick={() => doAction("escalate")}
+                disabled={!selectedItem}
+              >
                 Escalate
               </Button>
-              <Button variant="primary" onClick={() => doAction("act")} disabled={!selectedItem}>
+              <Button
+                variant="primary"
+                onClick={() => doAction("act")}
+                disabled={!selectedItem}
+              >
                 Act
               </Button>
             </div>
@@ -699,9 +741,9 @@ export default function SessionParticipantPage() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* HEADER */}
-      <Card>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="min-w-0">
             <CardTitle className="text-lg">{sessionTitle}</CardTitle>
@@ -714,7 +756,9 @@ export default function SessionParticipantPage() {
             </div>
 
             {roleLoading ? (
-              <div className="text-xs font-semibold text-muted-foreground">Loading role…</div>
+              <div className="text-xs font-semibold text-muted-foreground">
+                Loading role…
+              </div>
             ) : isFacilitator ? (
               <div className="relative">
                 <Button
@@ -734,20 +778,30 @@ export default function SessionParticipantPage() {
                     className="absolute right-0 mt-2 w-[560px] max-w-[90vw] overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-soft"
                   >
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                      <div className="text-sm font-semibold">In-session controls</div>
-                      <Button variant="ghost" size="sm" onClick={() => setToolsOpen(false)}>
+                      <div className="text-sm font-semibold">
+                        In-session controls
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setToolsOpen(false)}
+                      >
                         Close
                       </Button>
                     </div>
 
                     <div className="grid gap-4 p-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">Controls</div>
+                        <div className="text-xs font-semibold text-muted-foreground">
+                          Controls
+                        </div>
                         <FacilitatorControls sessionId={sessionId} />
                       </div>
 
                       <div className="space-y-2">
-                        <div className="text-xs font-semibold text-muted-foreground">New inject</div>
+                        <div className="text-xs font-semibold text-muted-foreground">
+                          New inject
+                        </div>
                         <AddInjectForm sessionId={sessionId} />
                       </div>
                     </div>
@@ -757,7 +811,11 @@ export default function SessionParticipantPage() {
             ) : null}
 
             {isMobile ? (
-              <Button variant="secondary" size="sm" onClick={() => setFeedOpen(true)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setFeedOpen(true)}
+              >
                 Open feed
               </Button>
             ) : null}
@@ -790,7 +848,7 @@ export default function SessionParticipantPage() {
       {/* WORKSPACE */}
       <div
         className={[
-          "grid gap-4",
+          "grid gap-3",
           isMobile ? "grid-cols-1" : "grid-cols-[360px_minmax(520px,1fr)]",
         ].join(" ")}
       >
@@ -801,7 +859,10 @@ export default function SessionParticipantPage() {
       {/* MOBILE FEED DRAWER */}
       {isMobile && feedOpen ? (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setFeedOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setFeedOpen(false)}
+          />
           <div className="absolute inset-x-0 bottom-0 top-14 p-4">
             <div className="h-full">{LeftPanel}</div>
           </div>

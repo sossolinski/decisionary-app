@@ -1,12 +1,13 @@
+// app/(app)/facilitator/scenarios/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+
+import { supabase } from "@/lib/supabaseClient";
 import { getMyRole } from "@/lib/users";
+
 import {
-  Scenario,
-  ScenarioInject,
-  ScenarioRole,
   getScenario,
   updateScenario,
   listScenarioInjects,
@@ -14,164 +15,219 @@ import {
   attachInjectToScenario,
   detachScenarioInject,
   updateScenarioInject,
-  listScenarioRoles,
-  createScenarioRole,
-  updateScenarioRole,
-  deleteScenarioRole,
+  type Scenario,
+  type ScenarioInject,
+  type Inject,
 } from "@/lib/scenarios";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 
 function asInt(v: string) {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : 0;
 }
 
-// Build "YYYY-MM-DDTHH:MM" for <input type="datetime-local">
-function makeDatetimeLocal(dateStr: string | null, timeStr: string | null) {
-  const d = (dateStr ?? "").trim();
-  const t = (timeStr ?? "").trim();
-  if (!d && !t) return "";
-  const safeD = d || "2000-01-01";
-  const safeT = t || "00:00";
-  const hhmm = safeT.length >= 5 ? safeT.slice(0, 5) : safeT;
-  return `${safeD}T${hhmm}`;
+function toDatetimeLocal(iso: string | null | undefined) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const pad = (x: number) => String(x).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    const mm = pad(d.getMonth() + 1);
+    const dd = pad(d.getDate());
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  } catch {
+    return "";
+  }
 }
 
-// Split "YYYY-MM-DDTHH:MM" into {event_date, event_time}
-function splitDatetimeLocal(v: string): { event_date: string; event_time: string } {
-  if (!v) return { event_date: "", event_time: "" };
-  const [d, t] = v.split("T");
-  return { event_date: d ?? "", event_time: (t ?? "").slice(0, 5) };
+function fromDatetimeLocal(v: string) {
+  const s = (v ?? "").trim();
+  if (!s) return null;
+  try {
+    return new Date(s).toISOString();
+  } catch {
+    return null;
+  }
 }
 
-export default function ScenarioEditorPage() {
+export default function FacilitatorScenarioEditorPage() {
   const router = useRouter();
-  const params = useParams();
-  const scenarioId = String(params?.id ?? "");
+  const params = useParams<{ id: string }>();
+  const id = params?.id ?? "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [injects, setInjects] = useState<ScenarioInject[]>([]);
 
-  // Roles
-  const [roles, setRoles] = useState<ScenarioRole[]>([]);
-  const [roleAddOpen, setRoleAddOpen] = useState(false);
-  const [rKey, setRKey] = useState("");
-  const [rName, setRName] = useState("");
-  const [rDesc, setRDesc] = useState("");
-  const [rRequired, setRRequired] = useState(true);
+  // drafts – scenario
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
 
-  // Injects tabs
-  const [injectTab, setInjectTab] = useState<"inbox" | "pulse">("inbox");
+  const [eventDate, setEventDate] = useState("");
+  const [eventTime, setEventTime] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [location, setLocation] = useState("");
 
-  // Add inject form
-  const [addOpen, setAddOpen] = useState(false);
-  const [iTitle, setITitle] = useState("");
-  const [iBody, setIBody] = useState("");
-  const [iChannel, setIChannel] = useState<"ops" | "pulse">("ops");
-  const [iSeverity, setISeverity] = useState<string>("info");
-  const [iSenderName, setISenderName] = useState("Facilitator");
-  const [iSenderOrg, setISenderOrg] = useState("Decisionary");
-  const [iScheduled, setIScheduled] = useState<string>(""); // datetime-local
+  const [situationType, setSituationType] = useState("");
+  const [shortDescription, setShortDescription] = useState("");
 
-  const sortedInjects = useMemo(() => {
-    return [...injects].sort((a, b) => (a.order_index ?? 0) - (b.order_index ?? 0));
-  }, [injects]);
+  const [injured, setInjured] = useState("0");
+  const [fatalities, setFatalities] = useState("0");
+  const [uninjured, setUninjured] = useState("0");
+  const [unknown, setUnknown] = useState("0");
 
-  // For now:
-  // - Pulse tab shows channel === "pulse"
-  // - Inbox tab shows everything else
-  const inboxInjects = useMemo(() => {
-    return sortedInjects.filter((si) => (si.injects?.channel ?? "") !== "pulse");
-  }, [sortedInjects]);
+  // drafts – new inject
+  const [niTitle, setNiTitle] = useState("");
+  const [niBody, setNiBody] = useState("");
+  const [niChannel, setNiChannel] = useState("ops");
+  const [niSeverity, setNiSeverity] = useState<string>("");
+  const [niSenderName, setNiSenderName] = useState<string>("Facilitator");
+  const [niSenderOrg, setNiSenderOrg] = useState<string>("Decisionary");
+  const [niScheduledLocal, setNiScheduledLocal] = useState<string>("");
 
-  const pulseInjects = useMemo(() => {
-    return sortedInjects.filter((si) => (si.injects?.channel ?? "") === "pulse");
-  }, [sortedInjects]);
+  // UI
+  const [openSiId, setOpenSiId] = useState<string | null>(null);
 
-  const visibleInjects = injectTab === "pulse" ? pulseInjects : inboxInjects;
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const [s, si] = await Promise.all([getScenario(id), listScenarioInjects(id)]);
+      setScenario(s);
+      setInjects(si ?? []);
 
-  const sortedRoles = useMemo(() => {
-    return [...roles].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-  }, [roles]);
+      // hydrate scenario drafts
+      setTitle(s?.title ?? "");
+      setDescription(s?.description ?? "");
 
-  /* ================= AUTH GUARD + LOAD ================= */
+      setEventDate(s?.event_date ?? "");
+      setEventTime(s?.event_time ?? "");
+      setTimezone(s?.timezone ?? "");
+      setLocation(s?.location ?? "");
+
+      setSituationType(s?.situation_type ?? "");
+      setShortDescription(s?.short_description ?? "");
+
+      setInjured(String(s?.injured ?? 0));
+      setFatalities(String(s?.fatalities ?? 0));
+      setUninjured(String(s?.uninjured ?? 0));
+      setUnknown(String(s?.unknown ?? 0));
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator") {
-        router.replace("/participant");
-        return;
-      }
+      if (!role) return router.replace("/login");
+      if (role !== "facilitator") return router.replace("/participant");
+      await load();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, id]);
 
-      setLoading(true);
-      setError(null);
-
-      const s = await getScenario(scenarioId);
-      if (!s) {
-        setScenario(null);
-        setInjects([]);
-        setRoles([]);
-        setError("Scenario not found.");
-        setLoading(false);
-        return;
-      }
-
-      const si = await listScenarioInjects(scenarioId);
-      const sr = await listScenarioRoles(scenarioId);
-
-      setScenario(s);
-      setInjects(si);
-      setRoles(sr);
-      setLoading(false);
-    })().catch((e: any) => {
-      setError(e?.message ?? String(e));
-      setLoading(false);
+  const sortedInjects = useMemo(() => {
+    return [...injects].sort((a, b) => {
+      const ao = a.order_index ?? 0;
+      const bo = b.order_index ?? 0;
+      if (ao !== bo) return ao - bo;
+      return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
     });
-  }, [router, scenarioId]);
+  }, [injects]);
 
-  async function reloadInjects() {
-    const si = await listScenarioInjects(scenarioId);
-    setInjects(si);
-  }
-
-  async function reloadRoles() {
-    const sr = await listScenarioRoles(scenarioId);
-    setRoles(sr);
-  }
-
-  /* ================= SAVE SCENARIO ================= */
+  const hasChanges = useMemo(() => {
+    if (!scenario) return false;
+    return (
+      title !== (scenario.title ?? "") ||
+      description !== (scenario.description ?? "") ||
+      eventDate !== (scenario.event_date ?? "") ||
+      eventTime !== (scenario.event_time ?? "") ||
+      timezone !== (scenario.timezone ?? "") ||
+      location !== (scenario.location ?? "") ||
+      situationType !== (scenario.situation_type ?? "") ||
+      shortDescription !== (scenario.short_description ?? "") ||
+      asInt(injured) !== (scenario.injured ?? 0) ||
+      asInt(fatalities) !== (scenario.fatalities ?? 0) ||
+      asInt(uninjured) !== (scenario.uninjured ?? 0) ||
+      asInt(unknown) !== (scenario.unknown ?? 0)
+    );
+  }, [
+    scenario,
+    title,
+    description,
+    eventDate,
+    eventTime,
+    timezone,
+    location,
+    situationType,
+    shortDescription,
+    injured,
+    fatalities,
+    uninjured,
+    unknown,
+  ]);
 
   async function onSaveScenario() {
     if (!scenario) return;
+
     setSaving(true);
     setError(null);
     try {
-      const updated = await updateScenario(scenario.id, {
-        title: scenario.title,
-        description: scenario.description,
+      const patch: Partial<Scenario> = {
+        title: title.trim() || "Untitled scenario",
+        description: description.trim() || null,
 
-        event_date: scenario.event_date,
-        event_time: scenario.event_time,
-        timezone: scenario.timezone,
-        location: scenario.location,
-        situation_type: scenario.situation_type,
-        short_description: scenario.short_description,
+        event_date: eventDate.trim() || null,
+        event_time: eventTime.trim() || null,
+        timezone: timezone.trim() || null,
+        location: location.trim() || null,
 
-        injured: scenario.injured,
-        fatalities: scenario.fatalities,
-        uninjured: scenario.uninjured,
-        unknown: scenario.unknown,
-      });
+        situation_type: situationType.trim() || null,
+        short_description: shortDescription.trim() || null,
 
+        injured: asInt(injured),
+        fatalities: asInt(fatalities),
+        uninjured: asInt(uninjured),
+        unknown: asInt(unknown),
+      };
+
+      const updated = await updateScenario(id, patch);
       setScenario(updated);
+
+      // sync drafts
+      setTitle(updated.title ?? "");
+      setDescription(updated.description ?? "");
+
+      setEventDate(updated.event_date ?? "");
+      setEventTime(updated.event_time ?? "");
+      setTimezone(updated.timezone ?? "");
+      setLocation(updated.location ?? "");
+
+      setSituationType(updated.situation_type ?? "");
+      setShortDescription(updated.short_description ?? "");
+
+      setInjured(String(updated.injured ?? 0));
+      setFatalities(String(updated.fatalities ?? 0));
+      setUninjured(String(updated.uninjured ?? 0));
+      setUnknown(String(updated.unknown ?? 0));
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -179,761 +235,531 @@ export default function ScenarioEditorPage() {
     }
   }
 
-  /* ================= ROLES ================= */
-
-  async function onAddRole() {
-    if (!rKey.trim() || !rName.trim()) return;
-
-    setSaving(true);
-    setError(null);
-    try {
-      const nextSort =
-        roles.length > 0 ? Math.max(...roles.map((x) => x.sort_order ?? 0)) + 1 : 1;
-
-      const created = await createScenarioRole({
-        scenarioId,
-        roleKey: rKey.trim(),
-        roleName: rName.trim(),
-        roleDescription: rDesc.trim() ? rDesc.trim() : null,
-        sortOrder: nextSort,
-        isRequired: rRequired,
-      });
-
-      setRoles((prev) => [...prev, created]);
-      setRoleAddOpen(false);
-      setRKey("");
-      setRName("");
-      setRDesc("");
-      setRRequired(true);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onSaveRole(role: ScenarioRole) {
-    setSaving(true);
-    setError(null);
-    try {
-      const updated = await updateScenarioRole({
-        id: role.id,
-        roleKey: role.role_key,
-        roleName: role.role_name,
-        roleDescription: role.role_description ?? null,
-        sortOrder: role.sort_order ?? 100,
-        isRequired: !!role.is_required,
-      });
-
-      setRoles((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onDeleteRole(roleId: string) {
-    if (!confirm("Delete this role?")) return;
-
-    setSaving(true);
-    setError(null);
-    try {
-      await deleteScenarioRole(roleId);
-      setRoles((prev) => prev.filter((x) => x.id !== roleId));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onMoveRole(roleId: string, dir: -1 | 1) {
-    const list = [...sortedRoles];
-    const idx = list.findIndex((x) => x.id === roleId);
-    if (idx < 0) return;
-
-    const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= list.length) return;
-
-    const a = list[idx];
-    const b = list[swapIdx];
-
-    // temp sort_order avoids collisions
-    const temp = 1000000000 + Math.floor(Math.random() * 1000000);
-
-    setSaving(true);
-    setError(null);
-    try {
-      await updateScenarioRole({ id: a.id, sortOrder: temp });
-      await updateScenarioRole({ id: b.id, sortOrder: a.sort_order ?? 0 });
-      await updateScenarioRole({ id: a.id, sortOrder: b.sort_order ?? 0 });
-
-      setRoles((prev) =>
-        prev.map((x) => {
-          if (x.id === a.id) return { ...x, sort_order: b.sort_order };
-          if (x.id === b.id) return { ...x, sort_order: a.sort_order };
-          return x;
-        })
-      );
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-      await reloadRoles();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  /* ================= INJECTS ================= */
-
-  function openAddInject() {
-    // Keep creation aligned with tab:
-    // inbox -> ops, pulse -> pulse
-    setIChannel(injectTab === "pulse" ? "pulse" : "ops");
-    setAddOpen(true);
-  }
-
-  function closeAddInject() {
-    setAddOpen(false);
-  }
-
-  async function onAddInject() {
-    if (!iTitle.trim() || !iBody.trim()) return;
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const inj = await createInject({
-        title: iTitle.trim(),
-        body: iBody.trim(),
-        channel: iChannel, // only "ops" or "pulse"
-        severity: iSeverity || null,
-        sender_name: iSenderName.trim() || "Facilitator",
-        sender_org: iSenderOrg.trim() || "Decisionary",
-      });
-
-      const scheduled_at = iScheduled ? new Date(iScheduled).toISOString() : null;
-
-      const attached = await attachInjectToScenario({
-        scenarioId,
-        injectId: inj.id,
-        scheduled_at,
-      });
-
-      setInjects((prev) => [...prev, attached]);
-      setAddOpen(false);
-
-      // reset form
-      setITitle("");
-      setIBody("");
-      setIChannel(injectTab === "pulse" ? "pulse" : "ops");
-      setISeverity("info");
-      setISenderName("Facilitator");
-      setISenderOrg("Decisionary");
-      setIScheduled("");
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onDetach(scenarioInjectId: string) {
-    if (!confirm("Remove this inject from scenario?")) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await detachScenarioInject(scenarioInjectId);
-      setInjects((prev) => prev.filter((x) => x.id !== scenarioInjectId));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function onMoveWithin(list: ScenarioInject[], id: string, dir: -1 | 1) {
-    const idx = list.findIndex((x) => x.id === id);
-    if (idx < 0) return;
-
-    const swapIdx = idx + dir;
-    if (swapIdx < 0 || swapIdx >= list.length) return;
-
-    const a = list[idx];
-    const b = list[swapIdx];
-
-    const aHas = typeof a.order_index === "number" && a.order_index > 0;
-    const bHas = typeof b.order_index === "number" && b.order_index > 0;
-
-    if (!aHas || !bHas) {
-      setSaving(true);
-      setError(null);
-      try {
-        const all = [...sortedInjects];
-
-        for (let i = 0; i < all.length; i++) {
-          const tempOrder = 1000000000 + i;
-          await updateScenarioInject({ id: all[i].id, order_index: tempOrder });
-        }
-
-        for (let i = 0; i < all.length; i++) {
-          await updateScenarioInject({ id: all[i].id, order_index: i + 1 });
-        }
-
-        await reloadInjects();
-      } catch (e: any) {
-        setError(e?.message ?? String(e));
-      } finally {
-        setSaving(false);
-      }
+  async function onCreateScenarioInject() {
+    if (!niTitle.trim() || !niBody.trim()) {
+      setError("Inject title and body are required.");
       return;
     }
 
-    const aOrder = a.order_index;
-    const bOrder = b.order_index;
-
-    const tempOrder = 1000000000 + Math.floor(Math.random() * 1000000);
-
-    setSaving(true);
+    setBusyKey("create-inject");
     setError(null);
 
     try {
-      await updateScenarioInject({ id: a.id, order_index: tempOrder });
-      await updateScenarioInject({ id: b.id, order_index: aOrder });
-      await updateScenarioInject({ id: a.id, order_index: bOrder });
+      const inject = await createInject({
+        title: niTitle.trim(),
+        body: niBody.trim(),
+        channel: niChannel.trim() || "ops",
+        severity: niSeverity.trim() || null,
+        sender_name: niSenderName.trim() || null,
+        sender_org: niSenderOrg.trim() || null,
+      });
 
-      setInjects((prev) =>
-        prev.map((x) => {
-          if (x.id === a.id) return { ...x, order_index: bOrder };
-          if (x.id === b.id) return { ...x, order_index: aOrder };
-          return x;
-        })
-      );
+      const scheduled_at = fromDatetimeLocal(niScheduledLocal);
+      await attachInjectToScenario({
+        scenarioId: id,
+        injectId: inject.id,
+        scheduled_at,
+      });
+
+      setNiTitle("");
+      setNiBody("");
+      setNiChannel("ops");
+      setNiSeverity("");
+      setNiSenderName("Facilitator");
+      setNiSenderOrg("Decisionary");
+      setNiScheduledLocal("");
+
+      await load();
     } catch (e: any) {
       setError(e?.message ?? String(e));
-      await reloadInjects();
     } finally {
-      setSaving(false);
+      setBusyKey(null);
     }
   }
 
-  async function onSchedule(id: string, datetimeLocalValue: string) {
-    setSaving(true);
+  async function onDetach(siId: string) {
+    if (!confirm("Detach this inject from scenario?")) return;
+    setBusyKey(`detach:${siId}`);
     setError(null);
     try {
-      const scheduled_at = datetimeLocalValue ? new Date(datetimeLocalValue).toISOString() : null;
-      await updateScenarioInject({ id, scheduled_at });
-
-      setInjects((prev) => prev.map((x) => (x.id === id ? { ...x, scheduled_at } : x)));
+      await detachScenarioInject(siId);
+      await load();
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
-      setSaving(false);
+      setBusyKey(null);
     }
   }
 
-  /* ================= UI ================= */
+  async function onDeleteInject(injectId: string) {
+    if (!confirm("Delete this inject (from injects table)? This may affect other scenarios.")) return;
+    setBusyKey(`delinj:${injectId}`);
+    setError(null);
+    try {
+      const { error } = await supabase.from("injects").delete().eq("id", injectId);
+      if (error) throw error;
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onUpdateInject(injectId: string, patch: Partial<Inject>) {
+    setBusyKey(`upd:${injectId}`);
+    setError(null);
+    try {
+      const { error } = await supabase.from("injects").update(patch).eq("id", injectId);
+      if (error) throw error;
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onReschedule(siId: string, scheduledLocal: string) {
+    setBusyKey(`sched:${siId}`);
+    setError(null);
+    try {
+      await updateScenarioInject({
+        id: siId,
+        scheduled_at: fromDatetimeLocal(scheduledLocal),
+      });
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onMove(siId: string, dir: -1 | 1) {
+    const idx = sortedInjects.findIndex((x) => x.id === siId);
+    if (idx < 0) return;
+
+    const otherIdx = idx + dir;
+    if (otherIdx < 0 || otherIdx >= sortedInjects.length) return;
+
+    const a = sortedInjects[idx];
+    const b = sortedInjects[otherIdx];
+
+    setBusyKey(`move:${siId}`);
+    setError(null);
+
+    try {
+      // swap order_index
+      await Promise.all([
+        updateScenarioInject({ id: a.id, order_index: b.order_index }),
+        updateScenarioInject({ id: b.id, order_index: a.order_index }),
+      ]);
+      await load();
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   if (loading) {
-    return (
-      <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
-        <p>Loading…</p>
-      </div>
-    );
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   }
 
   if (!scenario) {
     return (
-      <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
-        <button onClick={() => router.push("/facilitator/scenarios")}>← Back to scenarios</button>
-        {error && <p style={{ marginTop: 10, color: "#b91c1c" }}>{error}</p>}
+      <div className="p-6">
+        <div className="text-sm text-muted-foreground">Scenario not found.</div>
+        <div className="mt-3">
+          <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")}>
+            Back
+          </Button>
+        </div>
       </div>
     );
   }
 
-  const eventDT = makeDatetimeLocal(scenario.event_date ?? null, scenario.event_time ?? null);
-
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-        <div>
-          <button onClick={() => router.push("/facilitator/scenarios")}>← Back to scenarios</button>
-          <h1 style={{ fontSize: 22, fontWeight: 800, marginTop: 10 }}>Scenario Editor</h1>
-          <p style={{ opacity: 0.75, marginTop: 6 }}>Configure situation, roles and injects.</p>
+    <div className="mx-auto w-full max-w-[var(--studio-max)] p-6 space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight truncate">
+            {scenario.title ?? "Scenario"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Edit scenario details and manage injects.
+          </p>
         </div>
 
-        <button onClick={onSaveScenario} disabled={saving} style={{ padding: "10px 14px" }}>
-          {saving ? "Saving…" : "Save"}
-        </button>
-      </div>
-
-      {error && <p style={{ marginTop: 12, color: "#b91c1c" }}>{error}</p>}
-
-      {/* ======= SITUATION ======= */}
-      <div style={{ marginTop: 16, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
-        <h2 style={{ fontWeight: 800, marginBottom: 10 }}>Scenario</h2>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Title</label>
-            <input
-              value={scenario.title ?? ""}
-              onChange={(e) => setScenario({ ...scenario, title: e.target.value })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Situation type</label>
-            <input
-              value={scenario.situation_type ?? ""}
-              onChange={(e) => setScenario({ ...scenario, situation_type: e.target.value })}
-              placeholder="e.g. Aircraft accident / Cyber incident"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Location</label>
-            <input
-              value={scenario.location ?? ""}
-              onChange={(e) => setScenario({ ...scenario, location: e.target.value })}
-              placeholder="e.g. WAW / Warsaw / HQ"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Timezone</label>
-            <input
-              value={scenario.timezone ?? ""}
-              onChange={(e) => setScenario({ ...scenario, timezone: e.target.value })}
-              placeholder="e.g. Europe/Warsaw"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={{ display: "block", marginBottom: 6 }}>Event date & time</label>
-            <input
-              type="datetime-local"
-              value={eventDT}
-              onChange={(e) => {
-                const { event_date, event_time } = splitDatetimeLocal(e.target.value);
-                setScenario({
-                  ...scenario,
-                  event_date: event_date || null,
-                  event_time: event_time || null,
-                });
-              }}
-              style={{ padding: 10, width: "100%", maxWidth: 360 }}
-            />
-          </div>
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={{ display: "block", marginBottom: 6 }}>Short description</label>
-            <textarea
-              value={scenario.short_description ?? ""}
-              onChange={(e) => setScenario({ ...scenario, short_description: e.target.value })}
-              rows={3}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <label style={{ display: "block", marginBottom: 6 }}>Notes / description</label>
-            <textarea
-              value={scenario.description ?? ""}
-              onChange={(e) => setScenario({ ...scenario, description: e.target.value })}
-              rows={3}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-        </div>
-
-        <h3 style={{ fontWeight: 800, marginTop: 14, marginBottom: 8 }}>Casualties</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Injured</label>
-            <input
-              value={scenario.injured ?? 0}
-              onChange={(e) => setScenario({ ...scenario, injured: asInt(e.target.value) })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Fatalities</label>
-            <input
-              value={scenario.fatalities ?? 0}
-              onChange={(e) => setScenario({ ...scenario, fatalities: asInt(e.target.value) })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Uninjured</label>
-            <input
-              value={scenario.uninjured ?? 0}
-              onChange={(e) => setScenario({ ...scenario, uninjured: asInt(e.target.value) })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
-          <div>
-            <label style={{ display: "block", marginBottom: 6 }}>Unknown</label>
-            <input
-              value={scenario.unknown ?? 0}
-              onChange={(e) => setScenario({ ...scenario, unknown: asInt(e.target.value) })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")}>
+            Back
+          </Button>
+          <Button variant="secondary" onClick={load} disabled={saving}>
+            Refresh
+          </Button>
+          <Button variant="primary" onClick={onSaveScenario} disabled={!hasChanges || saving}>
+            {saving ? "..." : "Save changes"}
+          </Button>
         </div>
       </div>
 
-      {/* ======= ROLES ======= */}
-      <div style={{ marginTop: 16, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h2 style={{ fontWeight: 800 }}>Scenario roles</h2>
-          <button
-            type="button"
-            onClick={() => setRoleAddOpen((v) => !v)}
-            style={{ padding: "9px 12px" }}
-          >
-            {roleAddOpen ? "Close" : "Add role"}
-          </button>
+      {error ? (
+        <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
+          {error}
         </div>
+      ) : null}
 
-        {roleAddOpen && (
-          <div style={{ marginTop: 12, border: "1px solid rgba(0,0,0,0.10)", borderRadius: 12, padding: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 12 }}>
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Role key</label>
-                <input
-                  value={rKey}
-                  onChange={(e) => setRKey(e.target.value)}
-                  placeholder="e.g. OPS"
-                  style={{ width: "100%", padding: 10 }}
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Basics</CardTitle>
+            <CardDescription className="text-sm">Title and description.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Title</div>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Description</div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                placeholder="Optional…"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Event</CardTitle>
+            <CardDescription className="text-sm">When and where.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Date</div>
+              <Input value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="YYYY-MM-DD" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Time</div>
+              <Input value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="HH:MM" />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <div className="text-sm font-semibold">Timezone</div>
+              <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g., Europe/Warsaw" />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <div className="text-sm font-semibold">Location</div>
+              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Airport / city / region…" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Situation</CardTitle>
+            <CardDescription className="text-sm">Classification and summary.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Situation type</div>
+              <Input value={situationType} onChange={(e) => setSituationType(e.target.value)} placeholder="e.g., Accident, Disruption, Security…" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Short description</div>
+              <textarea
+                value={shortDescription}
+                onChange={(e) => setShortDescription(e.target.value)}
+                className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                placeholder="1–2 sentences…"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="surface shadow-soft border border-[var(--studio-border)]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Initial casualties</CardTitle>
+            <CardDescription className="text-sm">Starting numbers.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Injured</div>
+              <Input value={injured} onChange={(e) => setInjured(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Fatalities</div>
+              <Input value={fatalities} onChange={(e) => setFatalities(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Uninjured</div>
+              <Input value={uninjured} onChange={(e) => setUninjured(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <div className="text-sm font-semibold">Unknown</div>
+              <Input value={unknown} onChange={(e) => setUnknown(e.target.value)} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Injects</CardTitle>
+          <CardDescription className="text-sm">
+            Create, edit, reorder and schedule injects.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          {/* NEW INJECT */}
+          <div className="rounded-[var(--radius)] border border-border bg-card p-4 space-y-3">
+            <div className="text-sm font-semibold">New inject</div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Title</div>
+                <Input value={niTitle} onChange={(e) => setNiTitle(e.target.value)} />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Scheduled at</div>
+                <Input
+                  type="datetime-local"
+                  value={niScheduledLocal}
+                  onChange={(e) => setNiScheduledLocal(e.target.value)}
                 />
               </div>
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Role name</label>
-                <input
-                  value={rName}
-                  onChange={(e) => setRName(e.target.value)}
-                  placeholder="e.g. Operations"
-                  style={{ width: "100%", padding: 10 }}
-                />
+
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Channel</div>
+                <Input value={niChannel} onChange={(e) => setNiChannel(e.target.value)} placeholder="ops / inbox / pulse…" />
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", marginBottom: 6 }}>Description (optional)</label>
-                <input
-                  value={rDesc}
-                  onChange={(e) => setRDesc(e.target.value)}
-                  placeholder="What this role does…"
-                  style={{ width: "100%", padding: 10 }}
-                />
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Severity</div>
+                <Input value={niSeverity} onChange={(e) => setNiSeverity(e.target.value)} placeholder="low / medium / high…" />
               </div>
 
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={rRequired}
-                  onChange={(e) => setRRequired(e.target.checked)}
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Sender name</div>
+                <Input value={niSenderName} onChange={(e) => setNiSenderName(e.target.value)} />
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm font-semibold">Sender org</div>
+                <Input value={niSenderOrg} onChange={(e) => setNiSenderOrg(e.target.value)} />
+              </div>
+
+              <div className="space-y-1 md:col-span-2">
+                <div className="text-sm font-semibold">Body</div>
+                <textarea
+                  value={niBody}
+                  onChange={(e) => setNiBody(e.target.value)}
+                  className="min-h-[110px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
                 />
-                Required
-              </label>
+              </div>
             </div>
 
-            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-              <button type="button" onClick={onAddRole} disabled={saving} style={{ padding: "9px 12px" }}>
-                {saving ? "…" : "Create role"}
-              </button>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                onClick={onCreateScenarioInject}
+                disabled={busyKey === "create-inject"}
+              >
+                {busyKey === "create-inject" ? "..." : "Create & attach"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setNiTitle("");
+                  setNiBody("");
+                  setNiChannel("ops");
+                  setNiSeverity("");
+                  setNiSenderName("Facilitator");
+                  setNiSenderOrg("Decisionary");
+                  setNiScheduledLocal("");
+                }}
+              >
+                Clear
+              </Button>
             </div>
           </div>
-        )}
 
-        <div style={{ marginTop: 12 }}>
-          {sortedRoles.length === 0 ? (
-            <p style={{ opacity: 0.75 }}>No roles yet. Add roles to enable assignments in session roster.</p>
+          {/* LIST */}
+          {sortedInjects.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No injects yet.</div>
           ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {sortedRoles.map((r, idx) => (
-                <div key={r.id} style={{ border: "1px solid rgba(0,0,0,0.10)", borderRadius: 12, padding: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, flex: 1 }}>
-                      <input
-                        value={r.role_key ?? ""}
-                        onChange={(e) =>
-                          setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, role_key: e.target.value } : x)))
-                        }
-                        style={{ padding: 10 }}
-                      />
-                      <input
-                        value={r.role_name ?? ""}
-                        onChange={(e) =>
-                          setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, role_name: e.target.value } : x)))
-                        }
-                        style={{ padding: 10 }}
-                      />
-                      <input
-                        value={r.role_description ?? ""}
-                        onChange={(e) =>
-                          setRoles((prev) =>
-                            prev.map((x) => (x.id === r.id ? { ...x, role_description: e.target.value } : x))
-                          )
-                        }
-                        placeholder="Description (optional)"
-                        style={{ padding: 10, gridColumn: "1 / -1" }}
-                      />
-
-                      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <input
-                          type="checkbox"
-                          checked={!!r.is_required}
-                          onChange={(e) =>
-                            setRoles((prev) => prev.map((x) => (x.id === r.id ? { ...x, is_required: e.target.checked } : x)))
-                          }
-                        />
-                        Required
-                      </label>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        type="button"
-                        disabled={saving || idx === 0}
-                        onClick={() => onMoveRole(r.id, -1)}
-                        style={{ padding: "8px 10px" }}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving || idx === sortedRoles.length - 1}
-                        onClick={() => onMoveRole(r.id, 1)}
-                        style={{ padding: "8px 10px" }}
-                      >
-                        ↓
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => onSaveRole(r)}
-                        style={{ padding: "8px 10px" }}
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        disabled={saving}
-                        onClick={() => onDeleteRole(r.id)}
-                        style={{ padding: "8px 10px", color: "#b91c1c" }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* ======= INJECTS ======= */}
-      <div style={{ marginTop: 16, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12, padding: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <h2 style={{ fontWeight: 800 }}>Injects</h2>
-          <button onClick={() => (addOpen ? closeAddInject() : openAddInject())} style={{ padding: "9px 12px" }}>
-            {addOpen ? "Close" : "Add inject"}
-          </button>
-        </div>
-
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            onClick={() => setInjectTab("inbox")}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(0,0,0,0.14)",
-              background: injectTab === "inbox" ? "rgba(0,0,0,0.06)" : "transparent",
-            }}
-          >
-            Inbox ({inboxInjects.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setInjectTab("pulse")}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 999,
-              border: "1px solid rgba(0,0,0,0.14)",
-              background: injectTab === "pulse" ? "rgba(0,0,0,0.06)" : "transparent",
-            }}
-          >
-            Pulse ({pulseInjects.length})
-          </button>
-        </div>
-
-        {addOpen && (
-          <div style={{ marginTop: 12, border: "1px solid rgba(0,0,0,0.10)", borderRadius: 12, padding: 12 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Title</label>
-                <input value={iTitle} onChange={(e) => setITitle(e.target.value)} style={{ width: "100%", padding: 10 }} />
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Destination</label>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIChannel("ops");
-                      setInjectTab("inbox");
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      border: "1px solid rgba(0,0,0,0.14)",
-                      background: iChannel === "ops" ? "rgba(0,0,0,0.06)" : "transparent",
-                    }}
-                  >
-                    Inbox
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIChannel("pulse");
-                      setInjectTab("pulse");
-                    }}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 10,
-                      border: "1px solid rgba(0,0,0,0.14)",
-                      background: iChannel === "pulse" ? "rgba(0,0,0,0.06)" : "transparent",
-                    }}
-                  >
-                    Pulse
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={{ display: "block", marginBottom: 6 }}>Body</label>
-                <textarea value={iBody} onChange={(e) => setIBody(e.target.value)} rows={4} style={{ width: "100%", padding: 10 }} />
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Severity</label>
-                <input value={iSeverity} onChange={(e) => setISeverity(e.target.value)} placeholder="info / low / high" style={{ width: "100%", padding: 10 }} />
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Scheduled (optional)</label>
-                <input type="datetime-local" value={iScheduled} onChange={(e) => setIScheduled(e.target.value)} style={{ width: "100%", padding: 10 }} />
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Sender name</label>
-                <input value={iSenderName} onChange={(e) => setISenderName(e.target.value)} style={{ width: "100%", padding: 10 }} />
-              </div>
-
-              <div>
-                <label style={{ display: "block", marginBottom: 6 }}>Sender org</label>
-                <input value={iSenderOrg} onChange={(e) => setISenderOrg(e.target.value)} style={{ width: "100%", padding: 10 }} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
-              <button onClick={onAddInject} disabled={saving} style={{ padding: "9px 12px" }}>
-                {saving ? "…" : "Create & attach"}
-              </button>
-              <button onClick={closeAddInject} style={{ padding: "9px 12px" }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 12 }}>
-          {visibleInjects.length === 0 ? (
-            <p style={{ opacity: 0.75 }}>
-              No {injectTab === "pulse" ? "pulse" : "inbox"} injects yet.
-            </p>
-          ) : (
-            <div style={{ border: "1px solid rgba(0,0,0,0.08)", borderRadius: 12, overflow: "hidden" }}>
-              {visibleInjects.map((si, index) => {
+            <div className="space-y-2">
+              {sortedInjects.map((si, idx) => {
                 const inj = si.injects;
-                const localValue = si.scheduled_at ? new Date(si.scheduled_at).toISOString().slice(0, 16) : "";
-                const isPulse = (inj?.channel ?? "") === "pulse";
+                const isOpen = openSiId === si.id;
+                const isBusy =
+                  busyKey?.includes(`:${si.id}`) ||
+                  (inj?.id && busyKey?.includes(`:${inj.id}`)) ||
+                  busyKey === `move:${si.id}`;
+
+                const scheduledLocal = toDatetimeLocal(si.scheduled_at);
 
                 return (
                   <div
                     key={si.id}
-                    style={{
-                      padding: 12,
-                      borderBottom: "1px solid rgba(0,0,0,0.08)",
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto",
-                      gap: 10,
-                      alignItems: "start",
-                    }}
+                    className="rounded-[var(--radius)] border border-border bg-card px-3 py-3"
                   >
-                    <div>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                        <strong>{inj?.title ?? "(no title)"}</strong>
-                        <span style={{ opacity: 0.7, fontSize: 13 }}>
-                          #{index + 1} • {isPulse ? "Pulse" : "Inbox"} • {inj?.severity ?? "—"}
-                        </span>
-                      </div>
-
-                      {inj?.body && (
-                        <div style={{ marginTop: 8, whiteSpace: "pre-wrap", opacity: 0.9 }}>
-                          {inj.body}
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">
+                          {inj?.title ?? "Untitled inject"}
+                          <span className="opacity-60"> · #{si.order_index}</span>
                         </div>
-                      )}
 
-                      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "200px 1fr", gap: 10, alignItems: "center" }}>
-                        <label style={{ opacity: 0.75, fontSize: 13 }}>Scheduled</label>
-                        <input
-                          type="datetime-local"
-                          value={localValue}
-                          onChange={(e) => onSchedule(si.id, e.target.value)}
-                          style={{ padding: 8, maxWidth: 260 }}
-                        />
+                        <div className="text-xs text-muted-foreground">
+                          Channel: <b>{inj?.channel ?? "—"}</b> · Severity: <b>{inj?.severity ?? "—"}</b>
+                          {" · "}
+                          Scheduled: <b>{si.scheduled_at ? new Date(si.scheduled_at).toLocaleString() : "immediate"}</b>
+                        </div>
                       </div>
-                    </div>
 
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button onClick={() => onMoveWithin(visibleInjects, si.id, -1)} disabled={saving || index === 0}>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onMove(si.id, -1)}
+                          disabled={idx === 0 || !!isBusy}
+                          title="Move up"
+                        >
                           ↑
-                        </button>
-                        <button
-                          onClick={() => onMoveWithin(visibleInjects, si.id, +1)}
-                          disabled={saving || index === visibleInjects.length - 1}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onMove(si.id, 1)}
+                          disabled={idx === sortedInjects.length - 1 || !!isBusy}
+                          title="Move down"
                         >
                           ↓
-                        </button>
-                      </div>
+                        </Button>
 
-                      <button onClick={() => onDetach(si.id)} disabled={saving} style={{ color: "#b91c1c" }}>
-                        Remove
-                      </button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setOpenSiId(isOpen ? null : si.id)}
+                        >
+                          {isOpen ? "Close" : "Edit"}
+                        </Button>
+
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onDetach(si.id)}
+                          disabled={!!isBusy}
+                        >
+                          Detach
+                        </Button>
+                      </div>
                     </div>
+
+                    {isOpen ? (
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Title</div>
+                          <Input
+                            defaultValue={inj?.title ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { title: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Scheduled at</div>
+                          <Input
+                            type="datetime-local"
+                            defaultValue={scheduledLocal}
+                            onBlur={(e) => onReschedule(si.id, e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Channel</div>
+                          <Input
+                            defaultValue={inj?.channel ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { channel: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Severity</div>
+                          <Input
+                            defaultValue={inj?.severity ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { severity: e.target.value || null })}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Sender name</div>
+                          <Input
+                            defaultValue={inj?.sender_name ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { sender_name: e.target.value || null })}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Sender org</div>
+                          <Input
+                            defaultValue={inj?.sender_org ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { sender_org: e.target.value || null })}
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <div className="text-sm font-semibold">Body</div>
+                          <textarea
+                            defaultValue={inj?.body ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { body: e.target.value })}
+                            className="min-h-[120px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2 flex flex-wrap gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setOpenSiId(null)}
+                          >
+                            Done
+                          </Button>
+
+                          {inj?.id ? (
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => onDeleteInject(inj.id)}
+                              disabled={!!isBusy}
+                            >
+                              Delete inject
+                            </Button>
+                          ) : null}
+                        </div>
+
+                        <div className="md:col-span-2 text-xs text-muted-foreground">
+                          Tip: changes are saved on field blur (click outside the field).
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                        {inj?.body ?? ""}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

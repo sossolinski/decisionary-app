@@ -1,8 +1,13 @@
+// app/(app)/join/page.tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 
 export default function JoinPage() {
   const router = useRouter();
@@ -25,8 +30,7 @@ export default function JoinPage() {
 
       // 2) if no session → anonymous sign-in
       if (!sessData.session) {
-        const { data: anonData, error: anonErr } =
-          await supabase.auth.signInAnonymously();
+        const { data: anonData, error: anonErr } = await supabase.auth.signInAnonymously();
         if (anonErr) throw anonErr;
         if (!anonData?.session) {
           throw new Error("Failed to create anonymous session");
@@ -58,47 +62,44 @@ export default function JoinPage() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "80px auto", padding: 20 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>
-        Join session
-      </h1>
+    <div className="mx-auto max-w-[520px]">
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Join session</CardTitle>
+          <CardDescription className="text-sm">
+            Enter the join code provided by the facilitator.
+          </CardDescription>
+        </CardHeader>
 
-      <p style={{ opacity: 0.75, marginBottom: 16 }}>
-        Enter the join code provided by the facilitator.
-      </p>
+        <CardContent className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-sm font-semibold">Join code</div>
+            <Input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              placeholder="e.g. AB12CD"
+              className="uppercase"
+            />
+          </div>
 
-      <input
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        placeholder="e.g. AB12CD"
-        style={{
-          width: "100%",
-          padding: "12px 14px",
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.15)",
-          marginBottom: 12,
-          fontSize: 16,
-          textTransform: "uppercase",
-        }}
-      />
+          <Button
+            variant="primary"
+            onClick={onJoin}
+            disabled={loading || !code.trim()}
+            className="w-full"
+          >
+            {loading ? "Joining…" : "Join"}
+          </Button>
 
-      <button
-        onClick={onJoin}
-        disabled={loading || !code.trim()}
-        style={{
-          width: "100%",
-          padding: "12px 14px",
-          borderRadius: 12,
-          border: "1px solid rgba(0,0,0,0.15)",
-          fontWeight: 700,
-          cursor: loading ? "not-allowed" : "pointer",
-          opacity: loading ? 0.6 : 1,
-        }}
-      >
-        {loading ? "Joining…" : "Join"}
-      </button>
+          {error ? (
+            <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
+              {error}
+            </div>
+          ) : null}
 
-      {error && <div style={{ marginTop: 12, color: "#b91c1c" }}>{error}</div>}
+          <div className="text-xs text-muted-foreground">Tip: codes are not case-sensitive.</div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

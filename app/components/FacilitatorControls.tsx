@@ -5,6 +5,9 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { deliverDueInjects } from "@/lib/sessions";
 
+import { Button } from "@/app/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+
 export default function FacilitatorControls({ sessionId }: { sessionId: string }) {
   const [msg, setMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -35,46 +38,31 @@ export default function FacilitatorControls({ sessionId }: { sessionId: string }
   }
 
   return (
-    <div style={{ padding: 12, borderRadius: 14, border: "1px solid rgba(0,0,0,0.12)" }}>
-      <div style={{ fontWeight: 800, marginBottom: 10 }}>Facilitator panel</div>
+    <Card className="surface shadow-soft border border-[var(--studio-border)]">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Facilitator tools</CardTitle>
+        <CardDescription className="text-sm">
+          Quick controls for running the exercise and releasing scheduled injects.
+        </CardDescription>
+      </CardHeader>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button
-          onClick={startExercise}
-          disabled={loading}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.16)",
-            background: "white",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ▶ Start exercise
-        </button>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={startExercise} disabled={loading}>
+            {loading ? "..." : "Start exercise"}
+          </Button>
 
-        <button
-          onClick={deliverScheduled}
-          disabled={loading}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.16)",
-            background: "white",
-            cursor: loading ? "not-allowed" : "pointer",
-            fontWeight: 800,
-          }}
-        >
-          ⏱ Deliver due injects
-        </button>
-      </div>
-
-      {msg && (
-        <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(0,0,0,0.04)" }}>
-          {msg}
+          <Button variant="secondary" onClick={deliverScheduled} disabled={loading}>
+            {loading ? "..." : "Deliver due injects"}
+          </Button>
         </div>
-      )}
-    </div>
+
+        {msg ? (
+          <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground">
+            {msg}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }

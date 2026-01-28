@@ -1,19 +1,39 @@
+// app/(app)/facilitator/sessions/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import { getMyRole } from "@/lib/users";
 import {
   listSessions,
   listScenarios,
   createSessionFromScenario,
-  restartSession,
   setSessionStatus,
+  restartSession,
   deleteSession,
   type Session,
   type ScenarioListItem,
 } from "@/lib/sessionsRuntime";
-import { listFacilitators, type FacilitatorProfile } from "@/lib/facilitator";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
+}
 
 export default function FacilitatorSessionsPage() {
   const router = useRouter();
@@ -24,27 +44,17 @@ export default function FacilitatorSessionsPage() {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scenarios, setScenarios] = useState<ScenarioListItem[]>([]);
-  const [facilitators, setFacilitators] = useState<FacilitatorProfile[]>([]);
 
-  const [newScenarioId, setNewScenarioId] = useState("");
-  const [newTitle, setNewTitle] = useState("");
-
-  const canCreate = useMemo(() => {
-    return !!newScenarioId && !!newTitle.trim();
-  }, [newScenarioId, newTitle]);
+  const [scenarioId, setScenarioId] = useState("");
+  const [title, setTitle] = useState("New session");
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const [s, sc, facs] = await Promise.all([
-        listSessions(),
-        listScenarios(),
-        listFacilitators(),
-      ]);
-      setSessions(s);
-      setScenarios(sc);
-      setFacilitators(facs ?? []);
+      const [ses, scs] = await Promise.all([listSessions(), listScenarios()]);
+      setSessions(ses ?? []);
+      setScenarios(scs ?? []);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -55,82 +65,33 @@ export default function FacilitatorSessionsPage() {
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator") {
-        router.replace("/participant");
-        return;
-      }
+      if (!role) return router.replace("/login");
+      if (role !== "facilitator") return router.replace("/participant");
       await load();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
-  /* ================= HELPERS ================= */
-  const idToEmail = useMemo(() => {
+  const scenarioTitleById = useMemo(() => {
     const m = new Map<string, string>();
-    for (const f of facilitators) {
-      if (f.email) m.set(f.id, f.email);
-    }
+    for (const s of scenarios) m.set(s.id, s.title);
     return m;
-  }, [facilitators]);
+  }, [scenarios]);
 
-  function who(userId?: string | null) {
-    if (!userId) return "—";
-    return idToEmail.get(userId) ?? userId;
-  }
-
-  function fmt(dt?: string | null) {
-    if (!dt) return "—";
-    try {
-      return new Date(dt).toLocaleString();
-    } catch {
-      return dt;
+  async function onCreate() {
+    if (!scenarioId) {
+      setError("Select a scenario.");
+      return;
     }
-  }
-
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      const el = document.createElement("textarea");
-      el.value = text;
-      document.body.appendChild(el);
-      el.select();
-      document.execCommand("copy");
-      document.body.removeChild(el);
-    }
-  }
-
-  /* ================= ACTIONS ================= */
-  async function onCreateSession() {
-    if (!canCreate) return;
-
     setBusyId("create");
     setError(null);
     try {
-      await createSessionFromScenario({
-        scenarioId: newScenarioId,
-        title: newTitle.trim(),
+      const id = await createSessionFromScenario({
+        scenarioId,
+        title: title.trim() || "New session",
       });
-      setNewScenarioId("");
-      setNewTitle("");
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function onStart(sessionId: string) {
-    setBusyId(sessionId);
-    setError(null);
-    try {
-      await setSessionStatus(sessionId, "live");
-      await load();
+      router.push(`/sessions/${id}`);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -139,6 +100,7 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onEnd(sessionId: string) {
+    if (!confirm("End this session?")) return;
     setBusyId(sessionId);
     setError(null);
     try {
@@ -152,8 +114,7 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onRestart(sessionId: string) {
-    if (!confirm("Restart session? This clears all runtime data.")) return;
-
+    if (!confirm("Restart this session?")) return;
     setBusyId(sessionId);
     setError(null);
     try {
@@ -167,8 +128,7 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onDelete(sessionId: string) {
-    if (!confirm("Delete this session? This will remove runtime data.")) return;
-
+    if (!confirm("Delete this session? This cannot be undone.")) return;
     setBusyId(sessionId);
     setError(null);
     try {
@@ -182,298 +142,151 @@ export default function FacilitatorSessionsPage() {
   }
 
   if (loading) {
-    return <div style={{ padding: 24 }}>Loading…</div>;
+    return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          gap: 12,
-          alignItems: "baseline",
-          marginBottom: 12,
-        }}
-      >
-        <h1 style={{ margin: 0 }}>Sessions</h1>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
+          <p className="text-sm text-muted-foreground">
+            Create sessions from scenarios and manage exercise lifecycle.
+          </p>
+        </div>
 
-        <button
-          onClick={load}
-          disabled={!!busyId}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-            fontWeight: 800,
-            cursor: busyId ? "not-allowed" : "pointer",
-            opacity: busyId ? 0.6 : 1,
-          }}
-        >
+        <Button variant="secondary" onClick={load} disabled={!!busyId}>
           Refresh
-        </button>
+        </Button>
       </div>
 
       {error ? (
-        <div
-          style={{
-            marginBottom: 14,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(239,68,68,0.35)",
-            background: "rgba(239,68,68,0.06)",
-            color: "#991b1b",
-            fontWeight: 700,
-          }}
-        >
+        <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
           {error}
         </div>
       ) : null}
 
-      {/* CREATE (stylistycznie jak w Scenarios) */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <select
-          value={newScenarioId}
-          onChange={(e) => setNewScenarioId(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 260,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-          }}
-        >
-          <option value="">Select scenario…</option>
-          {scenarios.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.title}
-            </option>
-          ))}
-        </select>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Create session</CardTitle>
+          <CardDescription className="text-sm">
+            Choose scenario and start a new run.
+          </CardDescription>
+        </CardHeader>
 
-        <input
-          placeholder="Session title"
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          style={{
-            flex: 1,
-            minWidth: 240,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-          }}
-        />
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <div className="space-y-1 md:col-span-2">
+            <div className="text-sm font-semibold">Scenario</div>
+            <select
+              value={scenarioId}
+              onChange={(e) => setScenarioId(e.target.value)}
+              className="h-10 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm"
+            >
+              <option value="">Select scenario…</option>
+              {scenarios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.title}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <button
-          onClick={onCreateSession}
-          disabled={!canCreate || busyId === "create"}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-            fontWeight: 800,
-            cursor: !canCreate || busyId === "create" ? "not-allowed" : "pointer",
-            opacity: !canCreate || busyId === "create" ? 0.6 : 1,
-          }}
-        >
-          {busyId === "create" ? "..." : "Create"}
-        </button>
-      </div>
+          <div className="space-y-1">
+            <div className="text-sm font-semibold">Title</div>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
 
-      {/* LIST (karty jak w Scenarios) */}
-      {sessions.length === 0 ? (
-        <div style={{ opacity: 0.75 }}>No sessions yet.</div>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {sessions.map((s: any) => {
-            const isBusy = busyId === s.id;
+          <div className="md:col-span-3 flex flex-wrap gap-2">
+            <Button variant="primary" onClick={onCreate} disabled={busyId === "create"}>
+              {busyId === "create" ? "..." : "Create"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-            const createdAt = fmt(s.created_at);
-            const createdBy = who(s.created_by);
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">All sessions</CardTitle>
+          <CardDescription className="text-sm">{sessions.length} total</CardDescription>
+        </CardHeader>
 
-            const startedAt = fmt(s.started_at ?? null);
-            const endedAt = fmt(s.ended_at ?? null);
+        <CardContent className="space-y-3">
+          {sessions.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No sessions yet.</div>
+          ) : (
+            <div className="grid gap-3">
+              {sessions.map((s) => {
+                const isBusy = busyId === s.id;
 
-            return (
-              <div
-                key={s.id}
-                style={{
-                  padding: 14,
-                  borderRadius: 16,
-                  border: "1px solid rgba(0,0,0,0.10)",
-                  background: "rgba(255,255,255,0.92)",
-                  boxShadow: "0 12px 28px rgba(11,18,32,0.06)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>
-                      {s.title ?? "Untitled session"}
-                      <span style={{ opacity: 0.6, fontWeight: 800 }}> · {String(s.status ?? "—")}</span>
-                    </div>
+                return (
+                  <div
+                    key={s.id}
+                    className="rounded-[var(--radius)] border border-border bg-card px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-extrabold">
+                          {s.title ?? "Untitled session"}
+                          <span className="opacity-60"> · {String(s.status ?? "—")}</span>
+                        </div>
 
-                    <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 8 }}>
-                      <div>
-                        <b>Created:</b> {createdAt} by {createdBy}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Scenario:{" "}
+                          <b>
+                            {s.scenario?.title ??
+                              (s.scenario_id ? scenarioTitleById.get(s.scenario_id) : null) ??
+                              "—"}
+                          </b>
+                          {" · "}
+                          Join code: <b>{s.join_code}</b>
+                        </div>
+
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Created: <b>{fmt(s.created_at)}</b>
+                          {" · "}
+                          Started: <b>{fmt(s.started_at)}</b>
+                          {" · "}
+                          Ended: <b>{fmt(s.ended_at)}</b>
+                        </div>
                       </div>
-                      <div>
-                        <b>Started:</b> {startedAt}
-                      </div>
-                      <div>
-                        <b>Ended:</b> {endedAt}
-                      </div>
-                    </div>
 
-                    <div style={{ fontSize: 13, opacity: 0.78, marginTop: 6 }}>
-                      Join code:{" "}
-                      <b style={{ letterSpacing: 0.5 }}>{s.join_code}</b>{" "}
-                      <button
-                        onClick={() => copy(s.join_code)}
-                        disabled={isBusy}
-                        style={{
-                          marginLeft: 8,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          border: "1px solid rgba(0,0,0,0.12)",
-                          background: "white",
-                          cursor: isBusy ? "not-allowed" : "pointer",
-                          fontSize: 12,
-                          fontWeight: 800,
-                          opacity: isBusy ? 0.6 : 1,
-                        }}
-                        title="Copy join code"
-                      >
-                        Copy
-                      </button>
-                    </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="primary"
+                          onClick={() => router.push(`/sessions/${s.id}`)}
+                          disabled={isBusy}
+                        >
+                          Open
+                        </Button>
 
-                    <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>
-                      Session ID: <code>{s.id}</code>
+                        <Button
+                          variant="secondary"
+                          onClick={() => router.push(`/facilitator/sessions/${s.id}/roster`)}
+                          disabled={isBusy}
+                        >
+                          Roster
+                        </Button>
+
+                        <Button variant="warning" onClick={() => onEnd(s.id)} disabled={isBusy}>
+                          End
+                        </Button>
+
+                        <Button variant="warning" onClick={() => onRestart(s.id)} disabled={isBusy}>
+                          Restart
+                        </Button>
+
+                        <Button variant="danger" onClick={() => onDelete(s.id)} disabled={isBusy}>
+                          Delete
+                        </Button>
+                      </div>
                     </div>
                   </div>
-
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => router.push(`/sessions/${s.id}`)}
-                      disabled={isBusy}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "white",
-                        fontWeight: 800,
-                        cursor: isBusy ? "not-allowed" : "pointer",
-                        opacity: isBusy ? 0.6 : 1,
-                      }}
-                    >
-                      Open
-                    </button>
-
-                    <button
-                      onClick={() => router.push(`/facilitator/sessions/${s.id}/roster`)}
-                      disabled={isBusy}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "white",
-                        fontWeight: 800,
-                        cursor: isBusy ? "not-allowed" : "pointer",
-                        opacity: isBusy ? 0.6 : 1,
-                      }}
-                    >
-                      Roster
-                    </button>
-
-                    {s.status !== "live" ? (
-                      <button
-                        onClick={() => onStart(s.id)}
-                        disabled={isBusy}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(0,0,0,0.15)",
-                          background: "white",
-                          fontWeight: 800,
-                          cursor: isBusy ? "not-allowed" : "pointer",
-                          opacity: isBusy ? 0.6 : 1,
-                        }}
-                      >
-                        {isBusy ? "..." : "Start"}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => onEnd(s.id)}
-                        disabled={isBusy}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(0,0,0,0.15)",
-                          background: "white",
-                          fontWeight: 800,
-                          cursor: isBusy ? "not-allowed" : "pointer",
-                          opacity: isBusy ? 0.6 : 1,
-                        }}
-                      >
-                        {isBusy ? "..." : "End"}
-                      </button>
-                    )}
-
-                    <button
-                      onClick={() => onRestart(s.id)}
-                      disabled={isBusy}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "rgba(0,0,0,0.03)",
-                        fontWeight: 800,
-                        cursor: isBusy ? "not-allowed" : "pointer",
-                        opacity: isBusy ? 0.6 : 1,
-                      }}
-                    >
-                      {isBusy ? "..." : "Restart"}
-                    </button>
-
-                    <button
-                      onClick={() => onDelete(s.id)}
-                      disabled={isBusy}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(185,28,28,0.35)",
-                        background: "rgba(185,28,28,0.06)",
-                        color: "#b91c1c",
-                        fontWeight: 900,
-                        cursor: isBusy ? "not-allowed" : "pointer",
-                        opacity: isBusy ? 0.6 : 1,
-                      }}
-                    >
-                      {isBusy ? "..." : "Delete"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div style={{ marginTop: 14, fontSize: 12, opacity: 0.65 }}>
-        Tip: share <b>Join code</b> with participants. They should open <code>/join</code>.
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

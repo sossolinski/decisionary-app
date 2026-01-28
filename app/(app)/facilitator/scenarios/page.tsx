@@ -1,53 +1,48 @@
+// app/(app)/facilitator/scenarios/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { getMyRole } from "@/lib/users";
 import {
   listScenarios,
   createScenario,
   deleteScenario,
   duplicateScenario,
-  Scenario,
   listFacilitators,
   transferScenarioOwnership,
   shareScenario,
   revokeScenarioShare,
-  FacilitatorProfile,
+  type Scenario,
+  type FacilitatorProfile,
 } from "@/lib/facilitator";
-import { getMyRole } from "@/lib/users";
+
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
 
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [facilitators, setFacilitators] = useState<FacilitatorProfile[]>([]);
-
   const [newTitle, setNewTitle] = useState("");
-  const [loading, setLoading] = useState(false);
 
+  const [loading, setLoading] = useState(false);
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
-
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
 
   const [shareTargetByScenario, setShareTargetByScenario] = useState<Record<string, string>>({});
 
-  /* ================= AUTH GUARD ================= */
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator") {
-        router.replace("/participant");
-        return;
-      }
-
+      if (!role) return router.replace("/login");
+      if (role !== "facilitator") return router.replace("/participant");
       await load();
     })().catch((e: any) => setError(e?.message ?? "Failed to load"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -57,19 +52,18 @@ export default function FacilitatorScenariosPage() {
     setError(null);
     try {
       const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
-      setScenarios(scs);
+      setScenarios(scs ?? []);
       setFacilitators(facs ?? []);
     } catch (e: any) {
       setError(e?.message ?? "Load failed");
     }
   }
 
-  /* ================= ACTIONS ================= */
   async function onCreate() {
     if (!newTitle.trim()) return;
+
     setLoading(true);
     setError(null);
-
     try {
       const s = await createScenario(newTitle.trim());
       setScenarios((prev) => [s, ...prev]);
@@ -83,8 +77,8 @@ export default function FacilitatorScenariosPage() {
 
   async function onDelete(id: string) {
     if (!confirm("Delete this scenario?")) return;
-    setError(null);
 
+    setError(null);
     try {
       await deleteScenario(id);
       setScenarios((prev) => prev.filter((s) => s.id !== id));
@@ -96,7 +90,6 @@ export default function FacilitatorScenariosPage() {
   async function onDuplicate(id: string) {
     setError(null);
     setDuplicatingId(id);
-
     try {
       const copy = await duplicateScenario(id);
       setScenarios((prev) => [copy, ...prev]);
@@ -109,9 +102,9 @@ export default function FacilitatorScenariosPage() {
 
   async function onAssign(scenarioId: string, newOwnerId: string) {
     if (!newOwnerId) return;
+
     setError(null);
     setAssigningId(scenarioId);
-
     try {
       await transferScenarioOwnership(scenarioId, newOwnerId);
       setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
@@ -131,7 +124,6 @@ export default function FacilitatorScenariosPage() {
 
     setError(null);
     setSharingId(scenarioId);
-
     try {
       await shareScenario(scenarioId, targetId, "read");
       alert("Shared (read-only).");
@@ -151,7 +143,6 @@ export default function FacilitatorScenariosPage() {
 
     setError(null);
     setSharingId(scenarioId);
-
     try {
       await revokeScenarioShare(scenarioId, targetId);
       alert("Share revoked.");
@@ -162,7 +153,6 @@ export default function FacilitatorScenariosPage() {
     }
   }
 
-  /* ================= HELPERS ================= */
   const idToEmail = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of facilitators) {
@@ -185,258 +175,166 @@ export default function FacilitatorScenariosPage() {
     return idToEmail.get(userId) ?? userId;
   }
 
-  /* ================= UI ================= */
   return (
-    <div style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <h1 style={{ margin: 0, marginBottom: 12 }}>Scenarios</h1>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1 min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight">Scenarios</h1>
+          <p className="text-sm text-muted-foreground">
+            Create, duplicate, transfer and share scenarios.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={load}>
+            Refresh
+          </Button>
+        </div>
+      </div>
 
       {error ? (
-        <div
-          style={{
-            marginBottom: 14,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(239,68,68,0.35)",
-            background: "rgba(239,68,68,0.06)",
-            color: "#991b1b",
-            fontWeight: 700,
-          }}
-        >
+        <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
           {error}
         </div>
       ) : null}
 
-      {/* CREATE */}
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          marginBottom: 16,
-          flexWrap: "wrap",
-        }}
-      >
-        <input
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="New scenario title"
-          style={{
-            flex: 1,
-            minWidth: 240,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-          }}
-        />
-        <button
-          onClick={onCreate}
-          disabled={loading}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-            fontWeight: 800,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.6 : 1,
-          }}
-        >
-          {loading ? "..." : "Create"}
-        </button>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Create</CardTitle>
+          <CardDescription className="text-sm">Create a new scenario owned by you.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Input
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            placeholder="New scenario title"
+            className="min-w-[260px] flex-1"
+          />
+          <Button variant="primary" onClick={onCreate} disabled={loading}>
+            {loading ? "..." : "Create"}
+          </Button>
+        </CardContent>
+      </Card>
 
-        <button
-          onClick={load}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid rgba(0,0,0,0.15)",
-            background: "white",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          Refresh
-        </button>
-      </div>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Library</CardTitle>
+          <CardDescription className="text-sm">{scenarios.length} scenario(s)</CardDescription>
+        </CardHeader>
 
-      {/* LIST */}
-      {scenarios.length === 0 ? (
-        <div style={{ opacity: 0.75 }}>No scenarios yet.</div>
-      ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {scenarios.map((s) => {
-            const selectedTarget = shareTargetByScenario[s.id] ?? "";
+        <CardContent className="space-y-3">
+          {scenarios.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No scenarios yet.</div>
+          ) : (
+            <div className="grid gap-3">
+              {scenarios.map((s) => {
+                const selectedTarget = shareTargetByScenario[s.id] ?? "";
+                const isDuplicating = duplicatingId === s.id;
+                const isAssigning = assigningId === s.id;
+                const isSharing = sharingId === s.id;
 
-            return (
-              <div
-                key={s.id}
-                style={{
-                  padding: 14,
-                  borderRadius: 16,
-                  border: "1px solid rgba(0,0,0,0.10)",
-                  background: "rgba(255,255,255,0.92)",
-                  boxShadow: "0 12px 28px rgba(11,18,32,0.06)",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 4 }}>{s.title}</div>
+                return (
+                  <div key={s.id} className="rounded-[var(--radius)] border border-border bg-card px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-base font-extrabold">{s.title}</div>
 
-                    <div style={{ fontSize: 12, opacity: 0.65, marginBottom: 8 }}>
-                      <div>
-                        <b>Created:</b> {fmt(s.created_at)} by {who(s.created_by)}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Created: <b>{fmt(s.created_at)}</b> by <b>{who(s.created_by)}</b>
+                          {" · "}
+                          Updated: <b>{fmt(s.updated_at)}</b> by <b>{who(s.updated_by)}</b>
+                        </div>
+
+                        {s.description ? (
+                          <div className="mt-2 text-sm text-muted-foreground line-clamp-2">{s.description}</div>
+                        ) : (
+                          <div className="mt-2 text-sm text-muted-foreground">No description</div>
+                        )}
+
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          ID: <code className="font-mono">{s.id}</code>
+                        </div>
                       </div>
-                      <div>
-                        <b>Updated:</b> {fmt(s.updated_at)} by {who(s.updated_by)}
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="primary" onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}>
+                          Open
+                        </Button>
+
+                        <Button variant="secondary" onClick={() => onDuplicate(s.id)} disabled={isDuplicating}>
+                          {isDuplicating ? "..." : "Duplicate"}
+                        </Button>
+
+                        <Button variant="danger" onClick={() => onDelete(s.id)}>
+                          Delete
+                        </Button>
                       </div>
                     </div>
 
-                    {s.description ? (
-                      <div style={{ opacity: 0.75, marginBottom: 8 }}>{s.description}</div>
-                    ) : (
-                      <div style={{ opacity: 0.5, marginBottom: 8, fontSize: 13 }}>No description</div>
-                    )}
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-[var(--radius)] border border-border bg-background px-3 py-3">
+                        <div className="text-sm font-semibold">Assign (transfer owner)</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select
+                            onChange={(e) => onAssign(s.id, e.target.value)}
+                            disabled={isAssigning}
+                            className="h-10 min-w-[260px] rounded-[var(--radius)] border border-border bg-background px-3 text-sm"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>
+                              Select facilitator…
+                            </option>
+                            {facilitators.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.email ?? f.id}
+                              </option>
+                            ))}
+                          </select>
+
+                          <div className="text-xs text-muted-foreground">
+                            {isAssigning ? "Transferring…" : "You will lose ownership after transfer."}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-[var(--radius)] border border-border bg-background px-3 py-3">
+                        <div className="text-sm font-semibold">Share (keeps owner)</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select
+                            value={selectedTarget}
+                            onChange={(e) =>
+                              setShareTargetByScenario((prev) => ({ ...prev, [s.id]: e.target.value }))
+                            }
+                            className="h-10 min-w-[260px] rounded-[var(--radius)] border border-border bg-background px-3 text-sm"
+                          >
+                            <option value="">Select facilitator…</option>
+                            {facilitators.map((f) => (
+                              <option key={f.id} value={f.id}>
+                                {f.email ?? f.id}
+                              </option>
+                            ))}
+                          </select>
+
+                          <Button variant="primary" onClick={() => onShare(s.id)} disabled={isSharing}>
+                            {isSharing ? "..." : "Share"}
+                          </Button>
+
+                          <Button variant="secondary" onClick={() => onRevoke(s.id)} disabled={isSharing}>
+                            Revoke
+                          </Button>
+                        </div>
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Share creates a read-only entry in <code className="font-mono">scenario_shares</code>.
+                        </div>
+                      </div>
+                    </div>
                   </div>
-
-                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                    <button
-                      onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "white",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Open
-                    </button>
-
-                    <button
-                      onClick={() => onDuplicate(s.id)}
-                      disabled={duplicatingId === s.id}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(0,0,0,0.15)",
-                        background: "rgba(0,0,0,0.03)",
-                        fontWeight: 800,
-                        cursor: duplicatingId === s.id ? "not-allowed" : "pointer",
-                        opacity: duplicatingId === s.id ? 0.6 : 1,
-                      }}
-                    >
-                      {duplicatingId === s.id ? "..." : "Duplicate"}
-                    </button>
-
-                    <button
-                      onClick={() => onDelete(s.id)}
-                      style={{
-                        padding: "8px 12px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(185,28,28,0.35)",
-                        background: "rgba(185,28,28,0.06)",
-                        color: "#b91c1c",
-                        fontWeight: 900,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-
-                {/* ASSIGN */}
-                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>
-                    Assign (transfer owner):
-                  </span>
-                  <select
-                    defaultValue=""
-                    disabled={assigningId === s.id}
-                    onChange={(e) => onAssign(s.id, e.target.value)}
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      background: "white",
-                      minWidth: 260,
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select facilitator…
-                    </option>
-                    {facilitators.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.email ?? f.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* SHARE */}
-                <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>
-                    Share (keeps owner):
-                  </span>
-                  <select
-                    value={selectedTarget}
-                    disabled={sharingId === s.id}
-                    onChange={(e) =>
-                      setShareTargetByScenario((prev) => ({ ...prev, [s.id]: e.target.value }))
-                    }
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      background: "white",
-                      minWidth: 260,
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select facilitator…
-                    </option>
-                    {facilitators.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.email ?? f.id}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={() => onShare(s.id)}
-                    disabled={sharingId === s.id}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      background: "white",
-                      fontWeight: 800,
-                    }}
-                  >
-                    Share
-                  </button>
-
-                  <button
-                    onClick={() => onRevoke(s.id)}
-                    disabled={sharingId === s.id}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 12,
-                      border: "1px solid rgba(0,0,0,0.15)",
-                      background: "rgba(0,0,0,0.03)",
-                      fontWeight: 800,
-                    }}
-                  >
-                    Revoke
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

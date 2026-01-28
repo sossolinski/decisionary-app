@@ -61,7 +61,13 @@ export type SessionRoleAssignment = {
   id: string;
   session_id: string;
   user_id: string;
-  role_key: string;
+
+  // exists in DB (we added), but PostgREST schema cache may still lag
+  role_key?: string | null;
+
+  // exists in your DB according to your screenshot
+  scenario_role_id?: string | null;
+
   assigned_at: string | null;
 };
 
@@ -103,7 +109,9 @@ export async function listScenarios(): Promise<ScenarioListItem[]> {
    SESSIONS LIST (NO EMBED)
 ========================= */
 
-async function fetchScenarioLiteByIds(ids: string[]): Promise<Map<string, SessionScenarioLite>> {
+async function fetchScenarioLiteByIds(
+  ids: string[]
+): Promise<Map<string, SessionScenarioLite>> {
   const uniq = Array.from(new Set(ids)).filter(Boolean);
   const map = new Map<string, SessionScenarioLite>();
   if (uniq.length === 0) return map;
@@ -127,7 +135,9 @@ export async function listSessions(): Promise<Session[]> {
   // 1) sessions without any relational embed (fixes schema cache FK error)
   const { data, error } = await supabase
     .from("sessions")
-    .select("id,title,scenario_id,join_code,status,created_at,created_by,started_at,ended_at")
+    .select(
+      "id,title,scenario_id,join_code,status,created_at,created_by,started_at,ended_at"
+    )
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -265,6 +275,7 @@ export async function ensureSessionRoleSlots(sessionId: string): Promise<void> {
     p_session_id: sessionId,
   });
 
+  // If RPC doesn't exist in your DB yet — silently ignore.
   if (!rpcErr) return;
 
   if (
@@ -277,7 +288,9 @@ export async function ensureSessionRoleSlots(sessionId: string): Promise<void> {
   throw rpcErr;
 }
 
-export async function listSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
+export async function listSessionParticipants(
+  sessionId: string
+): Promise<SessionParticipant[]> {
   await requireUserId();
 
   const { data, error } = await supabase
@@ -296,6 +309,10 @@ export async function listSessionParticipants(sessionId: string): Promise<Sessio
   return (data ?? []) as any;
 }
 
+/**
+ * IMPORTANT:
+ * We use "*" to avoid PostgREST schema cache issues with recently added columns.
+ */
 export async function listSessionRoleAssignments(
   sessionId: string
 ): Promise<SessionRoleAssignment[]> {
@@ -303,14 +320,26 @@ export async function listSessionRoleAssignments(
 
   const { data, error } = await supabase
     .from("session_role_assignments")
-    .select("id, session_id, user_id, role_key, assigned_at")
+    .select("*")
     .eq("session_id", sessionId)
     .order("assigned_at", { ascending: false });
 
   if (error) throw error;
-  return (data ?? []) as SessionRoleAssignment[];
+
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    session_id: r.session_id,
+    user_id: r.user_id,
+    role_key: r.role_key ?? null,
+    scenario_role_id: r.scenario_role_id ?? null,
+    assigned_at: r.assigned_at ?? null,
+  })) as SessionRoleAssignment[];
 }
 
+/**
+ * Simplified: write role_key only.
+ * (No dependency on session_role_slots — table may not exist in DB.)
+ */
 export async function assignUserToSessionRole(params: {
   sessionId: string;
   userId: string;
@@ -328,22 +357,62 @@ export async function assignUserToSessionRole(params: {
         user_id: userId,
         role_key: roleKey,
         assigned_at: new Date().toISOString(),
-      },
+      } as any,
       { onConflict: "session_id,user_id" }
     );
 
   if (error) throw error;
 }
 
+/**
+ * DB may not have session_role_slots. Return empty list to avoid hard failure.
+ */
 export async function listSessionRoleSlots(sessionId: string): Promise<SessionRoleSlot[]> {
   await requireUserId();
+  return [];
+}
 
-  const { data, error } = await supabase
-    .from("session_role_slots")
-    .select("id, session_id, role_key, capacity")
+/* =========================
+   ROSTER (UI helper)
+========================= */
+
+export type SessionRosterRow = {
+  participant_id: string;
+  display_name: string | null;
+  role: string | null;
+  joined_at: string | null;
+};
+
+export async function listSessionRoster(sessionId: string): Promise<SessionRosterRow[]> {
+  await requireUserId();
+
+  const [participants, assignments] = await Promise.all([
+    listSessionParticipants(sessionId),
+    listSessionRoleAssignments(sessionId),
+  ]);
+
+  const roleByUser = new Map<string, string>();
+  for (const a of assignments ?? []) {
+    const role = (a as any)?.role_key ?? null;
+    if (a?.user_id && role) roleByUser.set(a.user_id, String(role));
+  }
+
+  return (participants ?? []).map((p) => ({
+    participant_id: p.user_id,
+    display_name: p.profile?.email ?? null,
+    role: roleByUser.get(p.user_id) ?? null,
+    joined_at: p.joined_at ?? null,
+  }));
+}
+
+export async function kickFromSession(sessionId: string, participantId: string) {
+  await requireUserId();
+
+  const { error } = await supabase
+    .from("session_participants")
+    .delete()
     .eq("session_id", sessionId)
-    .order("role_key", { ascending: true });
+    .eq("user_id", participantId);
 
   if (error) throw error;
-  return (data ?? []) as SessionRoleSlot[];
 }
