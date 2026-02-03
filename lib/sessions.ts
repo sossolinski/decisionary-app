@@ -562,3 +562,83 @@ export function subscribeSessionMeta(sessionId: string, cb: () => void, debounce
     supabase.removeChannel(ch);
   };
 }
+
+/* =========================
+   REALTIME (payload): no-refetch variants
+   - keep existing subscribe* functions intact
+========================= */
+
+export function subscribeActionsPayload(
+  sessionId: string,
+  onInsert: (row: SessionAction) => void
+) {
+  const ch = supabase
+    .channel(`session_actions:payload:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "session_actions",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (payload) => {
+        onInsert(payload.new as SessionAction);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(ch);
+  };
+}
+
+export function subscribeSituationPayload(
+  sessionId: string,
+  onUpsert: (row: SessionSituation) => void
+) {
+  const ch = supabase
+    .channel(`session_situation:payload:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*", // INSERT + UPDATE
+        schema: "public",
+        table: "session_situation",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      (payload) => {
+        if (payload.new) onUpsert(payload.new as SessionSituation);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(ch);
+  };
+}
+
+export function subscribeSessionMetaPayload(
+  sessionId: string,
+  onUpdate: (row: any) => void
+) {
+  const ch = supabase
+    .channel(`sessions:payload:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "sessions",
+        filter: `id=eq.${sessionId}`,
+      },
+      (payload) => {
+        if (payload.new) onUpdate(payload.new);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(ch);
+  };
+}

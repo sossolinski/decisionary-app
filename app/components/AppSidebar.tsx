@@ -1,8 +1,9 @@
+// app/components/AppSidebar.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
@@ -14,19 +15,29 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
+
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; icon: LucideIcon; exact?: boolean };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  exact?: boolean;
+};
 
 const facilitator: NavItem[] = [
   { href: "/facilitator", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/facilitator/scenarios", label: "Scenarios", icon: FileText },
-  { href: "/facilitator/sessions", label: "Sessions", icon: PlayCircle },
+  { href: "/facilitator/scenarios", label: "Scenarios", icon: FileText, exact: false },
+  { href: "/facilitator/sessions", label: "Sessions", icon: PlayCircle, exact: false },
 ];
 
-const participant: NavItem[] = [{ href: "/participant", label: "Participant", icon: Users, exact: true }];
+const participant: NavItem[] = [
+  { href: "/participant", label: "Participant", icon: Users, exact: true },
+];
 
-const system: NavItem[] = [{ href: "/facilitator/settings", label: "Settings", icon: Settings }];
+const system: NavItem[] = [
+  { href: "/facilitator/settings", label: "Settings", icon: Settings, exact: true },
+];
 
 function isActive(pathname: string, item: NavItem) {
   if (item.exact) return pathname === item.href;
@@ -51,43 +62,35 @@ function NavRow({
       href={item.href}
       onClick={onNavigate}
       className={cn(
-        "group relative rounded-[var(--radius)] text-sm transition",
-        "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-        collapsed
-          ? // RAIL ITEM
-            "flex h-10 w-10 items-center justify-center"
-          : // FULL ITEM
-            "flex items-center gap-3 px-3 py-2",
-        active
-          ? "bg-secondary text-foreground"
-          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+        "relative rounded-[var(--radius)] text-sm transition",
+        "text-muted-foreground hover:bg-secondary hover:text-foreground",
+        active && "bg-secondary text-foreground",
+        // Expanded layout
+        !collapsed && "flex items-center gap-3 px-3 py-2",
+        // Collapsed layout: perfect centering + equal hit area
+        collapsed && "flex h-10 items-center justify-center px-2"
       )}
       title={collapsed ? item.label : undefined}
       aria-current={active ? "page" : undefined}
     >
-      {/* Active indicator (subtelny, działa też w railu) */}
+      {/* Active indicator */}
       {active ? (
-        <span
-          className={cn(
-            "absolute rounded-full bg-foreground/70",
-            collapsed
-              ? "left-1 top-1/2 h-5 w-[3px] -translate-y-1/2"
-              : "left-0 top-1/2 h-6 w-[3px] -translate-y-1/2"
-          )}
-        />
+        <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-foreground/70" />
       ) : null}
 
-      <Icon
-        className={cn(
-          "h-4 w-4 shrink-0 opacity-90 group-hover:opacity-100",
-          collapsed && active && "opacity-100"
-        )}
-      />
+      <Icon className={cn("h-4 w-4 shrink-0", active ? "opacity-100" : "opacity-80")} />
 
-      {!collapsed ? <span className="flex-1">{item.label}</span> : <span className="sr-only">{item.label}</span>}
+      {/* Label */}
+      {!collapsed ? (
+        <span className="min-w-0 truncate">{item.label}</span>
+      ) : (
+        <span className="sr-only">{item.label}</span>
+      )}
 
-      {/* Chevron tylko dla aktywnej pozycji w trybie expanded */}
-      {!collapsed && active ? <ChevronRight className="h-4 w-4 opacity-60" /> : null}
+      {/* Chevron only for active item (expanded) */}
+      {!collapsed && active ? (
+        <ChevronRight className="ml-auto h-4 w-4 opacity-70" />
+      ) : null}
     </Link>
   );
 }
@@ -104,19 +107,16 @@ function Section({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="space-y-2">
-      {/* W collapsed NIE pokazujemy żadnych kropek ani nagłówków */}
+    <div className="flex flex-col gap-1">
       {!collapsed ? (
-        <div className="px-2 pb-1 text-xs font-medium tracking-wide text-muted-foreground">
+        <div className="px-3 pt-2 text-[10px] font-semibold tracking-widest text-muted-foreground/80">
           {title.toUpperCase()}
         </div>
       ) : null}
 
-      <nav className={cn("space-y-1", collapsed && "flex flex-col items-center")}>
-        {items.map((i) => (
-          <NavRow key={i.href} item={i} collapsed={collapsed} onNavigate={onNavigate} />
-        ))}
-      </nav>
+      {items.map((i) => (
+        <NavRow key={i.href} item={i} collapsed={collapsed} onNavigate={onNavigate} />
+      ))}
     </div>
   );
 }
@@ -134,9 +134,9 @@ export default function AppSidebar({
   collapsed: boolean;
   onToggleCollapsed: () => void;
 }) {
+  const pathname = usePathname();
   const closeMobile = () => setMobileOpen(false);
 
-  // keyboard shortcut (⌘\ / Ctrl\) — zostaje
   useEffect(() => {
     if (isMobile) return;
 
@@ -144,6 +144,7 @@ export default function AppSidebar({
       const isMac = navigator.platform.toLowerCase().includes("mac");
       const mod = isMac ? e.metaKey : e.ctrlKey;
       if (!mod) return;
+
       if (e.key === "\\") {
         e.preventDefault();
         onToggleCollapsed();
@@ -154,96 +155,131 @@ export default function AppSidebar({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isMobile, onToggleCollapsed]);
 
-  // Premium: collapse button jako "ghost" (nie wystaje i nie wygląda jak kafelek)
+  const mode = useMemo<"facilitator" | "participant" | "unknown">(() => {
+    if (pathname.startsWith("/facilitator")) return "facilitator";
+    if (pathname.startsWith("/participant")) return "participant";
+    if (pathname.startsWith("/sessions/")) return "participant";
+    return "unknown";
+  }, [pathname]);
+
   const collapseBtn =
     "inline-flex h-10 w-10 items-center justify-center rounded-[var(--radius)] " +
     "text-muted-foreground hover:bg-secondary hover:text-foreground transition " +
     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
 
-  const desktop = (
+  const sidebarInner = (
     <aside
       className={cn(
-        "hidden lg:flex border-r border-border bg-background",
-        "transition-[width] duration-200",
-        collapsed ? "w-[84px]" : "w-[280px]"
+        "flex h-screen flex-col border-r border-border bg-background",
+        collapsed ? "w-[72px]" : "w-72"
       )}
     >
-      <div className={cn("flex w-full flex-col py-3", collapsed ? "px-2" : "px-3")}>
-        {/* Top row: przycisk nie przy prawej krawędzi, tylko zawsze przy lewej (spójnie z rail) */}
-        <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-start")}>
-          <button
-            onClick={onToggleCollapsed}
-            className={collapseBtn}
-            title={collapsed ? "Expand sidebar (⌘\\ / Ctrl\\)" : "Collapse sidebar (⌘\\ / Ctrl\\)"}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
+      {/* Top */}
+      <div className={cn("flex items-center gap-2 px-3 py-3", collapsed && "justify-center")}>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className={collapseBtn}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand" : "Collapse"}
+        >
+          {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+        </button>
+
+        {!collapsed ? (
+          <div className="min-w-0">
+            <div className="text-sm font-semibold leading-tight">Decisionary</div>
+            <div className="text-xs text-muted-foreground">Console</div>
+          </div>
+        ) : null}
+      </div>
+
+      {collapsed ? <div className="mx-3 mb-2 h-px bg-border" /> : null}
+
+      {/* Main */}
+      <div className="flex-1 overflow-auto px-2 pb-3">
+        <div className="flex flex-col gap-3">
+          {mode === "facilitator" ? (
+            <Section
+              title="Facilitator"
+              items={facilitator}
+              collapsed={collapsed}
+              onNavigate={isMobile ? closeMobile : undefined}
+            />
+          ) : mode === "participant" ? (
+            <Section
+              title="Participant"
+              items={participant}
+              collapsed={collapsed}
+              onNavigate={isMobile ? closeMobile : undefined}
+            />
+          ) : (
+            <>
+              <Section
+                title="Facilitator"
+                items={facilitator}
+                collapsed={collapsed}
+                onNavigate={isMobile ? closeMobile : undefined}
+              />
+              <Section
+                title="Participant"
+                items={participant}
+                collapsed={collapsed}
+                onNavigate={isMobile ? closeMobile : undefined}
+              />
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom: pinned, with safe-area padding so it never looks “hidden” */}
+      <div
+        className={cn("mt-auto border-t border-border px-2 pt-2")}
+        style={{ paddingBottom: "calc(12px + env(safe-area-inset-bottom))" }}
+      >
+        <div className="flex flex-col gap-1">
+          {system.map((i) => (
+            <NavRow
+              key={i.href}
+              item={i}
+              collapsed={collapsed}
+              onNavigate={isMobile ? closeMobile : undefined}
+            />
+          ))}
         </div>
 
-        <div className={cn("mt-4 flex flex-1 flex-col", collapsed ? "gap-3" : "gap-6")}>
-          <Section title="Facilitator" items={facilitator} collapsed={collapsed} />
-          {/* Separator tylko w collapsed, żeby rail wyglądał równo i „intencjonalnie” */}
-          {collapsed ? <div className="mx-auto h-px w-8 bg-border" /> : null}
-
-          <Section title="Participant" items={participant} collapsed={collapsed} />
-          {collapsed ? <div className="mx-auto h-px w-8 bg-border" /> : null}
-
-          <div className="mt-auto">
-            <Section title="System" items={system} collapsed={collapsed} />
-            {!collapsed ? (
-              <div className="mt-4 px-2 text-xs text-muted-foreground">v0.1 • MVP</div>
-            ) : (
-              <div className="mt-3 flex justify-center text-[10px] text-muted-foreground">v0.1</div>
-            )}
-          </div>
+        <div
+          className={cn(
+            "mt-2 px-3 text-xs text-muted-foreground",
+            collapsed && "px-2 text-[11px] text-center"
+          )}
+        >
+          {collapsed ? "v0.1" : "v0.1 • MVP"}
         </div>
       </div>
     </aside>
   );
 
+  const desktop = (
+    <div className="hidden md:block sticky top-0 h-screen">
+      {sidebarInner}
+    </div>
+  );
+
   const mobile = (
-    <>
+    <div className="md:hidden">
       {mobileOpen ? (
-        <div className="fixed inset-0 z-40 bg-black/30 lg:hidden" onClick={() => setMobileOpen(false)} />
-      ) : null}
-
-      <aside
-        className={cn(
-          "fixed left-0 top-0 z-50 h-dvh w-[84vw] max-w-[320px] border-r border-border bg-background lg:hidden",
-          "transition-transform duration-200",
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        <div className="flex h-14 items-center justify-between border-b border-border px-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-muted" />
-            <div className="leading-tight">
-              <div className="text-sm font-semibold">Decisionary</div>
-              <div className="text-xs text-muted-foreground">Console</div>
-            </div>
-          </div>
-
+        <>
           <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/40"
             onClick={() => setMobileOpen(false)}
-            className={collapseBtn}
             aria-label="Close menu"
-            title="Close"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="flex h-[calc(100dvh-56px)] flex-col gap-6 overflow-auto px-3 py-4">
-          <Section title="Facilitator" items={facilitator} collapsed={false} onNavigate={closeMobile} />
-          <Section title="Participant" items={participant} collapsed={false} onNavigate={closeMobile} />
-          <div className="mt-auto">
-            <Section title="System" items={system} collapsed={false} onNavigate={closeMobile} />
-            <div className="mt-4 px-2 text-xs text-muted-foreground">v0.1 • MVP</div>
-          </div>
-        </div>
-      </aside>
-    </>
+          />
+          <div className="fixed inset-y-0 left-0 z-50">{sidebarInner}</div>
+        </>
+      ) : null}
+    </div>
   );
 
   return (

@@ -1,29 +1,78 @@
+// app/components/MessageDetail.tsx
 "use client";
 
-import type { SessionAction, SessionInject } from "@/lib/sessions";
+import React, { useMemo } from "react";
 import { Button } from "@/app/components/ui/button";
+import { Input } from "@/app/components/ui/input";
+import { Card, CardContent } from "@/app/components/ui/card";
 
-function fmtDateTime(iso?: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString();
+type Mode = "inbox" | "pulse";
+
+type Inject = {
+  id?: string;
+  title: string | null;
+  body: string | null;
+  channel: string | null;
+  severity: string | null;
+  sender_name: string | null;
+  sender_org: string | null;
+  created_at?: string;
+};
+
+type SessionInject = {
+  id: string;
+  session_id?: string;
+  delivered_at?: string;
+  inject_id?: string;
+  injects?: Inject | null;
+};
+
+type SessionAction = {
+  id: string;
+  created_at?: string;
+  action_type?: string | null;
+  source?: string | null;
+  comment?: string | null;
+  session_inject_id?: string | null;
+};
+
+function badgeClass(kind: "severity" | "channel", value: string) {
+  const base =
+    "inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold";
+  const v = value.toLowerCase();
+
+  if (kind === "severity") {
+    if (v === "critical") return `${base} bg-destructive/10 text-destructive`;
+    if (v === "high") return `${base} bg-orange-500/10 text-orange-700 dark:text-orange-300`;
+    if (v === "medium") return `${base} bg-yellow-500/10 text-yellow-700 dark:text-yellow-300`;
+    if (v === "low") return `${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`;
+    return `${base} bg-secondary/60 text-foreground`;
+  }
+
+  // channel
+  if (v === "ops") return `${base} bg-primary/10 text-primary`;
+  if (v === "media") return `${base} bg-purple-500/10 text-purple-700 dark:text-purple-300`;
+  if (v === "social") return `${base} bg-sky-500/10 text-sky-700 dark:text-sky-300`;
+  return `${base} bg-secondary/60 text-foreground`;
+}
+
+function fmtWhen(iso?: string) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
 }
 
 export default function MessageDetail({
   item,
   mode,
-
-  // actions (already filtered to the selected item)
-  actions = [],
-  actionsLoading = false,
-  actionsError = null,
-
-  // action input
+  actions,
+  actionsLoading,
+  actionsError,
   comment,
   onCommentChange,
-
-  // handlers
   onIgnore,
   onEscalate,
   onAct,
@@ -31,169 +80,182 @@ export default function MessageDetail({
   onDeny,
 }: {
   item: SessionInject | null;
-  mode: "inbox" | "pulse";
-
-  actions?: SessionAction[];
-  actionsLoading?: boolean;
-  actionsError?: string | null;
-
+  mode: Mode;
+  actions: SessionAction[];
+  actionsLoading: boolean;
+  actionsError: string | null;
   comment: string;
   onCommentChange: (v: string) => void;
 
-  onIgnore?: () => void;
-  onEscalate?: () => void;
-  onAct?: () => void;
-  onConfirm?: () => void;
-  onDeny?: () => void;
+  onIgnore: () => void;
+  onEscalate: () => void;
+  onAct: () => void;
+
+  onConfirm: () => void;
+  onDeny: () => void;
 }) {
-  if (!item) {
-    return (
-      <div style={{ color: "rgba(0,0,0,0.65)", fontSize: 13 }}>
-        Select an item from Inbox or Pulse to view details.
-      </div>
-    );
-  }
+  const inject = item?.injects ?? null;
 
-  const title = item.injects?.title?.trim() || "Message";
-  const body = item.injects?.body?.trim() || "";
-  const channel = item.injects?.channel
-    ? String(item.injects.channel).toUpperCase()
-    : null;
-  const severity = item.injects?.severity
-    ? String(item.injects.severity).toUpperCase()
-    : null;
-  const sender =
-    [item.injects?.sender_name, item.injects?.sender_org]
-      .filter(Boolean)
-      .join(" · ") || "Unknown source";
-  const deliveredAt = fmtDateTime(item.delivered_at);
+  const title = inject?.title ?? "Message";
+  const body = inject?.body ?? "";
+  const channel = inject?.channel ?? null;
+  const severity = inject?.severity ?? null;
 
-  const disabled = !item?.id;
+  const senderLine = useMemo(() => {
+    const name = inject?.sender_name?.trim();
+    const org = inject?.sender_org?.trim();
+    if (name && org) return `${name} • ${org}`;
+    return name || org || null;
+  }, [inject?.sender_name, inject?.sender_org]);
 
   return (
     <div className="space-y-4">
-      {/* HEADER */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="text-base font-semibold leading-tight">{title}</div>
-            <div className="mt-1 text-xs font-semibold text-muted-foreground">
-              {sender} · {deliveredAt}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {mode === "pulse" ? (
-              <span className="rounded-full border border-border bg-muted px-2 py-1 text-[11px] font-bold">
-                UNVERIFIED
-              </span>
-            ) : null}
-            {channel ? (
-              <span className="rounded-full border border-border bg-card px-2 py-1 text-[11px] font-bold">
-                {channel}
-              </span>
-            ) : null}
-            {severity ? (
-              <span className="rounded-full border border-border bg-card px-2 py-1 text-[11px] font-bold">
-                {severity}
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-          {body || <span className="text-muted-foreground">(no content)</span>}
-        </div>
-      </div>
-
-      {/* ACTIONS (contextual) */}
-      <div className="rounded-[var(--radius)] border border-border bg-card p-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-semibold">Actions for this message</div>
-          {actionsLoading ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              Loading…
-            </span>
-          ) : actionsError ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              {actionsError}
-            </span>
-          ) : (
-            <span className="text-xs font-semibold text-muted-foreground">
-              {actions.length ? `${actions.length} logged` : "No log yet"}
-            </span>
-          )}
-        </div>
-
-        {actions.length ? (
-          <div className="mt-3 space-y-2">
-            {actions.slice(0, 6).map((a) => (
-              <div
-                key={a.id}
-                className="rounded-[var(--radius)] border border-border bg-background px-3 py-2"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-xs font-bold">
-                    {String(a.action_type).toUpperCase()}
-                  </div>
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    {fmtDateTime(a.created_at)}
-                  </div>
+      {!item ? (
+        <Card className="bg-secondary/30">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Select a message from the left to see details and record decisions.
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-base font-semibold leading-snug">{title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {senderLine ? senderLine : "—"}
+                  {item.delivered_at ? (
+                    <>
+                      <span className="mx-2">•</span>
+                      <span>{fmtWhen(item.delivered_at) ?? item.delivered_at}</span>
+                    </>
+                  ) : null}
                 </div>
-                {a.comment ? (
-                  <div className="mt-1 whitespace-pre-wrap text-xs text-foreground">
-                    {a.comment}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {severity ? (
+                  <span className={badgeClass("severity", severity)}>{severity.toUpperCase()}</span>
+                ) : null}
+                {mode === "inbox" && channel ? (
+                  <span className={badgeClass("channel", channel)}>{channel.toUpperCase()}</span>
+                ) : null}
+              </div>
+            </div>
+
+            {body ? (
+              <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-border bg-card p-3 text-sm leading-relaxed">
+                {body}
+              </div>
+            ) : (
+              <div className="rounded-[var(--radius)] border border-border bg-card p-3 text-sm text-muted-foreground">
+                No message body.
+              </div>
+            )}
+          </div>
+
+          {/* Actions summary */}
+          <div className="rounded-[var(--radius)] border border-border bg-secondary/20 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold text-muted-foreground">
+                Decision log
+              </div>
+              {actionsLoading ? (
+                <div className="text-xs text-muted-foreground">Loading…</div>
+              ) : actionsError ? (
+                <div className="text-xs text-destructive">{actionsError}</div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {actions.length} entr{actions.length === 1 ? "y" : "ies"}
+                </div>
+              )}
+            </div>
+
+            {!actionsLoading && actions.length > 0 ? (
+              <div className="mt-2 space-y-2">
+                {actions.slice(0, 5).map((a) => (
+                  <div
+                    key={a.id}
+                    className="rounded-[var(--radius)] border border-border bg-card px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold">
+                        {(a.action_type ?? "action").toUpperCase()}
+                        <span className="ml-2 text-[11px] font-semibold text-muted-foreground">
+                          {(a.source ?? mode).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {fmtWhen(a.created_at) ?? ""}
+                      </div>
+                    </div>
+                    {a.comment ? (
+                      <div className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
+                        {a.comment}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {actions.length > 5 ? (
+                  <div className="text-xs text-muted-foreground">
+                    + {actions.length - 5} more…
                   </div>
                 ) : null}
               </div>
-            ))}
+            ) : null}
+
+            {!actionsLoading && actions.length === 0 ? (
+              <div className="mt-2 text-xs text-muted-foreground">
+                No decisions recorded for this message yet.
+              </div>
+            ) : null}
           </div>
-        ) : null}
 
-        <div className="mt-3 space-y-2">
-          <textarea
-            value={comment}
-            onChange={(e) => onCommentChange(e.target.value)}
-            placeholder={
-              mode === "pulse"
-                ? "Optional comment (why confirm/deny)"
-                : "Optional comment (what you did / why)"
-            }
-            className="min-h-[88px] w-full resize-y rounded-[var(--radius)] border border-border bg-background p-3 text-sm focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
-          />
+          {/* Comment */}
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground">Comment</div>
+            <Input
+              value={comment}
+              onChange={(e) => onCommentChange(e.target.value)}
+              placeholder={
+                mode === "pulse"
+                  ? "Optional: rationale, wording guidance, source confirmation…"
+                  : "Optional: what you did / who you informed / next step…"
+              }
+            />
+          </div>
 
-          {mode === "pulse" ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="primary" onClick={onConfirm} disabled={disabled}>
-                Confirm
-              </Button>
-              <Button variant="danger" onClick={onDeny} disabled={disabled}>
-                Deny
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              <Button variant="ghost" onClick={onIgnore} disabled={disabled}>
-                Ignore
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={onEscalate}
-                disabled={disabled}
-              >
-                Escalate
-              </Button>
-              <Button variant="primary" onClick={onAct} disabled={disabled}>
-                Act
-              </Button>
-            </div>
-          )}
+          {/* Primary actions */}
+          <div className="flex flex-wrap items-center gap-2">
+            {mode === "pulse" ? (
+              <>
+                <Button variant="default" onClick={onConfirm}>
+                  Confirm
+                </Button>
+                <Button variant="destructive" onClick={onDeny}>
+                  Deny
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={onIgnore}>
+                  Ignore
+                </Button>
+                <Button variant="secondary" onClick={onEscalate}>
+                  Escalate
+                </Button>
+                <Button variant="default" onClick={onAct}>
+                  Act
+                </Button>
+              </>
+            )}
+          </div>
 
-          <p className="mt-1 text-xs font-semibold text-muted-foreground">
-            Actions are always logged against the currently selected message.
-          </p>
-        </div>
-      </div>
+          <div className="text-[11px] text-muted-foreground">
+            Tip: use “Act” to record a decision and optionally send an update inject to the session.
+          </div>
+        </>
+      )}
     </div>
   );
 }

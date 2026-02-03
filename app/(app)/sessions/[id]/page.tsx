@@ -36,7 +36,7 @@ import {
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { Filter, X } from "lucide-react";
+import { Filter, X, ChevronDown, ChevronUp } from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -71,7 +71,7 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm font-semibold text-foreground focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+      className="h-9 w-full rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-border focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none focus-visible:border-primary/40"
     >
       {children}
     </select>
@@ -91,7 +91,7 @@ function Chip({
     <button
       onClick={onClear}
       title={title}
-      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground hover:bg-muted/40"
+      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-secondary/70 focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
     >
       {label}
       <X className="h-3.5 w-3.5 opacity-70" />
@@ -129,6 +129,7 @@ export default function SessionParticipantPage() {
 
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
+  const toolsWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Role gating
   const [isFacilitator, setIsFacilitator] = useState(false);
@@ -137,26 +138,41 @@ export default function SessionParticipantPage() {
   // Session owner (fallback facilitator)
   const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
 
-  // Live clock
-  const [liveClock, setLiveClock] = useState("");
-
   // Exercise clock (T=0 at sessions.started_at)
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exerciseClock, setExerciseClock] = useState<string>("T=—");
 
+  // ====== TOP DETAILS COLLAPSE (persisted) ======
+  const detailsStorageKey = useMemo(() => {
+    if (!sessionId) return "sessionDetailsOpen:unknown";
+    return `sessionDetailsOpen:${sessionId}`;
+  }, [sessionId]);
+
+  const [detailsOpen, setDetailsOpen] = useState(true);
+
   useEffect(() => {
-    const tick = () =>
-      setLiveClock(
-        new Date().toLocaleTimeString(undefined, {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })
-      );
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, []);
+    // load persisted
+    try {
+      const raw = localStorage.getItem(detailsStorageKey);
+      if (raw === "0") setDetailsOpen(false);
+      else if (raw === "1") setDetailsOpen(true);
+      // else keep default
+    } catch {
+      // ignore
+    }
+  }, [detailsStorageKey]);
+
+  function toggleDetails() {
+    setDetailsOpen((v) => {
+      const next = !v;
+      try {
+        localStorage.setItem(detailsStorageKey, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }
 
   // Load started_at for exercise clock (best-effort; missing column must NOT crash)
   async function refreshStartedAt() {
@@ -205,19 +221,24 @@ export default function SessionParticipantPage() {
     return () => clearInterval(t);
   }, [startedAt]);
 
-  // Close tools popover on Escape / outside click
+  // Close tools popover on Escape / outside click (robust)
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setToolsOpen(false);
     }
-    function onClick() {
-      if (toolsOpen) setToolsOpen(false);
+
+    function onDocMouseDown(e: MouseEvent) {
+      if (!toolsOpen) return;
+      const el = toolsWrapRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) setToolsOpen(false);
     }
+
     window.addEventListener("keydown", onKey);
-    window.addEventListener("click", onClick);
+    document.addEventListener("mousedown", onDocMouseDown);
     return () => {
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("click", onClick);
+      document.removeEventListener("mousedown", onDocMouseDown);
     };
   }, [toolsOpen]);
 
@@ -409,11 +430,9 @@ export default function SessionParticipantPage() {
     if (!validSessionId) return;
 
     const refreshAll = () => {
-      refreshStartedAt(); // clock
-      refreshActions(); // action log
-      refreshSituation(); // COP
-      // Inbox/Pulse are refreshed inside their own components; we still trigger rerender by changing nothing here.
-      // If you later move inbox/pulse loading here, you can add refreshInbox/refreshPulse.
+      refreshStartedAt();
+      refreshActions();
+      refreshSituation();
     };
 
     const unsubInbox = subscribeInbox(sessionId, refreshAll, 250);
@@ -453,9 +472,7 @@ export default function SessionParticipantPage() {
       setActions((prev) => [saved, ...prev]);
 
       if (actionType === "act") {
-        const title = `Update: action taken on "${
-          selectedItem.injects?.title ?? "message"
-        }"`;
+        const title = `Update: action taken on "${selectedItem.injects?.title ?? "message"}"`;
 
         const body =
           `Decision recorded.\n\n` +
@@ -547,14 +564,19 @@ export default function SessionParticipantPage() {
     Boolean(severity) ||
     (activeTab === "inbox" && Boolean(channel));
 
+  const tabBtnBase =
+    "px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
+
   const LeftPanel = (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+        <div className="inline-flex overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
           <button
             className={[
-              "px-3 py-2 text-xs font-bold",
-              activeTab === "inbox" ? "bg-muted" : "hover:bg-muted/40",
+              tabBtnBase,
+              activeTab === "inbox"
+                ? "bg-secondary text-foreground"
+                : "hover:bg-secondary/60 text-foreground",
             ].join(" ")}
             onClick={() => {
               setActiveTab("inbox");
@@ -566,8 +588,10 @@ export default function SessionParticipantPage() {
           </button>
           <button
             className={[
-              "px-3 py-2 text-xs font-bold",
-              activeTab === "pulse" ? "bg-muted" : "hover:bg-muted/40",
+              tabBtnBase,
+              activeTab === "pulse"
+                ? "bg-secondary text-foreground"
+                : "hover:bg-secondary/60 text-foreground",
             ].join(" ")}
             onClick={() => {
               setActiveTab("pulse");
@@ -609,7 +633,9 @@ export default function SessionParticipantPage() {
       {/* Chips row */}
       <div className="flex flex-wrap items-center gap-2">
         {!anyFiltersOn ? (
-          <span className="text-xs font-semibold text-muted-foreground">No filters</span>
+          <span className="text-xs font-semibold text-muted-foreground">
+            No filters
+          </span>
         ) : (
           <>
             {search.trim() ? (
@@ -748,23 +774,42 @@ export default function SessionParticipantPage() {
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="min-w-0">
-            <CardTitle className="text-lg">{sessionTitle}</CardTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <CardTitle className="text-lg">{sessionTitle}</CardTitle>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleDetails}
+                className="gap-1"
+                title={detailsOpen ? "Collapse details" : "Expand details"}
+              >
+                {detailsOpen ? (
+                  <>
+                    <ChevronUp className="h-4 w-4" />
+                    Collapse
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="h-4 w-4" />
+                    Expand
+                  </>
+                )}
+              </Button>
+            </div>
+
             <CardDescription className="mt-1">{sessionMeta}</CardDescription>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold">
-              ⏱ {liveClock}
-            </div>
-
-            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold">
+            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold shadow-sm">
               {exerciseClock}
             </div>
 
             {roleLoading ? (
               <div className="text-xs font-semibold text-muted-foreground">Loading role…</div>
             ) : isFacilitator ? (
-              <div className="relative">
+              <div className="relative" ref={toolsWrapRef}>
                 <Button
                   variant="secondary"
                   size="sm"
@@ -778,7 +823,7 @@ export default function SessionParticipantPage() {
 
                 {toolsOpen ? (
                   <div
-                    className="absolute right-0 top-10 z-50 w-[min(760px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius)] border border-border popover-solid shadow-soft"
+                    className="absolute right-0 top-10 z-50 w-[min(760px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-hover"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
@@ -789,10 +834,7 @@ export default function SessionParticipantPage() {
                     </div>
 
                     <div className="p-4">
-                      <FacilitatorToolsPanel
-                        sessionId={sessionId}
-                        scenarioId={scenario?.id ?? null}
-                      />
+                      <FacilitatorToolsPanel sessionId={sessionId} scenarioId={scenario?.id ?? null} />
                     </div>
                   </div>
                 ) : null}
@@ -807,28 +849,31 @@ export default function SessionParticipantPage() {
           </div>
         </CardHeader>
 
-        <CardContent>
-          <SituationCard
-            situation={situation}
-            scenario={scenario}
-            onUpdateCasualties={async (p: {
-              injured: number;
-              fatalities: number;
-              uninjured: number;
-              unknown: number;
-            }) => {
-              if (!validSessionId) return;
-              const s = await updateCasualties({
-                sessionId,
-                injured: p.injured,
-                fatalities: p.fatalities,
-                uninjured: p.uninjured,
-                unknown: p.unknown,
-              });
-              setSituation(s);
-            }}
-          />
-        </CardContent>
+        {/* DETAILS: collapsible */}
+        {detailsOpen ? (
+          <CardContent>
+            <SituationCard
+              situation={situation}
+              scenario={scenario}
+              onUpdateCasualties={async (p: {
+                injured: number;
+                fatalities: number;
+                uninjured: number;
+                unknown: number;
+              }) => {
+                if (!validSessionId) return;
+                const s = await updateCasualties({
+                  sessionId,
+                  injured: p.injured,
+                  fatalities: p.fatalities,
+                  uninjured: p.uninjured,
+                  unknown: p.unknown,
+                });
+                setSituation(s);
+              }}
+            />
+          </CardContent>
+        ) : null}
       </Card>
 
       {/* MAIN LAYOUT */}

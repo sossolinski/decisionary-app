@@ -1,10 +1,13 @@
 @import "tailwindcss";
 
 /* =========================================================
-   Decisionary — Globals (FULL)
-   - shadcn tokens as HSL triplets (Tailwind: bg-background, border-border, etc.)
-   - studio aliases as separate variables (AppTopbar/AppSidebar friendly)
-   - solid base reset + nicer defaults (scrollbar, typography, focus, etc.)
+Decisionary — Globals (FULL)
+
+- shadcn tokens as HSL triplets (Tailwind: bg-background, border-border, etc.)
+- studio aliases as separate variables (AppTopbar/AppSidebar friendly)
+- solid base reset + nicer defaults (scrollbar, typography, focus, etc.)
+- interactive feedback (hover/active/focus) for all clickables
+- popovers fully opaque (no see-through)
 ========================================================= */
 
 @layer base {
@@ -212,16 +215,9 @@
     color: inherit;
   }
 
-  /* remove default button styles only if you need (keep minimal) */
+  /* keep minimal base for buttons (components set their own bg/border) */
   button {
     background: none;
-  }
-
-  /* focus ring */
-  :focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
-    border-radius: calc(var(--radius) - 6px);
   }
 
   /* nicer disabled */
@@ -238,8 +234,59 @@
   }
 
   /* =====================================================
+     INTERACTIVE FEEDBACK (global polish)
+     - hover/active transitions for all clickables
+     - strong focus-visible ring
+     - prevent “dead feeling” controls
+  ====================================================== */
+
+  :where(button, [role="button"], a, input[type="button"], input[type="submit"]) {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* unified focus ring */
+  :where(button, [role="button"], a, input, textarea, select):focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.28);
+    border-radius: calc(var(--radius) - 6px);
+  }
+
+  /* baseline transitions (even for "plain" icon buttons) */
+  :where(button, [role="button"], a):not(:disabled) {
+    transition: background-color 140ms ease, border-color 140ms ease,
+      box-shadow 140ms ease, opacity 140ms ease, transform 90ms ease;
+  }
+
+  /* subtle active press */
+  :where(button, [role="button"], a):not(:disabled):active {
+    transform: translateY(0.5px);
+  }
+
+  /* if an <a> behaves like a button in UI, it should still feel hoverable */
+  :where(a).hoverable:not(:disabled):hover {
+    background-color: hsl(var(--secondary) / 0.85);
+  }
+
+  /* Make “plain” buttons (no variant classes) still show hover feedback.
+     This is intentionally conservative so it doesn't fight shadcn Button.
+  */
+  :where(button):not([class*="bg-"]):not([class*="border"]):not(:disabled):hover {
+    background-color: hsl(var(--secondary) / 0.7);
+    border-radius: var(--radius);
+  }
+
+  /* =====================================================
+     POPOVERS / DROPDOWNS
+     - ensure fully opaque surfaces (no see-through)
+  ====================================================== */
+  :where(.bg-popover) {
+    background-color: hsl(var(--popover) / 1) !important;
+  }
+
+  /* =====================================================
      SCROLLBARS (subtle, “studio”)
   ====================================================== */
+
   /* Firefox */
   * {
     scrollbar-width: thin;
@@ -251,15 +298,18 @@
     width: 10px;
     height: 10px;
   }
+
   ::-webkit-scrollbar-track {
     background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
     background: hsl(220 10% 60% / 0.22);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     background: hsl(220 10% 60% / 0.32);
     background-clip: content-box;
@@ -287,7 +337,6 @@
     box-shadow: var(--studio-shadow2);
   }
 
-  /* glass */
   .surface {
     background: var(--studio-surface);
     backdrop-filter: blur(16px);
@@ -296,18 +345,5 @@
 
   .surface2 {
     background: var(--studio-surface2);
-  }
-
-  /* ✅ NEW: solid (for popovers/modals/overlays) */
-  .surface-solid {
-    background: hsl(var(--card) / 0.96);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-
-  .popover-solid {
-    background: hsl(var(--popover) / 0.98);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
   }
 }
