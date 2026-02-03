@@ -14,8 +14,6 @@ import {
   getSessionActions,
   addSessionAction,
   type SessionAction,
-  subscribeInbox,
-  subscribePulse,
   subscribeActions,
   subscribeSituation,
   subscribeSessionMeta,
@@ -425,7 +423,7 @@ export default function SessionParticipantPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
-  // Realtime HUB: refresh all panels on any relevant update
+  // Realtime HUB: refresh COP panels (NO inbox/pulse here — those components subscribe themselves)
   useEffect(() => {
     if (!validSessionId) return;
 
@@ -435,15 +433,11 @@ export default function SessionParticipantPage() {
       refreshSituation();
     };
 
-    const unsubInbox = subscribeInbox(sessionId, refreshAll, 250);
-    const unsubPulse = subscribePulse(sessionId, refreshAll, 250);
     const unsubActions = subscribeActions(sessionId, refreshAll, 250);
     const unsubSituation = subscribeSituation(sessionId, refreshAll, 250);
     const unsubMeta = subscribeSessionMeta(sessionId, refreshAll, 250);
 
     return () => {
-      unsubInbox?.();
-      unsubPulse?.();
       unsubActions?.();
       unsubSituation?.();
       unsubMeta?.();
@@ -557,7 +551,6 @@ export default function SessionParticipantPage() {
   }
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
-  const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
 
   const anyFiltersOn =
     Boolean(search.trim()) ||
@@ -772,16 +765,16 @@ export default function SessionParticipantPage() {
     <div className="space-y-3">
       {/* HEADER */}
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="text-lg">{sessionTitle}</CardTitle>
+            <div className="flex items-center gap-2 min-w-0">
+              <CardTitle className="text-lg truncate">{sessionTitle}</CardTitle>
 
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={toggleDetails}
-                className="gap-1"
+                className="gap-1 shrink-0"
                 title={detailsOpen ? "Collapse details" : "Expand details"}
               >
                 {detailsOpen ? (
@@ -797,8 +790,6 @@ export default function SessionParticipantPage() {
                 )}
               </Button>
             </div>
-
-            <CardDescription className="mt-1">{sessionMeta}</CardDescription>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -834,7 +825,10 @@ export default function SessionParticipantPage() {
                     </div>
 
                     <div className="p-4">
-                      <FacilitatorToolsPanel sessionId={sessionId} scenarioId={scenario?.id ?? null} />
+                      <FacilitatorToolsPanel
+                        sessionId={sessionId}
+                        scenarioId={scenario?.id ?? null}
+                      />
                     </div>
                   </div>
                 ) : null}
