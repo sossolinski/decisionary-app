@@ -1,6 +1,7 @@
+// app/(app)/sessions/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -13,6 +14,11 @@ import {
   getSessionActions,
   addSessionAction,
   type SessionAction,
+  subscribeInbox,
+  subscribePulse,
+  subscribeActions,
+  subscribeSituation,
+  subscribeSessionMeta,
 } from "@/lib/sessions";
 
 import SituationCard from "@/app/components/SituationCard";
@@ -282,21 +288,21 @@ export default function SessionParticipantPage() {
   }, [sessionId, validSessionId, sessionOwnerId]);
 
   // Load situation (COP)
+  async function refreshSituation() {
+    if (!validSessionId) return;
+    try {
+      const s = await getSessionSituation(sessionId);
+      setSituation(s);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load situation");
+    }
+  }
+
   useEffect(() => {
     if (!validSessionId) return;
-    let alive = true;
     setError(null);
-
-    getSessionSituation(sessionId)
-      .then((s) => {
-        if (!alive) return;
-        setSituation(s);
-      })
-      .catch((e) => alive && setError(e?.message ?? "Failed to load situation"));
-
-    return () => {
-      alive = false;
-    };
+    refreshSituation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
   // Load scenario fallback (sessions.scenario_id -> scenarios.*) + owner (safe)
@@ -378,21 +384,52 @@ export default function SessionParticipantPage() {
   }, [sessionId, validSessionId]);
 
   // Load action log
+  async function refreshActions() {
+    if (!validSessionId) return;
+    try {
+      setActionsLoading(true);
+      setActionsError(null);
+      const rows = await getSessionActions(sessionId, 50);
+      setActions(rows);
+    } catch (e: any) {
+      setActionsError(e?.message ?? "Failed to load actions");
+    } finally {
+      setActionsLoading(false);
+    }
+  }
+
   useEffect(() => {
     if (!validSessionId) return;
-    let alive = true;
+    refreshActions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, validSessionId]);
 
-    setActionsLoading(true);
-    setActionsError(null);
+  // Realtime HUB: refresh all panels on any relevant update
+  useEffect(() => {
+    if (!validSessionId) return;
 
-    getSessionActions(sessionId, 50)
-      .then((rows) => alive && setActions(rows))
-      .catch((e) => alive && setActionsError(e?.message ?? "Failed to load actions"))
-      .finally(() => alive && setActionsLoading(false));
+    const refreshAll = () => {
+      refreshStartedAt(); // clock
+      refreshActions(); // action log
+      refreshSituation(); // COP
+      // Inbox/Pulse are refreshed inside their own components; we still trigger rerender by changing nothing here.
+      // If you later move inbox/pulse loading here, you can add refreshInbox/refreshPulse.
+    };
+
+    const unsubInbox = subscribeInbox(sessionId, refreshAll, 250);
+    const unsubPulse = subscribePulse(sessionId, refreshAll, 250);
+    const unsubActions = subscribeActions(sessionId, refreshAll, 250);
+    const unsubSituation = subscribeSituation(sessionId, refreshAll, 250);
+    const unsubMeta = subscribeSessionMeta(sessionId, refreshAll, 250);
 
     return () => {
-      alive = false;
+      unsubInbox?.();
+      unsubPulse?.();
+      unsubActions?.();
+      unsubSituation?.();
+      unsubMeta?.();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
   function clearFilters() {
@@ -503,12 +540,12 @@ export default function SessionParticipantPage() {
   }
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
-  const sessionMeta = scenario?.short_description
-    ? scenario.short_description
-    : " ";
+  const sessionMeta = scenario?.short_description ? scenario.short_description : " ";
 
   const anyFiltersOn =
-    Boolean(search.trim()) || Boolean(severity) || (activeTab === "inbox" && Boolean(channel));
+    Boolean(search.trim()) ||
+    Boolean(severity) ||
+    (activeTab === "inbox" && Boolean(channel));
 
   const LeftPanel = (
     <div className="space-y-3">
@@ -572,19 +609,29 @@ export default function SessionParticipantPage() {
       {/* Chips row */}
       <div className="flex flex-wrap items-center gap-2">
         {!anyFiltersOn ? (
-          <span className="text-xs font-semibold text-muted-foreground">
-            No filters
-          </span>
+          <span className="text-xs font-semibold text-muted-foreground">No filters</span>
         ) : (
           <>
             {search.trim() ? (
-              <Chip label={`Search: ${search.trim()}`} onClear={() => setSearch("")} title="Clear search" />
+              <Chip
+                label={`Search: ${search.trim()}`}
+                onClear={() => setSearch("")}
+                title="Clear search"
+              />
             ) : null}
             {severity ? (
-              <Chip label={`Severity: ${severity}`} onClear={() => setSeverity(null)} title="Clear severity" />
+              <Chip
+                label={`Severity: ${severity}`}
+                onClear={() => setSeverity(null)}
+                title="Clear severity"
+              />
             ) : null}
             {activeTab === "inbox" && channel ? (
-              <Chip label={`Channel: ${channel}`} onClear={() => setChannel(null)} title="Clear channel" />
+              <Chip
+                label={`Channel: ${channel}`}
+                onClear={() => setChannel(null)}
+                title="Clear channel"
+              />
             ) : null}
 
             <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -665,9 +712,7 @@ export default function SessionParticipantPage() {
         <CardHeader className="flex flex-row items-start justify-between gap-3">
           <div className="min-w-0">
             <CardTitle>Message detail</CardTitle>
-            <CardDescription>
-              {selectedItem ? "Selected" : "No selection"}
-            </CardDescription>
+            <CardDescription>{selectedItem ? "Selected" : "No selection"}</CardDescription>
           </div>
 
           {selectedItem ? (
@@ -717,9 +762,7 @@ export default function SessionParticipantPage() {
             </div>
 
             {roleLoading ? (
-              <div className="text-xs font-semibold text-muted-foreground">
-                Loading role…
-              </div>
+              <div className="text-xs font-semibold text-muted-foreground">Loading role…</div>
             ) : isFacilitator ? (
               <div className="relative">
                 <Button
@@ -740,30 +783,24 @@ export default function SessionParticipantPage() {
                   >
                     <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
                       <div className="text-sm font-bold">Facilitator panel</div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setToolsOpen(false)}
-                      >
+                      <Button variant="ghost" size="sm" onClick={() => setToolsOpen(false)}>
                         Close
                       </Button>
                     </div>
 
-                   <div className="p-4">
-                   <FacilitatorToolsPanel sessionId={sessionId} scenarioId={scenario?.id ?? null} />
-                  </div>
-
+                    <div className="p-4">
+                      <FacilitatorToolsPanel
+                        sessionId={sessionId}
+                        scenarioId={scenario?.id ?? null}
+                      />
+                    </div>
                   </div>
                 ) : null}
               </div>
             ) : null}
 
             {isMobile ? (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setFeedOpen(true)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setFeedOpen(true)}>
                 Open feed
               </Button>
             ) : null}
@@ -803,10 +840,7 @@ export default function SessionParticipantPage() {
       {/* MOBILE FEED DRAWER */}
       {isMobile && feedOpen ? (
         <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setFeedOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/30" onClick={() => setFeedOpen(false)} />
           <div className="absolute inset-x-0 bottom-0 top-14 p-4">
             <div className="h-full">{LeftPanel}</div>
           </div>

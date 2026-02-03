@@ -4,9 +4,14 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { deliverDueInjects } from "@/lib/sessions";
-
 import { Button } from "@/app/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
 
 export default function FacilitatorControls({
   sessionId,
@@ -16,25 +21,32 @@ export default function FacilitatorControls({
   onStarted?: () => void;
 }) {
   const [msg, setMsg] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [delivering, setDelivering] = useState(false);
 
   async function startExercise() {
-    setLoading(true);
+    if (!sessionId || starting) return;
+    setStarting(true);
     setMsg(null);
 
-    const { error } = await supabase.rpc("start_session", { p_session_id: sessionId });
+    const { error } = await supabase.rpc("start_session", {
+      p_session_id: sessionId,
+    });
 
-    setLoading(false);
+    setStarting(false);
 
-    if (error) setMsg(error.message);
-    else {
-      setMsg("Exercise started (T=0)");
-      onStarted?.();
+    if (error) {
+      setMsg(error.message);
+      return;
     }
+
+    setMsg("Exercise started (T=0)");
+    onStarted?.();
   }
 
   async function deliverScheduled() {
-    setLoading(true);
+    if (!sessionId || delivering) return;
+    setDelivering(true);
     setMsg(null);
 
     try {
@@ -43,32 +55,30 @@ export default function FacilitatorControls({
     } catch (e: any) {
       setMsg(e?.message ?? "Failed");
     } finally {
-      setLoading(false);
+      setDelivering(false);
     }
   }
 
   return (
-    <Card className="surface shadow-soft border border-[var(--studio-border)]">
+    <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Facilitator tools</CardTitle>
-        <CardDescription className="text-xs">
+        <CardTitle>Facilitator tools</CardTitle>
+        <CardDescription>
           Quick controls for running the exercise and releasing scheduled injects.
         </CardDescription>
       </CardHeader>
-
-      <CardContent className="space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          <Button variant="primary" onClick={startExercise} disabled={loading}>
-            {loading ? "..." : "Start exercise"}
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex gap-2">
+          <Button onClick={startExercise} disabled={starting || delivering}>
+            {starting ? "..." : "Start exercise"}
           </Button>
-
-          <Button variant="secondary" onClick={deliverScheduled} disabled={loading}>
-            {loading ? "..." : "Deliver due injects"}
+          <Button onClick={deliverScheduled} disabled={starting || delivering}>
+            {delivering ? "..." : "Deliver due injects"}
           </Button>
         </div>
 
         {msg ? (
-          <div className="rounded-[var(--radius)] border border-border bg-muted/30 p-2 text-xs font-semibold">
+          <div className="rounded-[var(--radius)] border border-border bg-muted px-3 py-2 text-sm">
             {msg}
           </div>
         ) : null}

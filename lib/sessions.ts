@@ -211,7 +211,8 @@ export function subscribeInbox(sessionId: string, cb: () => void, debounceMs = 2
   };
 
   const ch = supabase
-    .channel(`session_injects:${sessionId}`)
+    // UNIQUE channel name for Inbox
+    .channel(`session_injects:inbox:${sessionId}`)
     .on(
       "postgres_changes",
       {
@@ -250,8 +251,38 @@ export async function getSessionPulse(
 }
 
 export function subscribePulse(sessionId: string, cb: () => void, debounceMs = 250) {
-  // Same underlying table (session_injects)
-  return subscribeInbox(sessionId, cb, debounceMs);
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return;
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
+  const ch = supabase
+    // UNIQUE channel name for Pulse
+    .channel(`session_injects:pulse:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "session_injects",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      () => fire()
+    )
+    .subscribe();
+
+  return () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
+    supabase.removeChannel(ch);
+  };
 }
 
 /* =========================
@@ -424,4 +455,110 @@ export async function updateCasualties(params: {
 
   if (error) throw error;
   return data as SessionSituation;
+}
+
+/* =========================
+   REALTIME: actions / situation / session meta
+========================= */
+
+export function subscribeActions(sessionId: string, cb: () => void, debounceMs = 250) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return;
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
+  const ch = supabase
+    .channel(`session_actions:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "session_actions",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      () => fire()
+    )
+    .subscribe();
+
+  return () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
+    supabase.removeChannel(ch);
+  };
+}
+
+export function subscribeSituation(sessionId: string, cb: () => void, debounceMs = 250) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return;
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
+  const ch = supabase
+    .channel(`session_situation:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "session_situation",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      () => fire()
+    )
+    .subscribe();
+
+  return () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
+    supabase.removeChannel(ch);
+  };
+}
+
+export function subscribeSessionMeta(sessionId: string, cb: () => void, debounceMs = 250) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return;
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
+  const ch = supabase
+    .channel(`sessions:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "UPDATE",
+        schema: "public",
+        table: "sessions",
+        filter: `id=eq.${sessionId}`,
+      },
+      () => fire()
+    )
+    .subscribe();
+
+  return () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
+    supabase.removeChannel(ch);
+  };
 }
