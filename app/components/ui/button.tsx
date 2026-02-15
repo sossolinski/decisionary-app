@@ -7,37 +7,49 @@ import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
   [
-    // base
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[var(--radius)] text-sm font-medium",
-    "transition-colors transition-shadow",
-    "disabled:pointer-events-none disabled:opacity-50",
-    // focus ring (consistent)
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap",
+    "rounded-[var(--radius)] text-sm font-medium transition",
     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-    // subtle press
-    "active:translate-y-[0.5px]",
-    // ensure icon sizes align
-    "[&>svg]:pointer-events-none [&>svg]:shrink-0 [&>svg]:h-4 [&>svg]:w-4",
+    "disabled:pointer-events-none disabled:opacity-50",
+    "select-none",
   ].join(" "),
   {
     variants: {
       variant: {
-        default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:bg-primary/85",
-        destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 active:bg-destructive/85",
-        secondary:
-          "bg-secondary text-secondary-foreground border border-border shadow-sm hover:bg-secondary/80 active:bg-secondary/70",
-        outline:
-          "border border-border bg-background shadow-sm hover:bg-secondary active:bg-secondary/80",
-        ghost:
-          "bg-transparent hover:bg-secondary hover:text-foreground active:bg-secondary/80",
-        link: "bg-transparent text-primary underline-offset-4 hover:underline",
+        default: [
+          "text-[color:var(--primary-foreground)]",
+          "border border-transparent",
+          "shadow-soft",
+          // subtle gradient like landing CTAs
+          "bg-[linear-gradient(135deg,var(--studio-accent-blue),var(--studio-accent-purple))]",
+          "hover:opacity-95",
+        ].join(" "),
+        destructive: [
+          "bg-destructive text-destructive-foreground shadow-soft",
+          "hover:opacity-95",
+        ].join(" "),
+        outline: [
+          "surface2",
+          "text-foreground",
+          "hover:bg-secondary/60",
+        ].join(" "),
+        secondary: [
+          "bg-secondary text-secondary-foreground border border-[var(--studio-border)]",
+          "hover:bg-secondary/70",
+        ].join(" "),
+        ghost: [
+          "text-foreground",
+          "hover:bg-secondary/60",
+        ].join(" "),
+        link: [
+          "text-primary underline-offset-4 hover:underline",
+        ].join(" "),
       },
       size: {
         default: "h-10 px-4 py-2",
         sm: "h-9 rounded-[calc(var(--radius)-2px)] px-3",
-        lg: "h-11 rounded-[calc(var(--radius)+2px)] px-8",
-        icon: "h-10 w-10 px-0", // icon-only button, consistent hitbox
+        lg: "h-11 rounded-[calc(var(--radius)+2px)] px-6",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {

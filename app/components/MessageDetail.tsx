@@ -43,16 +43,21 @@ function badgeClass(kind: "severity" | "channel", value: string) {
 
   if (kind === "severity") {
     if (v === "critical") return `${base} bg-destructive/10 text-destructive`;
-    if (v === "high") return `${base} bg-orange-500/10 text-orange-700 dark:text-orange-300`;
-    if (v === "medium") return `${base} bg-yellow-500/10 text-yellow-700 dark:text-yellow-300`;
-    if (v === "low") return `${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`;
+    if (v === "high")
+      return `${base} bg-orange-500/10 text-orange-700 dark:text-orange-300`;
+    if (v === "medium")
+      return `${base} bg-yellow-500/10 text-yellow-700 dark:text-yellow-300`;
+    if (v === "low")
+      return `${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`;
     return `${base} bg-secondary/60 text-foreground`;
   }
 
   // channel
   if (v === "ops") return `${base} bg-primary/10 text-primary`;
-  if (v === "media") return `${base} bg-purple-500/10 text-purple-700 dark:text-purple-300`;
-  if (v === "social") return `${base} bg-sky-500/10 text-sky-700 dark:text-sky-300`;
+  if (v === "media")
+    return `${base} bg-purple-500/10 text-purple-700 dark:text-purple-300`;
+  if (v === "social")
+    return `${base} bg-sky-500/10 text-sky-700 dark:text-sky-300`;
   return `${base} bg-secondary/60 text-foreground`;
 }
 
@@ -81,9 +86,12 @@ export default function MessageDetail({
 }: {
   item: SessionInject | null;
   mode: Mode;
-  actions: SessionAction[];
+
+  // ✅ make optional (we will guard)
+  actions?: SessionAction[];
   actionsLoading: boolean;
   actionsError: string | null;
+
   comment: string;
   onCommentChange: (v: string) => void;
 
@@ -100,6 +108,9 @@ export default function MessageDetail({
   const body = inject?.body ?? "";
   const channel = inject?.channel ?? null;
   const severity = inject?.severity ?? null;
+
+  // ✅ ALWAYS an array (prevents `.length` crash)
+  const safeActions = Array.isArray(actions) ? actions : [];
 
   const senderLine = useMemo(() => {
     const name = inject?.sender_name?.trim();
@@ -121,7 +132,9 @@ export default function MessageDetail({
           <div className="space-y-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-base font-semibold leading-snug">{title}</div>
+                <div className="text-base font-semibold leading-snug">
+                  {title}
+                </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {senderLine ? senderLine : "—"}
                   {item.delivered_at ? (
@@ -135,10 +148,14 @@ export default function MessageDetail({
 
               <div className="flex flex-wrap items-center gap-2">
                 {severity ? (
-                  <span className={badgeClass("severity", severity)}>{severity.toUpperCase()}</span>
+                  <span className={badgeClass("severity", severity)}>
+                    {severity.toUpperCase()}
+                  </span>
                 ) : null}
                 {mode === "inbox" && channel ? (
-                  <span className={badgeClass("channel", channel)}>{channel.toUpperCase()}</span>
+                  <span className={badgeClass("channel", channel)}>
+                    {channel.toUpperCase()}
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -166,14 +183,14 @@ export default function MessageDetail({
                 <div className="text-xs text-destructive">{actionsError}</div>
               ) : (
                 <div className="text-xs text-muted-foreground">
-                  {actions.length} entr{actions.length === 1 ? "y" : "ies"}
+                  {safeActions.length} entr{safeActions.length === 1 ? "y" : "ies"}
                 </div>
               )}
             </div>
 
-            {!actionsLoading && actions.length > 0 ? (
+            {!actionsLoading && safeActions.length > 0 ? (
               <div className="mt-2 space-y-2">
-                {actions.slice(0, 5).map((a) => (
+                {safeActions.slice(0, 5).map((a) => (
                   <div
                     key={a.id}
                     className="rounded-[var(--radius)] border border-border bg-card px-3 py-2"
@@ -196,15 +213,15 @@ export default function MessageDetail({
                     ) : null}
                   </div>
                 ))}
-                {actions.length > 5 ? (
+                {safeActions.length > 5 ? (
                   <div className="text-xs text-muted-foreground">
-                    + {actions.length - 5} more…
+                    + {safeActions.length - 5} more…
                   </div>
                 ) : null}
               </div>
             ) : null}
 
-            {!actionsLoading && actions.length === 0 ? (
+            {!actionsLoading && safeActions.length === 0 ? (
               <div className="mt-2 text-xs text-muted-foreground">
                 No decisions recorded for this message yet.
               </div>
@@ -213,7 +230,9 @@ export default function MessageDetail({
 
           {/* Comment */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-muted-foreground">Comment</div>
+            <div className="text-xs font-semibold text-muted-foreground">
+              Comment
+            </div>
             <Input
               value={comment}
               onChange={(e) => onCommentChange(e.target.value)}
@@ -252,7 +271,8 @@ export default function MessageDetail({
           </div>
 
           <div className="text-[11px] text-muted-foreground">
-            Tip: use “Act” to record a decision and optionally send an update inject to the session.
+            Tip: use “Act” to record a decision and optionally send an update
+            inject to the session.
           </div>
         </>
       )}

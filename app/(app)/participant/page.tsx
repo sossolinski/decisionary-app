@@ -1,70 +1,190 @@
 // app/(app)/participant/page.tsx
 "use client";
 
-import { useRequireAuth } from "@/lib/useRequireAuth";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { getMyRole } from "@/lib/users";
+import { supabase } from "@/lib/supabaseClient";
+import { listMyParticipantSessions, type ParticipantSession } from "@/lib/sessionsRuntime";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 
-export default function ParticipantPage() {
-  const { loading, userId, email } = useRequireAuth();
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
+}
 
-  if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+export default function ParticipantHomePage() {
+  const router = useRouter();
+
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ParticipantSession[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  async function load() {
+    setError(null);
+    try {
+      const { data } = await supabase.auth.getUser();
+      setEmail(data.user?.email ?? null);
+
+      const ps = await listMyParticipantSessions();
+      setSessions((ps ?? []) as ParticipantSession[]);
+    } catch (e: any) {
+      setError(e?.message ?? String(e));
+    }
   }
 
-  if (!userId) {
-    return (
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Not authenticated</CardTitle>
-          <CardDescription className="text-sm">Please sign in to continue.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={() => (window.location.href = "/login")}>
-            Go to login
-          </Button>
-          <Button variant="secondary" onClick={() => (window.location.href = "/join")}>
-            Join session
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
+  useEffect(() => {
+    (async () => {
+      const role = await getMyRole();
+      if (!role) return router.replace("/login");
+      if (role !== "participant") return router.replace("/facilitator");
 
-  const label = email ?? `Anonymous (${userId.slice(0, 8)})`;
+      await load();
+      setLoading(false);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  const active = sessions.find((s) => s.status === "active") ?? null;
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Participant</h1>
-        <p className="text-sm text-muted-foreground">
-          You are signed in and ready to join a live session.
-        </p>
+      {/* Hero */}
+      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[var(--studio-highlight)] shadow-soft p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Participant workspace
+            </h1>
+            <p className="mt-2 text-sm text-[color:var(--studio-muted2)]">
+              Join a session, respond to injects, and log actions as the scenario unfolds.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button asChild>
+                <Link href="/join">Join a session</Link>
+              </Button>
+              {active ? (
+                <Button variant="outline" asChild>
+                  <Link href={`/sessions/${active.id}`}>Open active session</Link>
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  setLoading(true);
+                  await load();
+                  setLoading(false);
+                }}
+              >
+                Refresh
+              </Button>
+            </div>
+          </div>
+
+          {/* mini identity */}
+          <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 w-full sm:w-auto">
+            <div className="text-xs text-[color:var(--studio-muted2)]">Signed in</div>
+            <div className="mt-1 text-sm font-medium truncate max-w-[340px]">
+              {loading ? "—" : email ?? "—"}
+            </div>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
+            {error}
+          </div>
+        ) : null}
       </div>
 
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Signed in</CardTitle>
-          <CardDescription className="text-sm">Current identity</CardDescription>
+      {/* Active session */}
+      {active ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Active session</CardTitle>
+            <CardDescription>You currently have an active session.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm text-[color:var(--studio-muted2)]">
+              <span className="text-foreground font-medium">{active.title ?? "Session"}</span>
+              {" · "}
+              Joined: <span className="text-foreground">{fmt(active.joined_at)}</span>
+            </div>
+            <Button asChild>
+              <Link href={`/sessions/${active.id}`}>Open</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>No active session</CardTitle>
+            <CardDescription>
+              Join using a join code provided by the facilitator.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex items-center justify-between gap-3">
+            <div className="text-sm text-[color:var(--studio-muted2)]">
+              Ready when you are.
+            </div>
+            <Button asChild>
+              <Link href="/join">Join</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Recent sessions */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Your sessions</CardTitle>
+          <CardDescription>Recent sessions you’ve joined.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-3 text-sm font-semibold">
-            {label}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => (window.location.href = "/join")}>
-              Join session
-            </Button>
-            <Button variant="secondary" onClick={() => (window.location.href = "/facilitator")}>
-              Facilitator
-            </Button>
-          </div>
-
-          <div className="text-xs text-muted-foreground">
-            If you received a code from the facilitator, use “Join session”.
-          </div>
+        <CardContent>
+          {sessions.length === 0 ? (
+            <div className="text-sm text-[color:var(--studio-muted2)]">
+              Nothing here yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {sessions.slice(0, 10).map((s) => (
+                <div
+                  key={s.id}
+                  className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {s.title ?? "Session"}
+                    </div>
+                    <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
+                      Status: <span className="text-foreground">{s.status ?? "—"}</span>
+                      {" · "}
+                      Joined: <span className="text-foreground">{fmt(s.joined_at)}</span>
+                    </div>
+                  </div>
+                  <Button variant="outline" asChild>
+                    <Link href={`/sessions/${s.id}`}>Open</Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

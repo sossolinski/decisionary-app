@@ -44,12 +44,24 @@ export default function FacilitatorControls({
         return;
       }
 
-      // Fallback path: if RPC not available, at least set status=live
+      // Fallback: if RPC not available, at least set status=live + started_at
       const em = String(error?.message ?? "");
       const low = em.toLowerCase();
 
       if (low.includes("does not exist") || low.includes("function")) {
+        // 1) set status via helper (already used in your codebase)
         await setSessionStatus(sessionId, "live");
+
+        // 2) best-effort: also set started_at if column exists + RLS allows
+        try {
+          await supabase
+            .from("sessions")
+            .update({ started_at: new Date().toISOString() } as any)
+            .eq("id", sessionId);
+        } catch {
+          // ignore
+        }
+
         setMsg(
           "Exercise started (fallback: status set to LIVE). Tip: add start_session RPC to set started_at server-side."
         );
@@ -82,35 +94,34 @@ export default function FacilitatorControls({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Facilitator tools</CardTitle>
-        <CardDescription>
-          Quick controls for running the exercise and releasing scheduled injects.
-        </CardDescription>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={startExercise} disabled={!sessionId || starting}>
+    <div className="hidden lg:block">
+      <Card className="w-[360px]">
+        <CardHeader>
+          <CardTitle>Facilitator tools</CardTitle>
+          <CardDescription>
+            Quick controls for running the exercise and releasing scheduled
+            injects.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center gap-2">
+          <Button onClick={startExercise} disabled={starting}>
             {starting ? "Starting..." : "Start exercise"}
           </Button>
-
           <Button
-            onClick={deliverScheduled}
-            disabled={!sessionId || delivering}
             variant="secondary"
+            onClick={deliverScheduled}
+            disabled={delivering}
           >
             {delivering ? "Delivering..." : "Deliver due injects"}
           </Button>
-        </div>
 
-        {msg ? (
-          <div className="rounded-[var(--radius)] border border-border bg-muted/40 px-3 py-2 text-sm">
-            {msg}
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+          {msg ? (
+            <div className="ml-2 text-xs font-bold text-muted-foreground">
+              {msg}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

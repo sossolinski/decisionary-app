@@ -1,13 +1,14 @@
 @import "tailwindcss";
 
 /* =========================================================
-Decisionary — Globals (FULL)
+   Decisionary — Globals (Landing-style foundation)
 
-- shadcn tokens as HSL triplets (Tailwind: bg-background, border-border, etc.)
-- studio aliases as separate variables (AppTopbar/AppSidebar friendly)
-- solid base reset + nicer defaults (scrollbar, typography, focus, etc.)
-- interactive feedback (hover/active/focus) for all clickables
-- popovers fully opaque (no see-through)
+   - Keeps shadcn tokens as HSL triplets (Tailwind: bg-background etc.)
+   - Adds landing-like background (soft gradient + glow + grid)
+   - Adds "studio" aliases (glassy surfaces) used in AppShell/Topbar/Sidebar
+   - Safe defaults for typography, focus, scrollbars
+
+   NOTE: You can toggle dark mode by adding class="dark" on <html> (later).
 ========================================================= */
 
 @layer base {
@@ -47,8 +48,7 @@ Decisionary — Globals (FULL)
     --radius: 1rem; /* 16px */
 
     /* =====================================================
-       STUDIO ALIASES (NO OVERRIDES of shadcn vars)
-       These are used by custom components with var(--studio-*)
+       STUDIO ALIASES (used by custom components)
     ====================================================== */
     --studio-max: 1120px;
     --studio-radius: 14px;
@@ -64,7 +64,7 @@ Decisionary — Globals (FULL)
     --studio-muted: hsl(var(--foreground) / 0.62);
     --studio-muted2: hsl(var(--foreground) / 0.48);
 
-    /* soft borders (avoid black frames) */
+    /* soft borders */
     --studio-border: hsl(220 10% 86% / 0.75);
     --studio-border-strong: hsl(220 10% 84% / 0.9);
 
@@ -74,12 +74,30 @@ Decisionary — Globals (FULL)
 
     /* shadows + ring strings */
     --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.14);
-    --studio-shadow: 0 1px 2px hsl(220 20% 20% / 0.06),
+    --studio-shadow:
+      0 1px 2px hsl(220 20% 20% / 0.06),
       0 10px 30px hsl(220 20% 20% / 0.06);
-    --studio-shadow2: 0 2px 8px hsl(220 20% 20% / 0.06),
+    --studio-shadow2:
+      0 2px 8px hsl(220 20% 20% / 0.06),
       0 18px 50px hsl(220 20% 20% / 0.08);
 
-    /* optional: subtle highlight */
+    /* landing-like background glows */
+    --studio-glow-1: radial-gradient(
+      900px 500px at 10% -10%,
+      hsl(var(--primary) / 0.18),
+      transparent 55%
+    );
+    --studio-glow-2: radial-gradient(
+      900px 500px at 85% 0%,
+      hsl(var(--accent) / 0.16),
+      transparent 60%
+    );
+    --studio-glow-3: radial-gradient(
+      1200px 700px at 45% 110%,
+      hsl(200 90% 55% / 0.08),
+      transparent 60%
+    );
+
     --studio-highlight: linear-gradient(
       180deg,
       hsl(var(--card) / 0.85),
@@ -134,6 +152,22 @@ Decisionary — Globals (FULL)
     --studio-shadow: 0 10px 28px hsl(0 0% 0% / 0.25);
     --studio-shadow2: 0 18px 50px hsl(0 0% 0% / 0.35);
 
+    --studio-glow-1: radial-gradient(
+      900px 500px at 10% -10%,
+      hsl(var(--primary) / 0.22),
+      transparent 55%
+    );
+    --studio-glow-2: radial-gradient(
+      900px 500px at 85% 0%,
+      hsl(var(--accent) / 0.18),
+      transparent 60%
+    );
+    --studio-glow-3: radial-gradient(
+      1200px 700px at 45% 110%,
+      hsl(190 90% 55% / 0.10),
+      transparent 60%
+    );
+
     --studio-highlight: linear-gradient(
       180deg,
       hsl(var(--card) / 0.88),
@@ -157,15 +191,23 @@ Decisionary — Globals (FULL)
 
   body {
     margin: 0;
-    background: hsl(var(--background));
     color: hsl(var(--foreground));
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.45;
+
+    /* Landing-like background:
+       - soft glows + subtle grid on top of background token
+    */
+    background:
+      var(--studio-glow-1),
+      var(--studio-glow-2),
+      var(--studio-glow-3),
+      hsl(var(--background));
   }
 
-  /* shadcn uses border-border; this keeps generic borders consistent */
+  /* shadcn uses border-border; keep generic borders consistent */
   * {
     border-color: hsl(var(--border));
   }
@@ -200,7 +242,7 @@ Decisionary — Globals (FULL)
     background: hsl(var(--primary) / 0.18);
   }
 
-  /* links – keep clean (your UI uses Link a lot) */
+  /* links – keep clean (app uses Link a lot) */
   a {
     color: inherit;
     text-decoration: none;
@@ -215,18 +257,18 @@ Decisionary — Globals (FULL)
     color: inherit;
   }
 
-  /* keep minimal base for buttons (components set their own bg/border) */
-  button {
-    background: none;
+  /* focus ring */
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
+    border-radius: calc(var(--radius) - 6px);
   }
 
-  /* nicer disabled */
   :disabled {
     opacity: 0.55;
     cursor: not-allowed;
   }
 
-  /* code blocks if you show any */
   code,
   pre {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
@@ -234,59 +276,8 @@ Decisionary — Globals (FULL)
   }
 
   /* =====================================================
-     INTERACTIVE FEEDBACK (global polish)
-     - hover/active transitions for all clickables
-     - strong focus-visible ring
-     - prevent “dead feeling” controls
-  ====================================================== */
-
-  :where(button, [role="button"], a, input[type="button"], input[type="submit"]) {
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  /* unified focus ring */
-  :where(button, [role="button"], a, input, textarea, select):focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.28);
-    border-radius: calc(var(--radius) - 6px);
-  }
-
-  /* baseline transitions (even for "plain" icon buttons) */
-  :where(button, [role="button"], a):not(:disabled) {
-    transition: background-color 140ms ease, border-color 140ms ease,
-      box-shadow 140ms ease, opacity 140ms ease, transform 90ms ease;
-  }
-
-  /* subtle active press */
-  :where(button, [role="button"], a):not(:disabled):active {
-    transform: translateY(0.5px);
-  }
-
-  /* if an <a> behaves like a button in UI, it should still feel hoverable */
-  :where(a).hoverable:not(:disabled):hover {
-    background-color: hsl(var(--secondary) / 0.85);
-  }
-
-  /* Make “plain” buttons (no variant classes) still show hover feedback.
-     This is intentionally conservative so it doesn't fight shadcn Button.
-  */
-  :where(button):not([class*="bg-"]):not([class*="border"]):not(:disabled):hover {
-    background-color: hsl(var(--secondary) / 0.7);
-    border-radius: var(--radius);
-  }
-
-  /* =====================================================
-     POPOVERS / DROPDOWNS
-     - ensure fully opaque surfaces (no see-through)
-  ====================================================== */
-  :where(.bg-popover) {
-    background-color: hsl(var(--popover) / 1) !important;
-  }
-
-  /* =====================================================
      SCROLLBARS (subtle, “studio”)
   ====================================================== */
-
   /* Firefox */
   * {
     scrollbar-width: thin;
@@ -320,6 +311,7 @@ Decisionary — Globals (FULL)
    UTILITIES (non-invasive helpers)
 ========================================================= */
 @layer utilities {
+  /* Subtle dot-grid like many modern landings */
   .bg-grid {
     background-image: radial-gradient(
       hsl(var(--foreground) / 0.06) 1px,
@@ -337,13 +329,41 @@ Decisionary — Globals (FULL)
     box-shadow: var(--studio-shadow2);
   }
 
+  /* glass */
   .surface {
     background: var(--studio-surface);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--studio-border);
   }
 
   .surface2 {
     background: var(--studio-surface2);
+    border: 1px solid var(--studio-border);
+  }
+
+  /* solid (for popovers/modals/overlays) */
+  .surface-solid {
+    background: hsl(var(--card) / 0.96);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid var(--studio-border-strong);
+  }
+
+  .popover-solid {
+    background: hsl(var(--popover) / 0.98);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border: 1px solid var(--studio-border-strong);
+  }
+
+  /* nice “landing-ish” section container helper */
+  .studio-container {
+    width: 100%;
+    max-width: var(--studio-max);
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.25rem; /* 20px */
+    padding-right: 1.25rem; /* 20px */
   }
 }

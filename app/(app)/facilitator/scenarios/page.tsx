@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getMyRole } from "@/lib/users";
 import {
   listScenarios,
   createScenario,
@@ -18,9 +17,26 @@ import {
   type FacilitatorProfile,
 } from "@/lib/facilitator";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { getMyRole } from "@/lib/users";
+
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
+}
 
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
@@ -33,16 +49,24 @@ export default function FacilitatorScenariosPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
-
   const [error, setError] = useState<string | null>(null);
 
-  const [shareTargetByScenario, setShareTargetByScenario] = useState<Record<string, string>>({});
+  const [shareTargetByScenario, setShareTargetByScenario] = useState<
+    Record<string, string>
+  >({});
 
+  /* ================= AUTH GUARD ================= */
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-      if (!role) return router.replace("/login");
-      if (role !== "facilitator") return router.replace("/participant");
+      if (!role) {
+        router.replace("/login");
+        return;
+      }
+      if (role !== "facilitator") {
+        router.replace("/participant");
+        return;
+      }
       await load();
     })().catch((e: any) => setError(e?.message ?? "Failed to load"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -53,15 +77,15 @@ export default function FacilitatorScenariosPage() {
     try {
       const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
       setScenarios(scs ?? []);
-      setFacilitators(facs ?? []);
+      setFacilitators((facs ?? []) as FacilitatorProfile[]);
     } catch (e: any) {
       setError(e?.message ?? "Load failed");
     }
   }
 
+  /* ================= ACTIONS ================= */
   async function onCreate() {
     if (!newTitle.trim()) return;
-
     setLoading(true);
     setError(null);
     try {
@@ -77,7 +101,6 @@ export default function FacilitatorScenariosPage() {
 
   async function onDelete(id: string) {
     if (!confirm("Delete this scenario?")) return;
-
     setError(null);
     try {
       await deleteScenario(id);
@@ -102,7 +125,6 @@ export default function FacilitatorScenariosPage() {
 
   async function onAssign(scenarioId: string, newOwnerId: string) {
     if (!newOwnerId) return;
-
     setError(null);
     setAssigningId(scenarioId);
     try {
@@ -121,7 +143,6 @@ export default function FacilitatorScenariosPage() {
       setError("Select facilitator to share with.");
       return;
     }
-
     setError(null);
     setSharingId(scenarioId);
     try {
@@ -140,7 +161,6 @@ export default function FacilitatorScenariosPage() {
       setError("Select facilitator to revoke.");
       return;
     }
-
     setError(null);
     setSharingId(scenarioId);
     try {
@@ -153,6 +173,7 @@ export default function FacilitatorScenariosPage() {
     }
   }
 
+  /* ================= HELPERS ================= */
   const idToEmail = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of facilitators) {
@@ -161,180 +182,221 @@ export default function FacilitatorScenariosPage() {
     return m;
   }, [facilitators]);
 
-  function fmt(dt?: string | null) {
-    if (!dt) return "—";
-    try {
-      return new Date(dt).toLocaleString();
-    } catch {
-      return dt;
-    }
-  }
-
   function who(userId?: string | null) {
     if (!userId) return "—";
     return idToEmail.get(userId) ?? userId;
   }
 
+  const selectCls = [
+    "h-10 rounded-[var(--radius)] px-3 text-sm",
+    "border border-[var(--studio-border)]",
+    "bg-[var(--studio-surface2)] text-foreground",
+    "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+  ].join(" ");
+
+  /* ================= UI ================= */
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1 min-w-0">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Scenarios</h1>
-          <p className="text-sm text-muted-foreground">
-            Create, duplicate, transfer and share scenarios.
+          <p className="mt-1 text-sm text-[color:var(--studio-muted2)]">
+            Manage scenario library, ownership, and sharing.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={load}>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={load}>
             Refresh
           </Button>
         </div>
       </div>
 
+      {/* Error */}
       {error ? (
-        <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
+        <div className="rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
           {error}
         </div>
       ) : null}
 
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Create</CardTitle>
-          <CardDescription className="text-sm">Create a new scenario owned by you.</CardDescription>
+      {/* Create */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Create scenario</CardTitle>
+          <CardDescription>Start a new scenario draft.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Input
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="New scenario title"
-            className="min-w-[260px] flex-1"
-          />
-          <Button variant="primary" onClick={onCreate} disabled={loading}>
-            {loading ? "..." : "Create"}
-          </Button>
+        <CardContent>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex-1 min-w-[240px]">
+              <Input
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                placeholder="New scenario title"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={onCreate} disabled={loading}>
+                {loading ? "…" : "Create"}
+              </Button>
+              <Button variant="outline" onClick={load}>
+                Refresh
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Library</CardTitle>
-          <CardDescription className="text-sm">{scenarios.length} scenario(s)</CardDescription>
-        </CardHeader>
+      {/* List */}
+      {scenarios.length === 0 ? (
+        <Card>
+          <CardContent>
+            <div className="text-sm text-[color:var(--studio-muted2)]">
+              No scenarios yet.
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {scenarios.map((s) => {
+            const selectedTarget = shareTargetByScenario[s.id] ?? "";
+            const isAssigning = assigningId === s.id;
+            const isSharing = sharingId === s.id;
+            const isDup = duplicatingId === s.id;
 
-        <CardContent className="space-y-3">
-          {scenarios.length === 0 ? (
-            <div className="text-sm text-muted-foreground">No scenarios yet.</div>
-          ) : (
-            <div className="grid gap-3">
-              {scenarios.map((s) => {
-                const selectedTarget = shareTargetByScenario[s.id] ?? "";
-                const isDuplicating = duplicatingId === s.id;
-                const isAssigning = assigningId === s.id;
-                const isSharing = sharingId === s.id;
+            return (
+              <Card key={s.id}>
+                <CardHeader className="flex-row items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <CardTitle className="text-base truncate">
+                      {s.title ?? "Untitled scenario"}
+                    </CardTitle>
 
-                return (
-                  <div key={s.id} className="rounded-[var(--radius)] border border-border bg-card px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-base font-extrabold">{s.title}</div>
+                    <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
+                      Created: {fmt(s.created_at)} by{" "}
+                      <span className="text-foreground">{who(s.created_by)}</span>
+                      {" · "}
+                      Updated: {fmt(s.updated_at)} by{" "}
+                      <span className="text-foreground">{who(s.updated_by)}</span>
+                    </div>
 
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          Created: <b>{fmt(s.created_at)}</b> by <b>{who(s.created_by)}</b>
-                          {" · "}
-                          Updated: <b>{fmt(s.updated_at)}</b> by <b>{who(s.updated_by)}</b>
-                        </div>
+                    <div className="mt-2 text-sm text-[color:var(--studio-muted2)]">
+                      {s.description ? s.description : "No description"}
+                    </div>
+                  </div>
 
-                        {s.description ? (
-                          <div className="mt-2 text-sm text-muted-foreground line-clamp-2">{s.description}</div>
-                        ) : (
-                          <div className="mt-2 text-sm text-muted-foreground">No description</div>
-                        )}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}
+                    >
+                      Open
+                    </Button>
 
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          ID: <code className="font-mono">{s.id}</code>
-                        </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => onDuplicate(s.id)}
+                      disabled={isDup}
+                    >
+                      {isDup ? "…" : "Duplicate"}
+                    </Button>
+
+                    <Button variant="destructive" onClick={() => onDelete(s.id)}>
+                      Delete
+                    </Button>
+                  </div>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    {/* Assign */}
+                    <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
+                      <div className="text-xs font-medium text-[color:var(--studio-muted2)] mb-2">
+                        Assign (transfer owner)
                       </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select
+                          value={selectedTarget}
+                          onChange={(e) =>
+                            setShareTargetByScenario((prev) => ({
+                              ...prev,
+                              [s.id]: e.target.value,
+                            }))
+                          }
+                          className={`${selectCls} w-full sm:w-[320px]`}
+                        >
+                          <option value="">Select facilitator…</option>
+                          {facilitators.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.email ?? f.id}
+                            </option>
+                          ))}
+                        </select>
 
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="primary" onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}>
-                          Open
+                        <Button
+                          variant="secondary"
+                          onClick={() => onAssign(s.id, selectedTarget)}
+                          disabled={isAssigning || !selectedTarget}
+                        >
+                          {isAssigning ? "…" : "Transfer"}
                         </Button>
-
-                        <Button variant="secondary" onClick={() => onDuplicate(s.id)} disabled={isDuplicating}>
-                          {isDuplicating ? "..." : "Duplicate"}
-                        </Button>
-
-                        <Button variant="danger" onClick={() => onDelete(s.id)}>
-                          Delete
-                        </Button>
+                      </div>
+                      <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
+                        Transfer removes it from your list.
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-[var(--radius)] border border-border bg-background px-3 py-3">
-                        <div className="text-sm font-semibold">Assign (transfer owner)</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <select
-                            onChange={(e) => onAssign(s.id, e.target.value)}
-                            disabled={isAssigning}
-                            className="h-10 min-w-[260px] rounded-[var(--radius)] border border-border bg-background px-3 text-sm"
-                            defaultValue=""
-                          >
-                            <option value="" disabled>
-                              Select facilitator…
-                            </option>
-                            {facilitators.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.email ?? f.id}
-                              </option>
-                            ))}
-                          </select>
-
-                          <div className="text-xs text-muted-foreground">
-                            {isAssigning ? "Transferring…" : "You will lose ownership after transfer."}
-                          </div>
-                        </div>
+                    {/* Share */}
+                    <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
+                      <div className="text-xs font-medium text-[color:var(--studio-muted2)] mb-2">
+                        Share (keeps owner)
                       </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <select
+                          value={selectedTarget}
+                          onChange={(e) =>
+                            setShareTargetByScenario((prev) => ({
+                              ...prev,
+                              [s.id]: e.target.value,
+                            }))
+                          }
+                          className={`${selectCls} w-full sm:w-[320px]`}
+                        >
+                          <option value="">Select facilitator…</option>
+                          {facilitators.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.email ?? f.id}
+                            </option>
+                          ))}
+                        </select>
 
-                      <div className="rounded-[var(--radius)] border border-border bg-background px-3 py-3">
-                        <div className="text-sm font-semibold">Share (keeps owner)</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <select
-                            value={selectedTarget}
-                            onChange={(e) =>
-                              setShareTargetByScenario((prev) => ({ ...prev, [s.id]: e.target.value }))
-                            }
-                            className="h-10 min-w-[260px] rounded-[var(--radius)] border border-border bg-background px-3 text-sm"
-                          >
-                            <option value="">Select facilitator…</option>
-                            {facilitators.map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.email ?? f.id}
-                              </option>
-                            ))}
-                          </select>
+                        <Button
+                          variant="outline"
+                          onClick={() => onShare(s.id)}
+                          disabled={isSharing}
+                        >
+                          {isSharing ? "…" : "Share"}
+                        </Button>
 
-                          <Button variant="primary" onClick={() => onShare(s.id)} disabled={isSharing}>
-                            {isSharing ? "..." : "Share"}
-                          </Button>
-
-                          <Button variant="secondary" onClick={() => onRevoke(s.id)} disabled={isSharing}>
-                            Revoke
-                          </Button>
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">
-                          Share creates a read-only entry in <code className="font-mono">scenario_shares</code>.
-                        </div>
+                        <Button
+                          variant="secondary"
+                          onClick={() => onRevoke(s.id)}
+                          disabled={isSharing}
+                        >
+                          {isSharing ? "…" : "Revoke"}
+                        </Button>
+                      </div>
+                      <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
+                        Shares as read-only.
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

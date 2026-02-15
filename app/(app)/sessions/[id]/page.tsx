@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import type { Scenario } from "@/lib/scenarios";
+
 import {
   getSessionSituation,
   updateCasualties,
@@ -14,9 +15,10 @@ import {
   getSessionActions,
   addSessionAction,
   type SessionAction,
-  subscribeActions,
-  subscribeSituation,
-  subscribeSessionMeta,
+  subscribeActionsPayload,
+  subscribeSituationPayload,
+  subscribeSessionMetaPayload,
+  sendInjectToSession,
 } from "@/lib/sessions";
 
 import SituationCard from "@/app/components/SituationCard";
@@ -25,16 +27,9 @@ import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
 import Inbox from "@/app/components/Inbox";
 import PulseFeed from "@/app/components/PulseFeed";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { Filter, X, ChevronDown, ChevronUp } from "lucide-react";
+import { X } from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -42,7 +37,7 @@ function isUuid(v: string) {
   );
 }
 
-type FeedTab = "inbox" | "pulse";
+type SelectedSource = "inbox" | "pulse";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -54,6 +49,15 @@ function useMediaQuery(query: string) {
     return () => m.removeEventListener?.("change", onChange);
   }, [query]);
   return matches;
+}
+
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
 }
 
 function Select({
@@ -69,7 +73,12 @@ function Select({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-[var(--radius)] border border-input bg-background px-3 text-sm font-semibold text-foreground shadow-sm transition-colors hover:border-border focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none focus-visible:border-primary/40"
+      className={[
+        "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
+        "border border-[var(--studio-border)]",
+        "bg-[var(--studio-surface2)] text-foreground",
+        "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+      ].join(" ")}
     >
       {children}
     </select>
@@ -87,11 +96,12 @@ function Chip({
 }) {
   return (
     <button
+      type="button"
       onClick={onClear}
       title={title}
-      className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold text-foreground shadow-sm transition-colors hover:bg-secondary/70 focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-medium hover:bg-secondary/60 transition"
     >
-      {label}
+      <span className="truncate max-w-[240px]">{label}</span>
       <X className="h-3.5 w-3.5 opacity-70" />
     </button>
   );
@@ -104,97 +114,130 @@ export default function SessionParticipantPage() {
 
   const isMobile = useMediaQuery("(max-width: 1100px)");
 
-  const [situation, setSituation] = useState<SessionSituation | null>(null);
-  const [scenario, setScenario] = useState<Scenario | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<FeedTab>("inbox");
+  // meta
+  const [scenario, setScenario] = useState<Scenario | null>(null);
+  const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [exerciseClock, setExerciseClock] = useState("T=—");
+
+  // role gating
+  const [isFacilitator, setIsFacilitator] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
+
+  // COP
+  const [situation, setSituation] = useState<SessionSituation | null>(null);
+
+  // Selection
   const [selectedItem, setSelectedItem] = useState<SessionInject | null>(null);
+  const [selectedSource, setSelectedSource] = useState<SelectedSource>("inbox");
 
-  // Filters (LEFT)
-  const [search, setSearch] = useState("");
-  const [severity, setSeverity] = useState<string | null>(null);
-  const [channel, setChannel] = useState<string | null>(null); // only Inbox
+  // Inbox filters
+  const [inboxSearch, setInboxSearch] = useState("");
+  const [inboxSeverity, setInboxSeverity] = useState<string | null>(null);
+  const [inboxChannel, setInboxChannel] = useState<string | null>(null);
 
-  const [feedOpen, setFeedOpen] = useState(false); // mobile drawer
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Pulse filters
+  const [pulseSearch, setPulseSearch] = useState("");
+  const [pulseSeverity, setPulseSeverity] = useState<string | null>(null);
 
-  // Actions + log state
+  // Actions (log)
   const [actions, setActions] = useState<SessionAction[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
+
   const [comment, setComment] = useState("");
 
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsWrapRef = useRef<HTMLDivElement | null>(null);
 
-  // Role gating
-  const [isFacilitator, setIsFacilitator] = useState(false);
-  const [roleLoading, setRoleLoading] = useState(true);
+  const sessionTitle = scenario?.title ? scenario.title : "Session";
 
-  // Session owner (fallback facilitator)
-  const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
-
-  // Exercise clock (T=0 at sessions.started_at)
-  const [startedAt, setStartedAt] = useState<string | null>(null);
-  const [exerciseClock, setExerciseClock] = useState<string>("T=—");
-
-  // ====== TOP DETAILS COLLAPSE (persisted) ======
-  const detailsStorageKey = useMemo(() => {
-    if (!sessionId) return "sessionDetailsOpen:unknown";
-    return `sessionDetailsOpen:${sessionId}`;
-  }, [sessionId]);
-
-  const [detailsOpen, setDetailsOpen] = useState(true);
-
-  useEffect(() => {
-    // load persisted
-    try {
-      const raw = localStorage.getItem(detailsStorageKey);
-      if (raw === "0") setDetailsOpen(false);
-      else if (raw === "1") setDetailsOpen(true);
-      // else keep default
-    } catch {
-      // ignore
-    }
-  }, [detailsStorageKey]);
-
-  function toggleDetails() {
-    setDetailsOpen((v) => {
-      const next = !v;
-      try {
-        localStorage.setItem(detailsStorageKey, next ? "1" : "0");
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  }
-
-  // Load started_at for exercise clock (best-effort; missing column must NOT crash)
-  async function refreshStartedAt() {
+  async function refreshSituation() {
     if (!validSessionId) return;
     try {
-      const { data, error } = await supabase
-        .from("sessions")
-        .select("started_at")
-        .eq("id", sessionId)
-        .maybeSingle();
-      if (!error) {
-        const v = (data as any)?.started_at ?? null;
-        setStartedAt(typeof v === "string" && v ? v : null);
-      }
-    } catch {
-      // ignore
+      const s = await getSessionSituation(sessionId);
+      setSituation(s);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to load situation");
     }
   }
 
+  async function refreshActions() {
+    if (!validSessionId) return;
+    try {
+      setActionsLoading(true);
+      setActionsError(null);
+      const rows = await getSessionActions(sessionId, 50);
+      setActions(rows);
+    } catch (e: any) {
+      setActionsError(e?.message ?? "Failed to load actions");
+    } finally {
+      setActionsLoading(false);
+    }
+  }
+
+  async function refreshScenarioAndOwner() {
+    if (!validSessionId) return;
+    try {
+      // ✅ FIX: owner_id doesn't exist; use created_by as owner fallback
+      const { data: sess, error: sessErr } = await supabase
+        .from("sessions")
+        .select("scenario_id, started_at, created_by")
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      if (sessErr) throw sessErr;
+
+      const scenarioId =
+        (sess as any)?.scenario_id ??
+        (sess as any)?.scenario ??
+        (sess as any)?.scenarioId ??
+        null;
+
+      const ownerId = (sess as any)?.created_by ?? null;
+
+      const sa = (sess as any)?.started_at ?? null;
+      setStartedAt(typeof sa === "string" && sa ? sa : null);
+      setSessionOwnerId(typeof ownerId === "string" && ownerId ? ownerId : null);
+
+      if (!scenarioId) {
+        setScenario(null);
+        return;
+      }
+
+      const { data: sc, error: scErr } = await supabase
+        .from("scenarios")
+        .select("*")
+        .eq("id", scenarioId)
+        .maybeSingle();
+
+      if (scErr) throw scErr;
+
+      setScenario((sc as any) ?? null);
+    } catch (e: any) {
+      setScenario(null);
+      setError(
+        (prev) =>
+          prev ??
+          (e?.message ? `Scenario/meta load: ${e.message}` : "Scenario/meta load failed")
+      );
+    }
+  }
+
+  // Initial load
   useEffect(() => {
-    refreshStartedAt();
+    if (!validSessionId) return;
+    setError(null);
+    refreshScenarioAndOwner();
+    refreshSituation();
+    refreshActions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
+  // Exercise clock tick
   useEffect(() => {
     const tick = () => {
       if (!startedAt) {
@@ -214,24 +257,23 @@ export default function SessionParticipantPage() {
       const ss = String(totalSec % 60).padStart(2, "0");
       setExerciseClock(`T+${hh}:${mm}:${ss}`);
     };
+
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [startedAt]);
 
-  // Close tools popover on Escape / outside click (robust)
+  // Close tools popover on Escape/outside click
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setToolsOpen(false);
     }
-
     function onDocMouseDown(e: MouseEvent) {
       if (!toolsOpen) return;
       const el = toolsWrapRef.current;
       if (!el) return;
       if (e.target instanceof Node && !el.contains(e.target)) setToolsOpen(false);
     }
-
     window.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDocMouseDown);
     return () => {
@@ -240,16 +282,7 @@ export default function SessionParticipantPage() {
     };
   }, [toolsOpen]);
 
-  // Close filters on Escape (quality-of-life)
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFiltersOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // Load role (with owner fallback)
+  // Role gating (session_role_assignments OR created_by fallback)
   useEffect(() => {
     if (!validSessionId) return;
     let alive = true;
@@ -266,7 +299,6 @@ export default function SessionParticipantPage() {
           return;
         }
 
-        // Fallback: session owner is facilitator
         if (sessionOwnerId && sessionOwnerId === authUserId) {
           if (alive) setIsFacilitator(true);
           return;
@@ -280,7 +312,6 @@ export default function SessionParticipantPage() {
         if (error) throw error;
 
         const rows = (data ?? []) as any[];
-
         const match = rows.find((r) => {
           const roleKey = r?.role_key ?? r?.role ?? r?.role_id ?? null;
           const uid =
@@ -306,150 +337,41 @@ export default function SessionParticipantPage() {
     };
   }, [sessionId, validSessionId, sessionOwnerId]);
 
-  // Load situation (COP)
-  async function refreshSituation() {
-    if (!validSessionId) return;
-    try {
-      const s = await getSessionSituation(sessionId);
-      setSituation(s);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load situation");
-    }
-  }
-
+  // ✅ FIX: Realtime via payloads (NO refetch loop)
   useEffect(() => {
     if (!validSessionId) return;
-    setError(null);
-    refreshSituation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, validSessionId]);
 
-  // Load scenario fallback (sessions.scenario_id -> scenarios.*) + owner (safe)
-  useEffect(() => {
-    if (!validSessionId) return;
-    let alive = true;
+    const unsubA = subscribeActionsPayload(sessionId, (row) => {
+      setActions((prev) => [row, ...prev].slice(0, 100));
+    });
 
-    (async () => {
-      try {
-        const { data: sess1, error: sessErr1 } = await supabase
-          .from("sessions")
-          .select("scenario_id")
-          .eq("id", sessionId)
-          .single();
+    const unsubS = subscribeSituationPayload(sessionId, (row) => {
+      setSituation((prev) => {
+        if (!prev) return row;
+        if (prev.updated_at === row.updated_at) return prev;
+        return row;
+      });
+    });
 
-        if (sessErr1) throw sessErr1;
-
-        const scenarioId =
-          (sess1 as any)?.scenario_id ??
-          (sess1 as any)?.scenario ??
-          (sess1 as any)?.scenarioId ??
-          null;
-
-        // owner lookup (best-effort; missing column must NOT crash)
-        const ownerCandidates = [
-          "owner_id",
-          "created_by",
-          "created_by_id",
-          "owner",
-          "user_id",
-        ] as const;
-
-        let ownerId: string | null = null;
-
-        for (const col of ownerCandidates) {
-          const { data, error } = await supabase
-            .from("sessions")
-            .select(col)
-            .eq("id", sessionId)
-            .single();
-
-          if (!error) {
-            const v = (data as any)?.[col];
-            if (typeof v === "string" && v) ownerId = v;
-            break; // column exists (even if null)
-          }
-        }
-
-        if (alive) setSessionOwnerId(ownerId);
-
-        if (!scenarioId) {
-          if (alive) setScenario(null);
-          return;
-        }
-
-        const { data: sc, error: scErr } = await supabase
-          .from("scenarios")
-          .select("*")
-          .eq("id", scenarioId)
-          .single();
-
-        if (scErr) throw scErr;
-
-        if (alive) setScenario(sc as Scenario);
-      } catch (e: any) {
-        if (alive) {
-          setScenario(null);
-          setError((prev) =>
-            prev ??
-            (e?.message ? `Scenario load: ${e.message}` : "Scenario load failed")
-          );
-        }
-      }
-    })();
+    const unsubM = subscribeSessionMetaPayload(sessionId, (row) => {
+      const sa = (row as any)?.started_at ?? null;
+      setStartedAt((prev) => {
+        const next = typeof sa === "string" && sa ? sa : null;
+        return prev === next ? prev : next;
+      });
+    });
 
     return () => {
-      alive = false;
+      unsubA?.();
+      unsubS?.();
+      unsubM?.();
     };
   }, [sessionId, validSessionId]);
 
-  // Load action log
-  async function refreshActions() {
-    if (!validSessionId) return;
-    try {
-      setActionsLoading(true);
-      setActionsError(null);
-      const rows = await getSessionActions(sessionId, 50);
-      setActions(rows);
-    } catch (e: any) {
-      setActionsError(e?.message ?? "Failed to load actions");
-    } finally {
-      setActionsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!validSessionId) return;
-    refreshActions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, validSessionId]);
-
-  // Realtime HUB: refresh COP panels (NO inbox/pulse here — those components subscribe themselves)
-  useEffect(() => {
-    if (!validSessionId) return;
-
-    const refreshAll = () => {
-      refreshStartedAt();
-      refreshActions();
-      refreshSituation();
-    };
-
-    const unsubActions = subscribeActions(sessionId, refreshAll, 250);
-    const unsubSituation = subscribeSituation(sessionId, refreshAll, 250);
-    const unsubMeta = subscribeSessionMeta(sessionId, refreshAll, 250);
-
-    return () => {
-      unsubActions?.();
-      unsubSituation?.();
-      unsubMeta?.();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, validSessionId]);
-
-  function clearFilters() {
-    setSearch("");
-    setSeverity(null);
-    setChannel(null);
-  }
+  const selectedActions = useMemo(() => {
+    if (!selectedItem) return [];
+    return actions.filter((a) => a.session_inject_id === selectedItem.id);
+  }, [actions, selectedItem]);
 
   async function doAction(actionType: "ignore" | "escalate" | "act") {
     if (!selectedItem) return;
@@ -458,7 +380,7 @@ export default function SessionParticipantPage() {
       const saved = await addSessionAction({
         sessionId,
         sessionInjectId: selectedItem.id,
-        source: activeTab,
+        source: selectedSource,
         actionType,
         comment: comment.trim() ? comment.trim() : null,
       });
@@ -467,16 +389,14 @@ export default function SessionParticipantPage() {
 
       if (actionType === "act") {
         const title = `Update: action taken on "${selectedItem.injects?.title ?? "message"}"`;
-
         const body =
           `Decision recorded.\n\n` +
           `Action: ACT\n` +
-          `Source: ${activeTab.toUpperCase()}\n` +
+          `Source: ${selectedSource.toUpperCase()}\n` +
           `Reference message ID: ${selectedItem.id}\n` +
           (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
           `\nNext update will follow.`;
 
-        const { sendInjectToSession } = await import("@/lib/sessions");
         await sendInjectToSession(sessionId, title, body);
       }
 
@@ -518,24 +438,34 @@ export default function SessionParticipantPage() {
         (comment.trim() ? `\n\nComment:\n${comment.trim()}` : "") +
         (pulseBody ? `\n\nQuoted content:\n${pulseBody}` : "");
 
-      const { sendInjectToSession } = await import("@/lib/sessions");
       await sendInjectToSession(sessionId, title, body);
-
       setComment("");
     } catch (e: any) {
       alert(e?.message ?? "Failed to process Pulse decision");
     }
   }
 
-  if (!sessionId) return <>Loading…</>;
+  function clearInboxFilters() {
+    setInboxSearch("");
+    setInboxSeverity(null);
+    setInboxChannel(null);
+  }
+
+  function clearPulseFilters() {
+    setPulseSearch("");
+    setPulseSeverity(null);
+  }
+
+  if (!sessionId) {
+    return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
+  }
 
   if (!validSessionId) {
     return (
-      <div className="p-6">
-        <h2 className="text-lg font-semibold">Invalid session id</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This URL parameter must be a UUID. Go back and paste a valid{" "}
-          <code>sessions.id</code> from Supabase.
+      <div className="space-y-2">
+        <h1 className="text-xl font-semibold">Invalid session id</h1>
+        <p className="text-sm text-[color:var(--studio-muted2)]">
+          This URL parameter must be a UUID.
         </p>
       </div>
     );
@@ -543,348 +473,286 @@ export default function SessionParticipantPage() {
 
   if (error) {
     return (
-      <div className="p-6">
-        <h2 className="text-lg font-semibold">Error</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+      <div className="space-y-2">
+        <h1 className="text-xl font-semibold">Error</h1>
+        <p className="text-sm text-[color:var(--studio-muted2)]">{error}</p>
       </div>
     );
   }
 
-  const sessionTitle = scenario?.title ? scenario.title : "Session";
-
-  const anyFiltersOn =
-    Boolean(search.trim()) ||
-    Boolean(severity) ||
-    (activeTab === "inbox" && Boolean(channel));
-
-  const tabBtnBase =
-    "px-3 py-2 text-xs font-bold transition-colors focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
-
-  const LeftPanel = (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="inline-flex overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
-          <button
-            className={[
-              tabBtnBase,
-              activeTab === "inbox"
-                ? "bg-secondary text-foreground"
-                : "hover:bg-secondary/60 text-foreground",
-            ].join(" ")}
-            onClick={() => {
-              setActiveTab("inbox");
-              setSelectedItem(null);
-              setFiltersOpen(false);
-            }}
-          >
-            Inbox
-          </button>
-          <button
-            className={[
-              tabBtnBase,
-              activeTab === "pulse"
-                ? "bg-secondary text-foreground"
-                : "hover:bg-secondary/60 text-foreground",
-            ].join(" ")}
-            onClick={() => {
-              setActiveTab("pulse");
-              setSelectedItem(null);
-              setChannel(null);
-              setFiltersOpen(false);
-            }}
-          >
-            Pulse
-          </button>
-        </div>
-
-        {isMobile ? (
-          <Button variant="ghost" size="sm" onClick={() => setFeedOpen(false)}>
-            Close
-          </Button>
-        ) : null}
-      </div>
-
-      {/* Search + Filters button */}
-      <div className="flex items-center gap-2">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search title/body/sender…"
-          className="flex-1"
-        />
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={() => setFiltersOpen((v) => !v)}
-          aria-label="Filters"
-          title="Filters"
-        >
-          <Filter className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {/* Chips row */}
-      <div className="flex flex-wrap items-center gap-2">
-        {!anyFiltersOn ? (
-          <span className="text-xs font-semibold text-muted-foreground">
-            No filters
-          </span>
-        ) : (
-          <>
-            {search.trim() ? (
-              <Chip
-                label={`Search: ${search.trim()}`}
-                onClear={() => setSearch("")}
-                title="Clear search"
-              />
-            ) : null}
-            {severity ? (
-              <Chip
-                label={`Severity: ${severity}`}
-                onClear={() => setSeverity(null)}
-                title="Clear severity"
-              />
-            ) : null}
-            {activeTab === "inbox" && channel ? (
-              <Chip
-                label={`Channel: ${channel}`}
-                onClear={() => setChannel(null)}
-                title="Clear channel"
-              />
-            ) : null}
-
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              Clear all
-            </Button>
-          </>
-        )}
-      </div>
-
-      {/* Collapsible Filters panel */}
-      {filtersOpen ? (
-        <Card className="surface border border-border">
-          <CardContent className="space-y-3 p-3">
-            <Select value={severity ?? ""} onChange={(v) => setSeverity(v ? v : null)}>
-              <option value="">Severity: All</option>
-              <option value="low">Severity: LOW</option>
-              <option value="medium">Severity: MEDIUM</option>
-              <option value="high">Severity: HIGH</option>
-              <option value="critical">Severity: CRITICAL</option>
-            </Select>
-
-            {activeTab === "inbox" ? (
-              <Select value={channel ?? ""} onChange={(v) => setChannel(v ? v : null)}>
-                <option value="">Channel: All (non-pulse)</option>
-                <option value="ops">Channel: OPS</option>
-                <option value="media">Channel: MEDIA</option>
-                <option value="social">Channel: SOCIAL</option>
-              </Select>
-            ) : null}
-
-            <div className="flex items-center justify-between gap-2">
-              <Button variant="ghost" size="sm" onClick={clearFilters}>
-                Clear
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => setFiltersOpen(false)}>
-                Done
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {activeTab === "inbox" ? (
-        <Inbox
-          sessionId={sessionId}
-          selectedId={selectedItem?.id ?? null}
-          onSelect={(item) => {
-            setSelectedItem(item);
-            if (isMobile) setFeedOpen(false);
-          }}
-          channel={channel}
-          severity={severity}
-          search={search}
-        />
-      ) : (
-        <PulseFeed
-          sessionId={sessionId}
-          selectedId={selectedItem?.id ?? null}
-          onSelect={(item) => {
-            setSelectedItem(item);
-            if (isMobile) setFeedOpen(false);
-          }}
-          severity={severity}
-          search={search}
-        />
-      )}
-    </div>
-  );
-
-  const selectedActions = useMemo(() => {
-    if (!selectedItem) return [];
-    return actions.filter((a) => a.session_inject_id === selectedItem.id);
-  }, [actions, selectedItem]);
-
-  const MiddlePanel = (
-    <div className="space-y-3">
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle>Message detail</CardTitle>
-            <CardDescription>{selectedItem ? "Selected" : "No selection"}</CardDescription>
-          </div>
-
-          {selectedItem ? (
-            <span className="text-xs font-semibold text-muted-foreground">
-              Actions: {actionsLoading ? "…" : selectedActions.length}
-            </span>
-          ) : null}
-        </CardHeader>
-
-        <CardContent>
-          <MessageDetail
-            item={selectedItem}
-            mode={activeTab}
-            actions={selectedActions}
-            actionsLoading={actionsLoading}
-            actionsError={actionsError}
-            comment={comment}
-            onCommentChange={setComment}
-            onIgnore={() => doAction("ignore")}
-            onEscalate={() => doAction("escalate")}
-            onAct={() => doAction("act")}
-            onConfirm={() => doPulseDecision("confirm")}
-            onDeny={() => doPulseDecision("deny")}
-          />
-        </CardContent>
-      </Card>
-    </div>
-  );
-
   return (
-    <div className="space-y-3">
-      {/* HEADER */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex flex-row items-center justify-between gap-4">
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[var(--studio-highlight)] shadow-soft p-4 sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <CardTitle className="text-lg truncate">{sessionTitle}</CardTitle>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleDetails}
-                className="gap-1 shrink-0"
-                title={detailsOpen ? "Collapse details" : "Expand details"}
-              >
-                {detailsOpen ? (
-                  <>
-                    <ChevronUp className="h-4 w-4" />
-                    Collapse
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    Expand
-                  </>
-                )}
-              </Button>
+            <div className="text-xs text-[color:var(--studio-muted2)]">
+              Session • {sessionId.slice(0, 8)} • {fmt(startedAt)}
+            </div>
+            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">
+              {sessionTitle}
+            </h1>
+            <div className="mt-2 text-sm text-[color:var(--studio-muted2)]">
+              Exercise clock:{" "}
+              <span className="text-foreground font-medium">{exerciseClock}</span>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-xs font-semibold shadow-sm">
-              {exerciseClock}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={refreshSituation}>
+              Refresh COP
+            </Button>
+            <Button variant="outline" onClick={refreshActions}>
+              Refresh actions
+            </Button>
+
+            <div className="relative" ref={toolsWrapRef}>
+              {roleLoading ? (
+                <div className="text-xs text-[color:var(--studio-muted2)] px-2">
+                  Loading role…
+                </div>
+              ) : isFacilitator ? (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setToolsOpen((v) => !v);
+                    }}
+                  >
+                    Facilitator tools
+                  </Button>
+
+                  {toolsOpen ? (
+                    <div className="absolute right-0 mt-2 w-[420px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden">
+                      <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
+                        <div className="text-sm font-semibold">Facilitator panel</div>
+                        <Button variant="outline" onClick={() => setToolsOpen(false)}>
+                          Close
+                        </Button>
+                      </div>
+
+                      <div className="p-4">
+                        <FacilitatorToolsPanel sessionId={sessionId} />
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* COP */}
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--studio-border)]">
+          <div className="text-sm font-semibold">Common Operating Picture</div>
+          <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
+            Update key figures and keep the situation current.
+          </div>
+        </div>
+        <div className="p-4">
+          <SituationCard
+            situation={situation}
+            onSave={async (p) => {
+              if (!validSessionId) return;
+              const s = await updateCasualties({
+                sessionId,
+                injured: p.injured,
+                fatalities: p.fatalities,
+                uninjured: p.uninjured,
+                unknown: p.unknown,
+              });
+              setSituation(s);
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Main 3-column layout (Inbox | Pulse | Detail) */}
+      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
+        {/* INBOX */}
+        <div className={isMobile ? "" : "col-span-4"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--studio-border)]">
+              <div className="text-sm font-semibold">Inbox</div>
+              <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
+                Operational / media / social injects.
+              </div>
             </div>
 
-            {roleLoading ? (
-              <div className="text-xs font-semibold text-muted-foreground">Loading role…</div>
-            ) : isFacilitator ? (
-              <div className="relative" ref={toolsWrapRef}>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setToolsOpen((v) => !v);
-                  }}
-                >
-                  Facilitator tools
+            {/* Inbox filters */}
+            <div className="p-3 border-b border-[var(--studio-border)] space-y-2">
+              <Input
+                value={inboxSearch}
+                onChange={(e) => setInboxSearch(e.target.value)}
+                placeholder="Search inbox…"
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Select value={inboxSeverity ?? ""} onChange={(v) => setInboxSeverity(v ? v : null)}>
+                  <option value="">Severity: All</option>
+                  <option value="low">LOW</option>
+                  <option value="medium">MEDIUM</option>
+                  <option value="high">HIGH</option>
+                  <option value="critical">CRITICAL</option>
+                </Select>
+
+                <Select value={inboxChannel ?? ""} onChange={(v) => setInboxChannel(v ? v : null)}>
+                  <option value="">Channel: All</option>
+                  <option value="ops">OPS</option>
+                  <option value="media">MEDIA</option>
+                  <option value="social">SOCIAL</option>
+                </Select>
+
+                <Button variant="secondary" onClick={clearInboxFilters}>
+                  Clear
                 </Button>
+              </div>
 
-                {toolsOpen ? (
-                  <div
-                    className="absolute right-0 top-10 z-50 w-[min(760px,calc(100vw-2rem))] overflow-hidden rounded-[var(--radius)] border border-border bg-popover shadow-hover"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between gap-3 border-b border-border bg-card px-4 py-3">
-                      <div className="text-sm font-bold">Facilitator panel</div>
-                      <Button variant="ghost" size="sm" onClick={() => setToolsOpen(false)}>
-                        Close
-                      </Button>
-                    </div>
-
-                    <div className="p-4">
-                      <FacilitatorToolsPanel
-                        sessionId={sessionId}
-                        scenarioId={scenario?.id ?? null}
-                      />
-                    </div>
-                  </div>
+              <div className="flex flex-wrap gap-2">
+                {inboxSearch.trim() ? (
+                  <Chip label={`Search: ${inboxSearch.trim()}`} onClear={() => setInboxSearch("")} />
+                ) : null}
+                {inboxSeverity ? (
+                  <Chip label={`Severity: ${inboxSeverity}`} onClear={() => setInboxSeverity(null)} />
+                ) : null}
+                {inboxChannel ? (
+                  <Chip label={`Channel: ${inboxChannel}`} onClear={() => setInboxChannel(null)} />
                 ) : null}
               </div>
-            ) : null}
+            </div>
 
-            {isMobile ? (
-              <Button variant="secondary" size="sm" onClick={() => setFeedOpen(true)}>
-                Open feed
-              </Button>
-            ) : null}
-          </div>
-        </CardHeader>
-
-        {/* DETAILS: collapsible */}
-        {detailsOpen ? (
-          <CardContent>
-            <SituationCard
-              situation={situation}
-              scenario={scenario}
-              onUpdateCasualties={async (p: {
-                injured: number;
-                fatalities: number;
-                uninjured: number;
-                unknown: number;
-              }) => {
-                if (!validSessionId) return;
-                const s = await updateCasualties({
-                  sessionId,
-                  injured: p.injured,
-                  fatalities: p.fatalities,
-                  uninjured: p.uninjured,
-                  unknown: p.unknown,
-                });
-                setSituation(s);
-              }}
-            />
-          </CardContent>
-        ) : null}
-      </Card>
-
-      {/* MAIN LAYOUT */}
-      <div className="grid gap-3 lg:grid-cols-[360px_1fr]">
-        {!isMobile ? <div>{LeftPanel}</div> : null}
-        <div>{MiddlePanel}</div>
-      </div>
-
-      {/* MOBILE FEED DRAWER */}
-      {isMobile && feedOpen ? (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setFeedOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 top-14 p-4">
-            <div className="h-full">{LeftPanel}</div>
+            <div className="p-3">
+              <Inbox
+                sessionId={sessionId}
+                onSelect={(item) => {
+                  setSelectedItem(item);
+                  setSelectedSource("inbox");
+                }}
+                channel={inboxChannel}
+                severity={inboxSeverity}
+                search={inboxSearch}
+              />
+            </div>
           </div>
         </div>
-      ) : null}
+
+        {/* PULSE */}
+        <div className={isMobile ? "" : "col-span-4"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--studio-border)]">
+              <div className="text-sm font-semibold">Pulse</div>
+              <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
+                Social noise / external signals.
+              </div>
+            </div>
+
+            {/* Pulse filters */}
+            <div className="p-3 border-b border-[var(--studio-border)] space-y-2">
+              <Input
+                value={pulseSearch}
+                onChange={(e) => setPulseSearch(e.target.value)}
+                placeholder="Search pulse…"
+              />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Select value={pulseSeverity ?? ""} onChange={(v) => setPulseSeverity(v ? v : null)}>
+                  <option value="">Severity: All</option>
+                  <option value="low">LOW</option>
+                  <option value="medium">MEDIUM</option>
+                  <option value="high">HIGH</option>
+                  <option value="critical">CRITICAL</option>
+                </Select>
+
+                <Button variant="secondary" onClick={clearPulseFilters}>
+                  Clear
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {pulseSearch.trim() ? (
+                  <Chip label={`Search: ${pulseSearch.trim()}`} onClear={() => setPulseSearch("")} />
+                ) : null}
+                {pulseSeverity ? (
+                  <Chip label={`Severity: ${pulseSeverity}`} onClear={() => setPulseSeverity(null)} />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="p-3">
+              <PulseFeed
+                sessionId={sessionId}
+                onSelect={(item) => {
+                  setSelectedItem(item);
+                  setSelectedSource("pulse");
+                }}
+                severity={pulseSeverity}
+                search={pulseSearch}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* DETAIL */}
+        <div className={isMobile ? "" : "col-span-4"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+            <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
+              <div className="text-sm font-semibold">Message detail</div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                {selectedItem ? `Actions: ${actionsLoading ? "…" : selectedActions.length}` : "No selection"}
+              </div>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <MessageDetail
+                item={selectedItem}
+                activeTab={selectedSource}
+                comment={comment}
+                setComment={setComment}
+                onIgnore={() => doAction("ignore")}
+                onEscalate={() => doAction("escalate")}
+                onAct={() => doAction("act")}
+                onConfirm={() => doPulseDecision("confirm")}
+                onDeny={() => doPulseDecision("deny")}
+              />
+
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Action log</div>
+                  <Button variant="outline" onClick={refreshActions}>
+                    Refresh
+                  </Button>
+                </div>
+
+                {actionsError ? (
+                  <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">{actionsError}</div>
+                ) : null}
+
+                <div className="mt-3 space-y-2">
+                  {actionsLoading ? (
+                    <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>
+                  ) : actions.length === 0 ? (
+                    <div className="text-sm text-[color:var(--studio-muted2)]">No actions yet.</div>
+                  ) : (
+                    actions.slice(0, 30).map((a) => (
+                      <div
+                        key={a.id}
+                        className="rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-3 py-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-xs text-[color:var(--studio-muted2)]">{fmt(a.created_at)}</div>
+                          <div className="text-xs font-semibold">{a.action_type.toUpperCase()}</div>
+                        </div>
+                        {a.comment ? <div className="mt-1 text-sm">{a.comment}</div> : null}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
