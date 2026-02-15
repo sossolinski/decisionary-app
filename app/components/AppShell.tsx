@@ -1,9 +1,13 @@
 // app/components/AppShell.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import AppTopbar from "@/app/components/AppTopbar";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+
 import AppSidebar from "@/app/components/AppSidebar";
+import MobileSidebar from "@/app/components/MobileSidebar";
+import AppTopbar from "@/app/components/AppTopbar";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -17,71 +21,50 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
-const LS_COLLAPSED = "decisionary_sidebar_collapsed";
+export default function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const isMobile = useMediaQuery("(max-width: 1024px)");
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
-  const isMobile = useMediaQuery("(max-width: 1023px)"); // spójne z Tailwind: lg=1024
+  // Hide shell on login / landing routes
+  const hideShell =
+    pathname === "/" ||
+    pathname?.startsWith("/login") ||
+    pathname?.startsWith("/join");
+
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    try {
-      setCollapsed(localStorage.getItem(LS_COLLAPSED) === "1");
-    } catch {}
-  }, []);
+    // close on route change
+    setMobileOpen(false);
+  }, [pathname]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_COLLAPSED, collapsed ? "1" : "0");
-    } catch {}
-  }, [collapsed]);
-
-  const effectiveCollapsed = useMemo(
-    () => (isMobile ? false : collapsed),
-    [isMobile, collapsed]
-  );
-
-  // Close mobile drawer on route change? (kept simple: when switching to desktop)
-  useEffect(() => {
-    if (!isMobile) setMobileOpen(false);
-  }, [isMobile]);
+  if (hideShell) return <>{children}</>;
 
   return (
-    <div className="min-h-screen bg-grid">
-      {/* Topbar is fixed / full-width in its own component; keep spacing here */}
+    <div className="min-h-screen">
       <AppTopbar
         isMobile={isMobile}
         onToggleMobileSidebar={() => setMobileOpen((v) => !v)}
       />
 
-      <AppSidebar
-        isMobile={isMobile}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-        collapsed={effectiveCollapsed}
-        onToggleCollapsed={() => setCollapsed((v) => !v)}
-      />
+      {/* Sidebar pinned left */}
+      {isMobile ? (
+        <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      ) : (
+        <AppSidebar />
+      )}
 
-      {/* Main stage */}
-      <div
+      {/* Main content */}
+      <main
         className={[
-          // desktop sidebar offset
-          "pt-[64px]", // aligns with topbar height
-          effectiveCollapsed ? "lg:pl-[84px]" : "lg:pl-[280px]",
-          "transition-[padding] duration-200 ease-out",
+          "pt-[76px]", // topbar space
+          isMobile ? "" : "pl-[84px]", // sidebar (collapsed width)
         ].join(" ")}
       >
-        {/* Landing-like centered stage with glass surface */}
-        <div className="studio-container py-6">
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-            {/* inner padding (content) */}
-            <div className="p-4 sm:p-6">{children}</div>
-          </div>
-
-          {/* subtle footer spacing to avoid “stuck to bottom” feeling */}
-          <div className="h-10" />
+        <div className="mx-auto w-full max-w-[1400px] px-5 py-6">
+          {children}
         </div>
-      </div>
+      </main>
     </div>
   );
 }

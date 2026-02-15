@@ -1,22 +1,12 @@
 @import "tailwindcss";
 
 /* =========================================================
-   Decisionary — Globals (Landing-style foundation)
-
-   - Keeps shadcn tokens as HSL triplets (Tailwind: bg-background etc.)
-   - Adds landing-like background (soft gradient + glow + grid)
-   - Adds "studio" aliases (glassy surfaces) used in AppShell/Topbar/Sidebar
-   - Safe defaults for typography, focus, scrollbars
-
-   NOTE: You can toggle dark mode by adding class="dark" on <html> (later).
+   Decisionary — Globals (Minimal dashboard foundation)
 ========================================================= */
 
 @layer base {
   :root {
-    /* =====================================================
-       SHADCN TOKENS (HSL TRIPLETS)
-       Keep as: "H S% L%" (no hsl() wrapper here)
-    ====================================================== */
+    /* SHADCN TOKENS (HSL TRIPLETS) */
     --background: 228 38% 97%;
     --foreground: 220 49% 8%;
 
@@ -47,66 +37,55 @@
 
     --radius: 1rem; /* 16px */
 
-    /* =====================================================
-       STUDIO ALIASES (used by custom components)
-    ====================================================== */
+    /* STUDIO ALIASES */
     --studio-max: 1120px;
-    --studio-radius: 14px;
 
     --studio-bg: hsl(var(--background));
     --studio-text: hsl(var(--foreground));
 
-    /* glassy surfaces */
-    --studio-surface: hsl(var(--card) / 0.72);
-    --studio-surface2: hsl(var(--card) / 0.92);
+    /* Minimal surfaces: mniej "glassy", mniej ramek */
+    --studio-surface: hsl(var(--card) / 0.90);
+    --studio-surface2: hsl(var(--card) / 0.96);
 
-    /* readable neutrals */
     --studio-muted: hsl(var(--foreground) / 0.62);
     --studio-muted2: hsl(var(--foreground) / 0.48);
 
-    /* soft borders */
-    --studio-border: hsl(220 10% 86% / 0.75);
-    --studio-border-strong: hsl(220 10% 84% / 0.9);
+    /* Minimal borders: cień > border */
+    --studio-border: hsl(220 10% 86% / 0.35);
+    --studio-border-strong: hsl(220 10% 84% / 0.55);
 
-    /* accents */
     --studio-accent-blue: hsl(var(--primary));
     --studio-accent-purple: hsl(var(--accent));
 
-    /* shadows + ring strings */
     --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.14);
-    --studio-shadow:
-      0 1px 2px hsl(220 20% 20% / 0.06),
-      0 10px 30px hsl(220 20% 20% / 0.06);
-    --studio-shadow2:
-      0 2px 8px hsl(220 20% 20% / 0.06),
-      0 18px 50px hsl(220 20% 20% / 0.08);
 
-    /* landing-like background glows */
+    /* Minimal shadows */
+    --studio-shadow:
+      0 1px 2px hsl(220 20% 20% / 0.04),
+      0 10px 24px hsl(220 20% 20% / 0.05);
+    --studio-shadow2:
+      0 2px 10px hsl(220 20% 20% / 0.06),
+      0 20px 55px hsl(220 20% 20% / 0.08);
+
+    /* Landing-like background glows (subtle) */
     --studio-glow-1: radial-gradient(
       900px 500px at 10% -10%,
-      hsl(var(--primary) / 0.18),
+      hsl(var(--primary) / 0.12),
       transparent 55%
     );
     --studio-glow-2: radial-gradient(
       900px 500px at 85% 0%,
-      hsl(var(--accent) / 0.16),
+      hsl(var(--accent) / 0.10),
       transparent 60%
     );
     --studio-glow-3: radial-gradient(
       1200px 700px at 45% 110%,
-      hsl(200 90% 55% / 0.08),
+      hsl(200 90% 55% / 0.06),
       transparent 60%
-    );
-
-    --studio-highlight: linear-gradient(
-      180deg,
-      hsl(var(--card) / 0.85),
-      hsl(var(--card) / 0.65)
     );
   }
 
   .dark {
-    /* shadcn tokens */
     --background: 222 25% 9%;
     --foreground: 210 40% 98%;
 
@@ -135,49 +114,34 @@
     --input: 222 18% 18%;
     --ring: 221 83% 62%;
 
-    /* studio aliases recomputed */
-    --studio-bg: hsl(var(--background));
-    --studio-text: hsl(var(--foreground));
+    --studio-surface: hsl(var(--card) / 0.86);
+    --studio-surface2: hsl(var(--card) / 0.92);
 
-    --studio-surface: hsl(var(--card) / 0.7);
-    --studio-surface2: hsl(var(--card) / 0.85);
-
-    --studio-muted: hsl(var(--foreground) / 0.7);
-    --studio-muted2: hsl(var(--foreground) / 0.55);
-
-    --studio-border: hsl(220 10% 22% / 0.85);
-    --studio-border-strong: hsl(220 10% 26% / 0.95);
+    --studio-border: hsl(220 10% 22% / 0.45);
+    --studio-border-strong: hsl(220 10% 26% / 0.55);
 
     --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.2);
-    --studio-shadow: 0 10px 28px hsl(0 0% 0% / 0.25);
-    --studio-shadow2: 0 18px 50px hsl(0 0% 0% / 0.35);
+
+    --studio-shadow: 0 10px 28px hsl(0 0% 0% / 0.22);
+    --studio-shadow2: 0 18px 50px hsl(0 0% 0% / 0.32);
 
     --studio-glow-1: radial-gradient(
       900px 500px at 10% -10%,
-      hsl(var(--primary) / 0.22),
+      hsl(var(--primary) / 0.18),
       transparent 55%
     );
     --studio-glow-2: radial-gradient(
       900px 500px at 85% 0%,
-      hsl(var(--accent) / 0.18),
+      hsl(var(--accent) / 0.14),
       transparent 60%
     );
     --studio-glow-3: radial-gradient(
       1200px 700px at 45% 110%,
-      hsl(190 90% 55% / 0.10),
+      hsl(190 90% 55% / 0.08),
       transparent 60%
-    );
-
-    --studio-highlight: linear-gradient(
-      180deg,
-      hsl(var(--card) / 0.88),
-      hsl(var(--card) / 0.7)
     );
   }
 
-  /* =====================================================
-     BASE RESET + DEFAULTS
-  ====================================================== */
   *,
   *::before,
   *::after {
@@ -197,9 +161,6 @@
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.45;
 
-    /* Landing-like background:
-       - soft glows + subtle grid on top of background token
-    */
     background:
       var(--studio-glow-1),
       var(--studio-glow-2),
@@ -207,12 +168,10 @@
       hsl(var(--background));
   }
 
-  /* shadcn uses border-border; keep generic borders consistent */
   * {
     border-color: hsl(var(--border));
   }
 
-  /* better media defaults */
   img,
   svg,
   video,
@@ -221,7 +180,6 @@
     max-width: 100%;
   }
 
-  /* typography defaults */
   h1,
   h2,
   h3,
@@ -237,18 +195,15 @@
     margin: 0;
   }
 
-  /* selection */
   ::selection {
     background: hsl(var(--primary) / 0.18);
   }
 
-  /* links – keep clean (app uses Link a lot) */
   a {
     color: inherit;
     text-decoration: none;
   }
 
-  /* inputs/buttons consistent font */
   button,
   input,
   textarea,
@@ -257,7 +212,6 @@
     color: inherit;
   }
 
-  /* focus ring */
   :focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
@@ -269,19 +223,10 @@
     cursor: not-allowed;
   }
 
-  code,
-  pre {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      "Liberation Mono", "Courier New", monospace;
-  }
-
-  /* =====================================================
-     SCROLLBARS (subtle, “studio”)
-  ====================================================== */
   /* Firefox */
   * {
     scrollbar-width: thin;
-    scrollbar-color: hsl(220 10% 60% / 0.35) transparent;
+    scrollbar-color: hsl(220 10% 60% / 0.30) transparent;
   }
 
   /* WebKit */
@@ -295,29 +240,25 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(220 10% 60% / 0.22);
+    background: hsl(220 10% 60% / 0.18);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(220 10% 60% / 0.32);
+    background: hsl(220 10% 60% / 0.28);
     background-clip: content-box;
   }
 }
 
-/* =========================================================
-   UTILITIES (non-invasive helpers)
-========================================================= */
 @layer utilities {
-  /* Subtle dot-grid like many modern landings */
   .bg-grid {
     background-image: radial-gradient(
-      hsl(var(--foreground) / 0.06) 1px,
+      hsl(var(--foreground) / 0.05) 1px,
       transparent 1px
     );
-    background-size: 24px 24px;
+    background-size: 26px 26px;
     background-position: -2px -2px;
   }
 
@@ -329,11 +270,9 @@
     box-shadow: var(--studio-shadow2);
   }
 
-  /* glass */
+  /* Minimal surfaces: praktycznie bez borderów */
   .surface {
     background: var(--studio-surface);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
     border: 1px solid var(--studio-border);
   }
 
@@ -342,28 +281,22 @@
     border: 1px solid var(--studio-border);
   }
 
-  /* solid (for popovers/modals/overlays) */
   .surface-solid {
-    background: hsl(var(--card) / 0.96);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    background: hsl(var(--card) / 0.98);
     border: 1px solid var(--studio-border-strong);
   }
 
   .popover-solid {
     background: hsl(var(--popover) / 0.98);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
     border: 1px solid var(--studio-border-strong);
   }
 
-  /* nice “landing-ish” section container helper */
   .studio-container {
     width: 100%;
     max-width: var(--studio-max);
     margin-left: auto;
     margin-right: auto;
-    padding-left: 1.25rem; /* 20px */
-    padding-right: 1.25rem; /* 20px */
+    padding-left: 1.5rem;  /* 24px */
+    padding-right: 1.5rem; /* 24px */
   }
 }

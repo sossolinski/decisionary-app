@@ -1,4 +1,3 @@
-// app/(app)/facilitator/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,10 +18,9 @@ import { Button } from "@/app/components/ui/button";
 
 export default function FacilitatorHomePage() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
-  const [scenarioCount, setScenarioCount] = useState<number>(0);
-  const [sessionCount, setSessionCount] = useState<number>(0);
+  const [scenarioCount, setScenarioCount] = useState(0);
+  const [sessionCount, setSessionCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   async function loadCounts() {
@@ -41,7 +39,6 @@ export default function FacilitatorHomePage() {
       const role = await getMyRole();
       if (!role) return router.replace("/login");
       if (role !== "facilitator") return router.replace("/participant");
-
       await loadCounts();
       setLoading(false);
     })();
@@ -50,138 +47,112 @@ export default function FacilitatorHomePage() {
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
-      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[var(--studio-highlight)] shadow-soft p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Facilitator workspace
-            </h1>
-            <p className="mt-2 text-sm text-[color:var(--studio-muted2)]">
-              Build scenarios, run sessions, and coordinate the exercise flow —
-              all in one place.
-            </p>
+      <Card className="shadow-soft">
+        <CardHeader>
+          <CardTitle>Facilitator workspace</CardTitle>
+          <CardDescription>
+            Build scenarios, run sessions, and coordinate the exercise flow — all
+            in one place.
+          </CardDescription>
+        </CardHeader>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <Button asChild>
-                <Link href="/facilitator/sessions">Go to Sessions</Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href="/facilitator/scenarios">Manage Scenarios</Link>
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={async () => {
-                  setLoading(true);
-                  await loadCounts();
-                  setLoading(false);
-                }}
-              >
-                Refresh
-              </Button>
-            </div>
+        <CardContent className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild variant="secondary">
+              <Link href="/facilitator/sessions">Go to Sessions</Link>
+            </Button>
+
+            <Button asChild variant="secondary">
+              <Link href="/facilitator/scenarios">Manage Scenarios</Link>
+            </Button>
+
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                setLoading(true);
+                await loadCounts();
+                setLoading(false);
+              }}
+            >
+              Refresh
+            </Button>
           </div>
 
-          {/* Mini stats */}
-          <div className="grid grid-cols-2 gap-3 w-full sm:w-auto">
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3">
-              <div className="text-xs text-[color:var(--studio-muted2)]">
+          <div className="flex items-center gap-3">
+            <div className="surface2 rounded-[var(--radius)] px-4 py-3 text-center shadow-soft">
+              <div className="text-xs text-[hsl(var(--muted-foreground))]">
                 Scenarios
               </div>
-              <div className="mt-1 text-xl font-semibold">
+              <div className="text-2xl font-semibold">
                 {loading ? "—" : scenarioCount}
               </div>
             </div>
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3">
-              <div className="text-xs text-[color:var(--studio-muted2)]">
+
+            <div className="surface2 rounded-[var(--radius)] px-4 py-3 text-center shadow-soft">
+              <div className="text-xs text-[hsl(var(--muted-foreground))]">
                 Sessions
               </div>
-              <div className="mt-1 text-xl font-semibold">
+              <div className="text-2xl font-semibold">
                 {loading ? "—" : sessionCount}
               </div>
             </div>
           </div>
-        </div>
+        </CardContent>
 
         {error ? (
-          <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
+          <div className="px-6 pb-6 text-sm text-[hsl(var(--destructive))]">
             {error}
           </div>
         ) : null}
-      </div>
+      </Card>
 
-      {/* Tiles */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card className="shadow-soft">
           <CardHeader>
             <CardTitle>1. Prepare</CardTitle>
             <CardDescription>
               Build scenarios and inject libraries for realistic runs.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-3">
-            <div className="text-sm text-[color:var(--studio-muted2)]">
+          <CardContent className="flex items-center justify-between">
+            <span className="text-sm text-[hsl(var(--muted-foreground))]">
               Create and iterate on content.
-            </div>
-            <Button variant="outline" asChild>
+            </span>
+            <Button asChild variant="secondary" size="sm">
               <Link href="/facilitator/scenarios">Scenarios</Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-soft">
           <CardHeader>
             <CardTitle>2. Run</CardTitle>
             <CardDescription>
               Start a session, invite participants, deliver injects.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-3">
-            <div className="text-sm text-[color:var(--studio-muted2)]">
+          <CardContent className="flex items-center justify-between">
+            <span className="text-sm text-[hsl(var(--muted-foreground))]">
               Lifecycle control & tools.
-            </div>
-            <Button asChild>
+            </span>
+            <Button asChild variant="secondary" size="sm">
               <Link href="/facilitator/sessions">Sessions</Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="shadow-soft">
           <CardHeader>
             <CardTitle>3. Review</CardTitle>
             <CardDescription>
               Capture actions, decisions, and key timeline points.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="text-sm text-[color:var(--studio-muted2)]">
-              (Next) Add After-Action Report & exports.
-            </div>
+          <CardContent className="text-sm text-[hsl(var(--muted-foreground))]">
+            (Next) Add After-Action Report & exports.
           </CardContent>
         </Card>
       </div>
-
-      {/* Helpful note */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick tips</CardTitle>
-          <CardDescription>Small things that improve the run.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ul className="list-disc pl-5 space-y-2 text-sm text-[color:var(--studio-muted2)]">
-            <li>
-              Keep scenario title short; use description for context and scope.
-            </li>
-            <li>
-              Start sessions from scenarios — it keeps content reusable and
-              versionable.
-            </li>
-            <li>
-              Use roster to validate join codes and participant readiness.
-            </li>
-          </ul>
-        </CardContent>
-      </Card>
     </div>
   );
 }

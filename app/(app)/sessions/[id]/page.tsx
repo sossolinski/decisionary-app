@@ -19,6 +19,8 @@ import {
   subscribeSituationPayload,
   subscribeSessionMetaPayload,
   sendInjectToSession,
+  subscribeInbox,
+  subscribePulse,
 } from "@/lib/sessions";
 
 import SituationCard from "@/app/components/SituationCard";
@@ -29,7 +31,7 @@ import PulseFeed from "@/app/components/PulseFeed";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { X } from "lucide-react";
+import { X, ChevronDown, SlidersHorizontal } from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -38,6 +40,7 @@ function isUuid(v: string) {
 }
 
 type SelectedSource = "inbox" | "pulse";
+type StreamTab = "inbox" | "pulse";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -77,7 +80,10 @@ function Select({
         "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
         "border border-[var(--studio-border)]",
         "bg-[var(--studio-surface2)] text-foreground",
+        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
+        "hover:border-[var(--studio-border-strong)]",
         "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+        "transition-[box-shadow,border-color,background-color] duration-150",
       ].join(" ")}
     >
       {children}
@@ -101,10 +107,23 @@ function Chip({
       title={title}
       className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-medium hover:bg-secondary/60 transition"
     >
-      <span className="truncate max-w-[240px]">{label}</span>
+      <span className="truncate max-w-[220px]">{label}</span>
       <X className="h-3.5 w-3.5 opacity-70" />
     </button>
   );
+}
+
+function Badge({ n }: { n: number }) {
+  if (!n) return null;
+  return (
+    <span className="ml-2 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] leading-none px-2 h-5">
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+function lsKey(sessionId: string, kind: "inbox" | "pulse") {
+  return `decisionary.seen.${kind}.${sessionId}`;
 }
 
 export default function SessionParticipantPage() {
@@ -127,11 +146,17 @@ export default function SessionParticipantPage() {
   const [roleLoading, setRoleLoading] = useState(true);
 
   // COP
+  const [copOpen, setCopOpen] = useState(false);
   const [situation, setSituation] = useState<SessionSituation | null>(null);
 
   // Selection
   const [selectedItem, setSelectedItem] = useState<SessionInject | null>(null);
   const [selectedSource, setSelectedSource] = useState<SelectedSource>("inbox");
+
+  // Streams tabs + filters popover
+  const [streamTab, setStreamTab] = useState<StreamTab>("inbox");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Inbox filters
   const [inboxSearch, setInboxSearch] = useState("");
@@ -152,6 +177,10 @@ export default function SessionParticipantPage() {
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Unseen badges
+  const [unseenInbox, setUnseenInbox] = useState(0);
+  const [unseenPulse, setUnseenPulse] = useState(0);
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
 
@@ -182,7 +211,6 @@ export default function SessionParticipantPage() {
   async function refreshScenarioAndOwner() {
     if (!validSessionId) return;
     try {
-      // ✅ FIX: owner_id doesn't exist; use created_by as owner fallback
       const { data: sess, error: sessErr } = await supabase
         .from("sessions")
         .select("scenario_id, started_at, created_by")
@@ -227,6 +255,57 @@ export default function SessionParticipantPage() {
     }
   }
 
+  function getSeen(kind: "inbox" | "pulse") {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(sessionId, kind)) : null;
+    const dt = raw ? new Date(raw).getTime() : 0;
+    return Number.isFinite(dt) ? dt : 0;
+  }
+
+  function markSeen(kind: "inbox" | "pulse") {
+    const nowIso = new Date().toISOString();
+    localStorage.setItem(lsKey(sessionId, kind), nowIso);
+    if (kind === "inbox") setUnseenInbox(0);
+    if (kind === "pulse") setUnseenPulse(0);
+  }
+
+  async function refreshUnseen() {
+    if (!validSessionId) return;
+
+    // total new since seen
+    const seenInbox = getSeen("inbox");
+    const seenPulse = getSeen("pulse");
+
+    const inboxSince = new Date(seenInbox || 0).toISOString();
+    const pulseSince = new Date(seenPulse || 0).toISOString();
+
+    // total new since inboxSeen
+    const { count: totalNewInbox } = await supabase
+      .from("session_injects")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gte("delivered_at", inboxSince);
+
+    const { count: pulseNewForInbox } = await supabase
+      .from("session_injects")
+      .select("id, injects:inject_id(channel)", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gte("delivered_at", inboxSince)
+      .eq("injects.channel", "pulse");
+
+    const inboxNew = Math.max(0, (totalNewInbox ?? 0) - (pulseNewForInbox ?? 0));
+    setUnseenInbox(inboxNew);
+
+    // pulse new since pulseSeen
+    const { count: pulseNew } = await supabase
+      .from("session_injects")
+      .select("id, injects:inject_id(channel)", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gte("delivered_at", pulseSince)
+      .eq("injects.channel", "pulse");
+
+    setUnseenPulse(pulseNew ?? 0);
+  }
+
   // Initial load
   useEffect(() => {
     if (!validSessionId) return;
@@ -234,6 +313,7 @@ export default function SessionParticipantPage() {
     refreshScenarioAndOwner();
     refreshSituation();
     refreshActions();
+    refreshUnseen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
@@ -263,16 +343,25 @@ export default function SessionParticipantPage() {
     return () => clearInterval(t);
   }, [startedAt]);
 
-  // Close tools popover on Escape/outside click
+  // Close popovers (filters/tools) on Escape/outside click
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setToolsOpen(false);
+      if (e.key === "Escape") {
+        setToolsOpen(false);
+        setFiltersOpen(false);
+      }
     }
     function onDocMouseDown(e: MouseEvent) {
-      if (!toolsOpen) return;
-      const el = toolsWrapRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) setToolsOpen(false);
+      // tools
+      if (toolsOpen) {
+        const el = toolsWrapRef.current;
+        if (el && e.target instanceof Node && !el.contains(e.target)) setToolsOpen(false);
+      }
+      // filters
+      if (filtersOpen) {
+        const el2 = filtersWrapRef.current;
+        if (el2 && e.target instanceof Node && !el2.contains(e.target)) setFiltersOpen(false);
+      }
     }
     window.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDocMouseDown);
@@ -280,7 +369,7 @@ export default function SessionParticipantPage() {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onDocMouseDown);
     };
-  }, [toolsOpen]);
+  }, [toolsOpen, filtersOpen]);
 
   // Role gating (session_role_assignments OR created_by fallback)
   useEffect(() => {
@@ -337,7 +426,7 @@ export default function SessionParticipantPage() {
     };
   }, [sessionId, validSessionId, sessionOwnerId]);
 
-  // ✅ FIX: Realtime via payloads (NO refetch loop)
+  // Realtime payloads (NO refetch loop)
   useEffect(() => {
     if (!validSessionId) return;
 
@@ -361,11 +450,18 @@ export default function SessionParticipantPage() {
       });
     });
 
+    // Unseen subscriptions (cheap: just refresh counts)
+    const unsubInbox = subscribeInbox(sessionId, () => refreshUnseen(), 300);
+    const unsubPulse = subscribePulse(sessionId, () => refreshUnseen(), 300);
+
     return () => {
       unsubA?.();
       unsubS?.();
       unsubM?.();
+      unsubInbox?.();
+      unsubPulse?.();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
   const selectedActions = useMemo(() => {
@@ -456,6 +552,10 @@ export default function SessionParticipantPage() {
     setPulseSeverity(null);
   }
 
+  const inboxFiltersActive =
+    Boolean(inboxSearch.trim()) || Boolean(inboxSeverity) || Boolean(inboxChannel);
+  const pulseFiltersActive = Boolean(pulseSearch.trim()) || Boolean(pulseSeverity);
+
   if (!sessionId) {
     return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
   }
@@ -481,10 +581,10 @@ export default function SessionParticipantPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[var(--studio-highlight)] shadow-soft p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="text-xs text-[color:var(--studio-muted2)]">
               Session • {sessionId.slice(0, 8)} • {fmt(startedAt)}
@@ -492,13 +592,28 @@ export default function SessionParticipantPage() {
             <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">
               {sessionTitle}
             </h1>
-            <div className="mt-2 text-sm text-[color:var(--studio-muted2)]">
+            <div className="mt-1 text-sm text-[color:var(--studio-muted2)]">
               Exercise clock:{" "}
               <span className="text-foreground font-medium">{exerciseClock}</span>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setCopOpen((v) => !v)}
+              className="gap-2"
+              title="Toggle COP"
+            >
+              <span className="font-medium">COP</span>
+              <ChevronDown
+                className={[
+                  "h-4 w-4 opacity-70 transition-transform",
+                  copOpen ? "rotate-180" : "",
+                ].join(" ")}
+              />
+            </Button>
+
             <Button variant="outline" onClick={refreshSituation}>
               Refresh COP
             </Button>
@@ -514,7 +629,6 @@ export default function SessionParticipantPage() {
               ) : isFacilitator ? (
                 <>
                   <Button
-                    variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
                       setToolsOpen((v) => !v);
@@ -524,7 +638,7 @@ export default function SessionParticipantPage() {
                   </Button>
 
                   {toolsOpen ? (
-                    <div className="absolute right-0 mt-2 w-[420px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden">
+                    <div className="absolute right-0 mt-2 w-[460px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-20">
                       <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
                         <div className="text-sm font-semibold">Facilitator panel</div>
                         <Button variant="outline" onClick={() => setToolsOpen(false)}>
@@ -542,159 +656,270 @@ export default function SessionParticipantPage() {
             </div>
           </div>
         </div>
-      </div>
 
-      {/* COP */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--studio-border)]">
-          <div className="text-sm font-semibold">Common Operating Picture</div>
-          <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
-            Update key figures and keep the situation current.
+        {/* COP collapsible */}
+        {copOpen ? (
+          <div className="border-t border-[var(--studio-border)]">
+            <div className="px-5 py-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <div className="text-sm font-semibold">Common Operating Picture</div>
+                  <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
+                    Update key figures and keep the situation current.
+                  </div>
+                </div>
+              </div>
+
+              <SituationCard
+                situation={situation}
+                onSave={async (p) => {
+                  if (!validSessionId) return;
+                  const s = await updateCasualties({
+                    sessionId,
+                    injured: p.injured,
+                    fatalities: p.fatalities,
+                    uninjured: p.uninjured,
+                    unknown: p.unknown,
+                  });
+                  setSituation(s);
+                }}
+              />
+            </div>
           </div>
-        </div>
-        <div className="p-4">
-          <SituationCard
-            situation={situation}
-            onSave={async (p) => {
-              if (!validSessionId) return;
-              const s = await updateCasualties({
-                sessionId,
-                injured: p.injured,
-                fatalities: p.fatalities,
-                uninjured: p.uninjured,
-                unknown: p.unknown,
-              });
-              setSituation(s);
-            }}
-          />
-        </div>
+        ) : null}
       </div>
 
-      {/* Main 3-column layout (Inbox | Pulse | Detail) */}
+      {/* Streams + Detail */}
       <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
-        {/* INBOX */}
+        {/* STREAMS (smaller) */}
         <div className={isMobile ? "" : "col-span-4"}>
           <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--studio-border)]">
-              <div className="text-sm font-semibold">Inbox</div>
-              <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
-                Operational / media / social injects.
-              </div>
-            </div>
-
-            {/* Inbox filters */}
-            <div className="p-3 border-b border-[var(--studio-border)] space-y-2">
-              <Input
-                value={inboxSearch}
-                onChange={(e) => setInboxSearch(e.target.value)}
-                placeholder="Search inbox…"
-              />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Select value={inboxSeverity ?? ""} onChange={(v) => setInboxSeverity(v ? v : null)}>
-                  <option value="">Severity: All</option>
-                  <option value="low">LOW</option>
-                  <option value="medium">MEDIUM</option>
-                  <option value="high">HIGH</option>
-                  <option value="critical">CRITICAL</option>
-                </Select>
-
-                <Select value={inboxChannel ?? ""} onChange={(v) => setInboxChannel(v ? v : null)}>
-                  <option value="">Channel: All</option>
-                  <option value="ops">OPS</option>
-                  <option value="media">MEDIA</option>
-                  <option value="social">SOCIAL</option>
-                </Select>
-
-                <Button variant="secondary" onClick={clearInboxFilters}>
-                  Clear
-                </Button>
+            <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Streams</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">
+                  Inbox + Pulse. Badges show unseen messages.
+                </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                {inboxSearch.trim() ? (
-                  <Chip label={`Search: ${inboxSearch.trim()}`} onClear={() => setInboxSearch("")} />
-                ) : null}
-                {inboxSeverity ? (
-                  <Chip label={`Severity: ${inboxSeverity}`} onClear={() => setInboxSeverity(null)} />
-                ) : null}
-                {inboxChannel ? (
-                  <Chip label={`Channel: ${inboxChannel}`} onClear={() => setInboxChannel(null)} />
-                ) : null}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={[
+                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition",
+                    streamTab === "inbox"
+                      ? "bg-primary/10 border-primary/25"
+                      : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
+                  ].join(" ")}
+                  onClick={() => {
+                    setStreamTab("inbox");
+                    setSelectedSource("inbox");
+                    // optional: auto mark seen when user switches to inbox
+                    markSeen("inbox");
+                    refreshUnseen();
+                  }}
+                >
+                  Inbox <Badge n={unseenInbox} />
+                </button>
+
+                <button
+                  type="button"
+                  className={[
+                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition",
+                    streamTab === "pulse"
+                      ? "bg-primary/10 border-primary/25"
+                      : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
+                  ].join(" ")}
+                  onClick={() => {
+                    setStreamTab("pulse");
+                    setSelectedSource("pulse");
+                    markSeen("pulse");
+                    refreshUnseen();
+                  }}
+                >
+                  Pulse <Badge n={unseenPulse} />
+                </button>
+
+                <div className="relative" ref={filtersWrapRef}>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setFiltersOpen((v) => !v)}
+                    title="Filters"
+                    className={streamTab === "inbox" ? (inboxFiltersActive ? "border-primary/25" : "") : pulseFiltersActive ? "border-primary/25" : ""}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                  </Button>
+
+                  {filtersOpen ? (
+                    <div className="absolute right-0 mt-2 w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-20">
+                      <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
+                        <div className="text-sm font-semibold">
+                          {streamTab === "inbox" ? "Inbox filters" : "Pulse filters"}
+                        </div>
+                        <Button variant="outline" onClick={() => setFiltersOpen(false)}>
+                          Close
+                        </Button>
+                      </div>
+
+                      <div className="p-4 space-y-3">
+                        {streamTab === "inbox" ? (
+                          <>
+                            <Input
+                              value={inboxSearch}
+                              onChange={(e) => setInboxSearch(e.target.value)}
+                              placeholder="Search inbox…"
+                            />
+
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <Select
+                                value={inboxSeverity ?? ""}
+                                onChange={(v) => setInboxSeverity(v ? v : null)}
+                              >
+                                <option value="">Severity: All</option>
+                                <option value="low">LOW</option>
+                                <option value="medium">MEDIUM</option>
+                                <option value="high">HIGH</option>
+                                <option value="critical">CRITICAL</option>
+                              </Select>
+
+                              <Select
+                                value={inboxChannel ?? ""}
+                                onChange={(v) => setInboxChannel(v ? v : null)}
+                              >
+                                <option value="">Channel: All</option>
+                                <option value="ops">OPS</option>
+                                <option value="media">MEDIA</option>
+                                <option value="social">SOCIAL</option>
+                              </Select>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button variant="secondary" className="flex-1" onClick={clearInboxFilters}>
+                                Clear
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => {
+                                  markSeen("inbox");
+                                  refreshUnseen();
+                                }}
+                                title="Marks all current Inbox as seen"
+                              >
+                                Mark seen
+                              </Button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              {inboxSearch.trim() ? (
+                                <Chip
+                                  label={`Search: ${inboxSearch.trim()}`}
+                                  onClear={() => setInboxSearch("")}
+                                />
+                              ) : null}
+                              {inboxSeverity ? (
+                                <Chip
+                                  label={`Severity: ${inboxSeverity}`}
+                                  onClear={() => setInboxSeverity(null)}
+                                />
+                              ) : null}
+                              {inboxChannel ? (
+                                <Chip
+                                  label={`Channel: ${inboxChannel}`}
+                                  onClear={() => setInboxChannel(null)}
+                                />
+                              ) : null}
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <Input
+                              value={pulseSearch}
+                              onChange={(e) => setPulseSearch(e.target.value)}
+                              placeholder="Search pulse…"
+                            />
+
+                            <Select
+                              value={pulseSeverity ?? ""}
+                              onChange={(v) => setPulseSeverity(v ? v : null)}
+                            >
+                              <option value="">Severity: All</option>
+                              <option value="low">LOW</option>
+                              <option value="medium">MEDIUM</option>
+                              <option value="high">HIGH</option>
+                              <option value="critical">CRITICAL</option>
+                            </Select>
+
+                            <div className="flex gap-2">
+                              <Button variant="secondary" className="flex-1" onClick={clearPulseFilters}>
+                                Clear
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => {
+                                  markSeen("pulse");
+                                  refreshUnseen();
+                                }}
+                                title="Marks all current Pulse as seen"
+                              >
+                                Mark seen
+                              </Button>
+                            </div>
+
+                            <div className="flex flex-wrap gap-2">
+                              {pulseSearch.trim() ? (
+                                <Chip
+                                  label={`Search: ${pulseSearch.trim()}`}
+                                  onClear={() => setPulseSearch("")}
+                                />
+                              ) : null}
+                              {pulseSeverity ? (
+                                <Chip
+                                  label={`Severity: ${pulseSeverity}`}
+                                  onClear={() => setPulseSeverity(null)}
+                                />
+                              ) : null}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
 
             <div className="p-3">
-              <Inbox
-                sessionId={sessionId}
-                onSelect={(item) => {
-                  setSelectedItem(item);
-                  setSelectedSource("inbox");
-                }}
-                channel={inboxChannel}
-                severity={inboxSeverity}
-                search={inboxSearch}
-              />
+              {streamTab === "inbox" ? (
+                <Inbox
+                  sessionId={sessionId}
+                  onSelect={(item) => {
+                    setSelectedItem(item);
+                    setSelectedSource("inbox");
+                  }}
+                  channel={inboxChannel}
+                  severity={inboxSeverity}
+                  search={inboxSearch}
+                />
+              ) : (
+                <PulseFeed
+                  sessionId={sessionId}
+                  onSelect={(item) => {
+                    setSelectedItem(item);
+                    setSelectedSource("pulse");
+                  }}
+                  severity={pulseSeverity}
+                  search={pulseSearch}
+                />
+              )}
             </div>
           </div>
         </div>
 
-        {/* PULSE */}
-        <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--studio-border)]">
-              <div className="text-sm font-semibold">Pulse</div>
-              <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
-                Social noise / external signals.
-              </div>
-            </div>
-
-            {/* Pulse filters */}
-            <div className="p-3 border-b border-[var(--studio-border)] space-y-2">
-              <Input
-                value={pulseSearch}
-                onChange={(e) => setPulseSearch(e.target.value)}
-                placeholder="Search pulse…"
-              />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <Select value={pulseSeverity ?? ""} onChange={(v) => setPulseSeverity(v ? v : null)}>
-                  <option value="">Severity: All</option>
-                  <option value="low">LOW</option>
-                  <option value="medium">MEDIUM</option>
-                  <option value="high">HIGH</option>
-                  <option value="critical">CRITICAL</option>
-                </Select>
-
-                <Button variant="secondary" onClick={clearPulseFilters}>
-                  Clear
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {pulseSearch.trim() ? (
-                  <Chip label={`Search: ${pulseSearch.trim()}`} onClear={() => setPulseSearch("")} />
-                ) : null}
-                {pulseSeverity ? (
-                  <Chip label={`Severity: ${pulseSeverity}`} onClear={() => setPulseSeverity(null)} />
-                ) : null}
-              </div>
-            </div>
-
-            <div className="p-3">
-              <PulseFeed
-                sessionId={sessionId}
-                onSelect={(item) => {
-                  setSelectedItem(item);
-                  setSelectedSource("pulse");
-                }}
-                severity={pulseSeverity}
-                search={pulseSearch}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* DETAIL */}
-        <div className={isMobile ? "" : "col-span-4"}>
+        {/* DETAIL (bigger) */}
+        <div className={isMobile ? "" : "col-span-8"}>
           <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
             <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
               <div className="text-sm font-semibold">Message detail</div>
@@ -703,7 +928,7 @@ export default function SessionParticipantPage() {
               </div>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-5 space-y-4">
               <MessageDetail
                 item={selectedItem}
                 activeTab={selectedSource}
@@ -751,6 +976,13 @@ export default function SessionParticipantPage() {
               </div>
             </div>
           </div>
+
+          {/* Small helper: if COP never loads */}
+          {!situation ? (
+            <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
+              COP data not loaded yet. Use <span className="font-medium">Refresh COP</span> or open COP panel.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
