@@ -42,10 +42,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <AppTopbar
-        isMobile={isMobile}
-        onToggleMobileSidebar={() => setMobileOpen((v) => !v)}
-      />
+      <AppTopbar onToggleMobile={isMobile ? () => setMobileOpen((v) => !v) : undefined} />
 
       {/* Sidebar pinned left */}
       {isMobile ? (
@@ -57,13 +54,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Main content */}
       <main
         className={[
-          "pt-[76px]", // topbar space
+          "pt-14", // ✅ matches topbar height (h-14 = 56px)
           isMobile ? "" : "pl-[84px]", // sidebar (collapsed width)
         ].join(" ")}
       >
-        <div className="mx-auto w-full max-w-[1400px] px-5 py-6">
-          {children}
-        </div>
+        <div className="mx-auto w-full max-w-[1400px] px-5 py-6">{children}</div>
       </main>
     </div>
   );

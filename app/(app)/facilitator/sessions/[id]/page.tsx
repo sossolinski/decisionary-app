@@ -1,41 +1,111 @@
 // app/(app)/facilitator/sessions/[id]/page.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+
 import { getMyRole } from "@/lib/users";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import { ExternalLink, Loader2 } from "lucide-react";
+
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
 
 export default function FacilitatorSessionPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
+  const valid = useMemo(() => isUuid(id), [id]);
+
+  const [status, setStatus] = useState<"checking" | "redirecting" | "error">("checking");
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     (async () => {
-      const role = await getMyRole();
-      if (!role) return router.replace("/login");
-      if (role !== "facilitator") return router.replace("/participant");
-      router.replace(`/sessions/${id}`);
+      try {
+        setErr(null);
+        setStatus("checking");
+
+        if (!valid) {
+          setStatus("error");
+          setErr("Invalid session id (expected UUID).");
+          return;
+        }
+
+        const role = await getMyRole();
+        if (cancelled) return;
+
+        if (!role) {
+          router.replace("/login");
+          return;
+        }
+
+        if (role !== "facilitator") {
+          router.replace("/participant");
+          return;
+        }
+
+        setStatus("redirecting");
+        router.replace(`/sessions/${id}`);
+      } catch (e: any) {
+        if (cancelled) return;
+        setStatus("error");
+        setErr(e?.message ?? "Failed to open session.");
+      }
     })();
-  }, [router, id]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router, id, valid]);
 
   return (
     <div className="mx-auto w-full max-w-[var(--studio-max)] p-6 space-y-6">
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Opening session</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            {status === "redirecting" || status === "checking" ? (
+              <Loader2 className="h-4 w-4 animate-spin opacity-80" />
+            ) : (
+              <ExternalLink className="h-4 w-4 opacity-80" />
+            )}
+            Opening session
+          </CardTitle>
+
           <CardDescription className="text-sm">
-            Redirecting you to the live room…
+            {status === "error"
+              ? "We couldn't redirect automatically."
+              : "Redirecting you to the live room…"}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-sm text-muted-foreground">If nothing happens, use the button.</div>
-          <Button variant="secondary" onClick={() => router.replace(`/sessions/${id}`)}>
-            Open now
-          </Button>
+
+        <CardContent className="space-y-3">
+          {err ? (
+            <div className="rounded-[14px] border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+              {err}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm text-muted-foreground">
+              If nothing happens, use the button.
+            </div>
+
+            <Button
+              variant="secondary"
+              onClick={() => router.replace(`/sessions/${id}`)}
+              disabled={!valid}
+              className="gap-2"
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open now
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

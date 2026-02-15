@@ -1,12 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  getSessionInbox,
-  subscribeInbox,
-  type SessionInject,
-} from "@/lib/sessions";
+import { getSessionInbox, subscribeInbox, type SessionInject } from "@/lib/sessions";
 import { Button } from "@/app/components/ui/button";
+import { Mail, Briefcase, Newspaper, AtSign, Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
 type Props = {
   sessionId: string;
@@ -38,12 +35,7 @@ function rangePages(totalPages: number, current: number) {
   return [start, start + 1, start + 2, start + 3];
 }
 
-function makeSeenKey(
-  sessionId: string,
-  mode: string,
-  channel: string | null,
-  severity: string | null
-) {
+function makeSeenKey(sessionId: string, mode: string, channel: string | null, severity: string | null) {
   return `seen:${sessionId}:${mode}:${channel ?? "all"}:${severity ?? "all"}`;
 }
 
@@ -65,9 +57,27 @@ function saveSeen(key: string, set: Set<string>) {
   } catch {}
 }
 
+function channelIcon(channel?: string | null) {
+  const v = String(channel ?? "").toLowerCase();
+  if (v === "pulse") return <Radio className="h-3.5 w-3.5" />;
+  if (v === "ops") return <Briefcase className="h-3.5 w-3.5" />;
+  if (v === "media") return <Newspaper className="h-3.5 w-3.5" />;
+  if (v === "social") return <AtSign className="h-3.5 w-3.5" />;
+  return <Mail className="h-3.5 w-3.5" />;
+}
+
+function severityIcon(sev?: string | null) {
+  const v = String(sev ?? "").toLowerCase();
+  if (v === "critical") return <Flame className="h-3.5 w-3.5" />;
+  if (v === "high") return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (v === "medium") return <AlertCircle className="h-3.5 w-3.5" />;
+  if (v === "low") return <Circle className="h-3.5 w-3.5" />;
+  return <Circle className="h-3.5 w-3.5 opacity-60" />;
+}
+
 function badge(kind: "severity" | "channel" | "state", value: string) {
   const base =
-    "inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-bold tracking-wide";
+    "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold tracking-wide";
   const v = value.toLowerCase();
 
   if (kind === "state") {
@@ -121,10 +131,7 @@ export default function Inbox({
   const prevIdsRef = useRef<Set<string>>(new Set());
 
   // UNREAD
-  const seenKey = useMemo(
-    () => makeSeenKey(sessionId, mode, channel, severity),
-    [sessionId, mode, channel, severity]
-  );
+  const seenKey = useMemo(() => makeSeenKey(sessionId, mode, channel, severity), [sessionId, mode, channel, severity]);
   const [seen, setSeen] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
@@ -300,7 +307,6 @@ export default function Inbox({
         </div>
       ) : null}
 
-      {/* Container: stable height + scroll inside (mail-client feel) */}
       <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
         <div className="max-h-[65vh] overflow-auto p-2">
           {loading ? (
@@ -323,21 +329,19 @@ export default function Inbox({
               const preview = item.injects?.body ? clampText(item.injects.body, 150) : "";
 
               const metaLeft =
-                [item.injects?.sender_name, item.injects?.sender_org]
-                  .filter(Boolean)
-                  .join(" · ") || "Unknown source";
+                [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
+                "Unknown source";
 
-              const channelTag = item.injects?.channel
-                ? String(item.injects.channel).toUpperCase()
-                : null;
-              const sevTag = item.injects?.severity
-                ? String(item.injects.severity).toUpperCase()
-                : null;
+              const channelTag = item.injects?.channel ? String(item.injects.channel).toUpperCase() : null;
+              const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
 
               const time = fmtTime(item.delivered_at);
 
               const unread = !seen.has(item.id);
               const flash = flashIds.has(item.id);
+
+              const ch = String(item.injects?.channel ?? "").toLowerCase();
+              const sv = String(item.injects?.severity ?? "").toLowerCase();
 
               return (
                 <button
@@ -350,25 +354,48 @@ export default function Inbox({
                   className={[
                     "w-full text-left rounded-[var(--radius)] border px-3 py-3 transition-colors",
                     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-                    active
-                      ? "border-foreground/25 bg-secondary/70"
-                      : "border-border bg-card hover:bg-secondary/40",
+                    active ? "border-foreground/25 bg-secondary/70" : "border-border bg-card hover:bg-secondary/40",
                     flash ? "shadow-soft ring-2 ring-foreground/10" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{title}</div>
+                    <div className="min-w-0 flex items-start gap-2">
+                      <div className="mt-0.5 shrink-0 opacity-75">
+                        {channelIcon(ch || "ops")}
+                      </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        {unread ? <span className={badge("state", "unread")}>UNREAD</span> : null}
-                        {flash ? <span className={badge("state", "new")}>NEW</span> : null}
-                        {channelTag ? (
-                          <span className={badge("channel", channelTag)}>{channelTag}</span>
-                        ) : null}
-                        {sevTag ? (
-                          <span className={badge("severity", sevTag)}>{sevTag}</span>
-                        ) : null}
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{title}</div>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {unread ? (
+                            <span className={badge("state", "unread")}>
+                              <Mail className="h-3.5 w-3.5" />
+                              UNREAD
+                            </span>
+                          ) : null}
+
+                          {flash ? (
+                            <span className={badge("state", "new")}>
+                              <Radio className="h-3.5 w-3.5" />
+                              NEW
+                            </span>
+                          ) : null}
+
+                          {channelTag ? (
+                            <span className={badge("channel", channelTag)}>
+                              {channelIcon(ch)}
+                              {channelTag}
+                            </span>
+                          ) : null}
+
+                          {sevTag ? (
+                            <span className={badge("severity", sevTag)}>
+                              {severityIcon(sv)}
+                              {sevTag}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 
@@ -377,13 +404,9 @@ export default function Inbox({
                     </div>
                   </div>
 
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {preview ? preview : "(no content)"}
-                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">{preview ? preview : "(no content)"}</div>
 
-                  <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
-                    {metaLeft}
-                  </div>
+                  <div className="mt-2 text-[11px] font-semibold text-muted-foreground">{metaLeft}</div>
                 </button>
               );
             })}
@@ -397,22 +420,12 @@ export default function Inbox({
         </div>
 
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
             Prev
           </Button>
 
           {pages.map((p) => (
-            <Button
-              key={p}
-              variant={p === page ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setPage(p)}
-            >
+            <Button key={p} variant={p === page ? "secondary" : "ghost"} size="sm" onClick={() => setPage(p)}>
               {p}
             </Button>
           ))}

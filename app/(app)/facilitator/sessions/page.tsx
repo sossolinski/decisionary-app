@@ -26,6 +26,21 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
+import {
+  CalendarPlus,
+  RefreshCw,
+  Play,
+  Users,
+  Square,
+  RotateCcw,
+  Trash2,
+  Search,
+  X,
+  Copy,
+  Check,
+  ChevronDown,
+} from "lucide-react";
+
 function fmt(dt?: string | null) {
   if (!dt) return "—";
   try {
@@ -35,18 +50,99 @@ function fmt(dt?: string | null) {
   }
 }
 
+function statusTone(status?: string | null) {
+  const s = String(status ?? "").toLowerCase();
+  if (s === "active")
+    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (s === "ended")
+    return "border-border bg-secondary/50 text-foreground";
+  return "border-[var(--studio-border)] bg-[var(--studio-surface2)] text-foreground";
+}
+
 function StatusPill({ status }: { status?: string | null }) {
   const s = String(status ?? "—");
   const base =
-    "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium";
-  const cls =
-    s === "active"
-      ? "border-[var(--studio-border)] bg-[var(--studio-highlight)]"
-      : s === "ended"
-      ? "border-[var(--studio-border)] bg-secondary/50"
-      : "border-[var(--studio-border)] bg-[var(--studio-surface2)]";
+    "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide";
+  return <span className={`${base} ${statusTone(status)}`}>{s.toUpperCase()}</span>;
+}
 
-  return <span className={`${base} ${cls}`}>{s}</span>;
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={[
+        "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
+        "border border-[var(--studio-border)]",
+        "bg-[var(--studio-surface2)] text-foreground",
+        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
+        "hover:border-[var(--studio-border-strong)]",
+        "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+        "transition-[box-shadow,border-color,background-color] duration-150",
+      ].join(" ")}
+    >
+      {children}
+    </select>
+  );
+}
+
+function Chip({
+  label,
+  onClear,
+  title,
+}: {
+  label: string;
+  onClear: () => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClear}
+      title={title}
+      className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-medium hover:bg-secondary/60 transition"
+    >
+      <span className="truncate max-w-[220px]">{label}</span>
+      <X className="h-3.5 w-3.5 opacity-70" />
+    </button>
+  );
+}
+
+function CopyButton({
+  value,
+  label = "Copy",
+}: {
+  value: string;
+  label?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="gap-2"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1200);
+        } catch {}
+      }}
+      title={value}
+    >
+      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+      {copied ? "Copied" : label}
+    </Button>
+  );
 }
 
 export default function FacilitatorSessionsPage() {
@@ -61,6 +157,13 @@ export default function FacilitatorSessionsPage() {
 
   const [scenarioId, setScenarioId] = useState("");
   const [title, setTitle] = useState("New session");
+
+  // UI: quick filters
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "ended">("all");
+
+  // UI: minimal actions toggle per-row
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -91,6 +194,35 @@ export default function FacilitatorSessionsPage() {
     for (const s of scenarios) m.set(s.id, s.title ?? null);
     return m;
   }, [scenarios]);
+
+  const activeCount = useMemo(() => {
+    return sessions.filter((s: any) => String(s?.status ?? "").toLowerCase() === "active").length;
+  }, [sessions]);
+
+  const endedCount = useMemo(() => {
+    return sessions.filter((s: any) => String(s?.status ?? "").toLowerCase() === "ended").length;
+  }, [sessions]);
+
+  const filteredSessions = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+
+    return sessions.filter((s: any) => {
+      const st = String(s?.status ?? "").toLowerCase();
+      if (statusFilter !== "all" && st !== statusFilter) return false;
+
+      if (!qq) return true;
+
+      const scenarioTitle =
+        s.scenario?.title ??
+        (s.scenario_id ? scenarioTitleById.get(s.scenario_id) : null) ??
+        "";
+      const joinCode = String(s?.join_code ?? "");
+      const title = String(s?.title ?? "");
+      const id = String(s?.id ?? "");
+
+      return `${title}\n${scenarioTitle}\n${joinCode}\n${id}`.toLowerCase().includes(qq);
+    });
+  }, [sessions, q, statusFilter, scenarioTitleById]);
 
   async function onCreate() {
     if (!scenarioId) {
@@ -156,29 +288,37 @@ export default function FacilitatorSessionsPage() {
   }
 
   if (loading) {
-    return (
-      <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>
-    );
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
-          <p className="mt-1 text-sm text-[color:var(--studio-muted2)]">
+          <p className="text-sm text-muted-foreground mt-1">
             Create sessions from scenarios and manage exercise lifecycle.
           </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">
+              Total: <span className="text-foreground">{sessions.length}</span>
+            </span>
+            <span className="text-xs text-muted-foreground">•</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Active: <span className="text-foreground">{activeCount}</span>
+            </span>
+            <span className="text-xs text-muted-foreground">•</span>
+            <span className="text-xs font-semibold text-muted-foreground">
+              Ended: <span className="text-foreground">{endedCount}</span>
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={load}
-            disabled={busyId === "refresh"}
-            title="Refresh"
-          >
+          <Button variant="outline" onClick={load} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
             Refresh
           </Button>
         </div>
@@ -186,160 +326,237 @@ export default function FacilitatorSessionsPage() {
 
       {/* Error */}
       {error ? (
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
-          {error}
-        </div>
+        <Card className="border-destructive/40">
+          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+        </Card>
       ) : null}
 
       {/* Create session */}
-      <Card>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader>
-          <CardTitle>Create session</CardTitle>
-          <CardDescription>
-            Choose scenario and start a new run.
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <CalendarPlus className="h-5 w-5 opacity-80" />
+            Create session
+          </CardTitle>
+          <CardDescription>Choose scenario and start a new run.</CardDescription>
         </CardHeader>
 
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="md:col-span-1">
-              <div className="text-xs font-medium text-[color:var(--studio-muted2)] mb-2">
-                Scenario
-              </div>
-              <select
-                value={scenarioId}
-                onChange={(e) => setScenarioId(e.target.value)}
-                className={[
-                  "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
-                  "border border-[var(--studio-border)]",
-                  "bg-[var(--studio-surface2)]",
-                  "text-foreground",
-                  "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-                ].join(" ")}
-              >
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-12">
+            <div className="md:col-span-7 space-y-2">
+              <div className="text-sm font-medium">Scenario</div>
+              <Select value={scenarioId} onChange={setScenarioId}>
                 <option value="">Select scenario…</option>
                 {scenarios.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.title ?? "Untitled scenario"}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
-            <div className="md:col-span-2">
-              <div className="text-xs font-medium text-[color:var(--studio-muted2)] mb-2">
-                Title
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="New session"
-                />
-                <Button onClick={onCreate} disabled={busyId === "create"}>
-                  {busyId === "create" ? "…" : "Create"}
-                </Button>
-              </div>
+            <div className="md:col-span-5 space-y-2">
+              <div className="text-sm font-medium">Title</div>
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="New session"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2">
+              <Play className="h-4 w-4" />
+              {busyId === "create" ? "…" : "Create & open"}
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              Tip: you can invite participants with the join code after creating.
             </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Sessions list */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-[color:var(--studio-muted2)]">
-          <span className="font-medium text-foreground">All sessions</span>{" "}
-          <span className="ml-2">{sessions.length} total</span>
-        </div>
-      </div>
+      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+        <CardHeader className="flex-row items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5 opacity-80" />
+              Sessions{" "}
+              <span className="text-muted-foreground font-normal">
+                {filteredSessions.length} shown
+              </span>
+            </CardTitle>
+            <CardDescription>Search and manage runs (open, roster, end, restart, delete).</CardDescription>
+          </div>
 
-      {sessions.length === 0 ? (
-        <Card>
-          <CardContent>
-            <div className="text-sm text-[color:var(--studio-muted2)]">
-              No sessions yet.
+          <div className="flex flex-wrap items-center gap-2 justify-end">
+            <div className="relative w-[260px]">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search sessions…"
+                className="pl-9"
+              />
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {sessions.map((s) => {
-            const isBusy = busyId === s.id;
 
-            const scenarioTitle =
-              s.scenario?.title ??
-              (s.scenario_id ? scenarioTitleById.get(s.scenario_id) : null) ??
-              "—";
+            <Select value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
+              <option value="all">Status: All</option>
+              <option value="active">Status: Active</option>
+              <option value="ended">Status: Ended</option>
+            </Select>
+          </div>
+        </CardHeader>
 
-            return (
-              <Card key={s.id}>
-                <CardHeader className="flex-row items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base truncate">
-                        {s.title ?? "Untitled session"}
-                      </CardTitle>
-                      <StatusPill status={s.status ?? null} />
+        <CardContent className="space-y-3">
+          {(q.trim() || statusFilter !== "all") ? (
+            <div className="flex flex-wrap gap-2">
+              {q.trim() ? (
+                <Chip label={`Search: ${q.trim()}`} onClear={() => setQ("")} />
+              ) : null}
+              {statusFilter !== "all" ? (
+                <Chip label={`Status: ${statusFilter}`} onClear={() => setStatusFilter("all")} />
+              ) : null}
+            </div>
+          ) : null}
+
+          {filteredSessions.length === 0 ? (
+            <div className="text-sm text-muted-foreground">
+              No sessions matching current filters.
+            </div>
+          ) : (
+            filteredSessions.map((s: any) => {
+              const isBusy = busyId === s.id;
+
+              const scenarioTitle =
+                s.scenario?.title ??
+                (s.scenario_id ? scenarioTitleById.get(s.scenario_id) : null) ??
+                "—";
+
+              const joinCode = String(s?.join_code ?? "—");
+              const status = (s as any).status ?? null;
+
+              return (
+                <div
+                  key={s.id}
+                  className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-4 py-4"
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-base font-semibold truncate">
+                          {s.title ?? "Untitled session"}
+                        </div>
+                        <StatusPill status={status} />
+                      </div>
+
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        <span className="font-medium text-foreground">Scenario:</span>{" "}
+                        {scenarioTitle}
+                        <span className="mx-2 text-muted-foreground/70">•</span>
+                        <span className="font-medium text-foreground">Join code:</span>{" "}
+                        <span className="font-mono">{joinCode}</span>
+                      </div>
+
+                      <div className="mt-2 text-xs text-muted-foreground">
+                        Created: {fmt((s as any).created_at)} <span className="mx-2">•</span>
+                        Started: {fmt((s as any).started_at)} <span className="mx-2">•</span>
+                        Ended: {fmt((s as any).ended_at)}
+                      </div>
                     </div>
 
-                    <div className="mt-1 text-sm text-[color:var(--studio-muted2)]">
-                      Scenario: <span className="text-foreground">{scenarioTitle}</span>
-                      {" · "}
-                      Join code: <span className="text-foreground">{s.join_code}</span>
-                    </div>
+                    <div className="flex flex-wrap items-center gap-2 justify-end">
+                      <Button
+                        variant="secondary"
+                        onClick={() => router.push(`/sessions/${s.id}`)}
+                        disabled={isBusy}
+                        className="gap-2"
+                      >
+                        <Play className="h-4 w-4" />
+                        Open
+                      </Button>
 
-                    <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
-                      Created: {fmt(s.created_at)} {" · "}
-                      Started: {fmt(s.started_at)} {" · "}
-                      Ended: {fmt(s.ended_at)}
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push(`/facilitator/sessions/${s.id}/roster`)}
+                        disabled={isBusy}
+                        className="gap-2"
+                      >
+                        <Users className="h-4 w-4" />
+                        Roster
+                      </Button>
+
+                      <CopyButton value={joinCode} label="Join code" />
+
+                      {/* More (minimize button spam) */}
+                      <div className="relative">
+                        <Button
+                          variant="outline"
+                          onClick={() => setOpenMenuId((v) => (v === s.id ? null : s.id))}
+                          className="gap-2"
+                          disabled={isBusy}
+                        >
+                          More <ChevronDown className="h-4 w-4 opacity-70" />
+                        </Button>
+
+                        {openMenuId === s.id ? (
+                          <div className="absolute right-0 mt-2 w-[220px] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
+                            <div className="p-2 space-y-1">
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start gap-2"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  onEnd(s.id);
+                                }}
+                                disabled={isBusy || String(status ?? "").toLowerCase() === "ended"}
+                                title="End session"
+                              >
+                                <Square className="h-4 w-4" />
+                                End
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                className="w-full justify-start gap-2"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  onRestart(s.id);
+                                }}
+                                disabled={isBusy}
+                                title="Restart session"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                                Restart
+                              </Button>
+
+                              <Button
+                                variant="destructive"
+                                className="w-full justify-start gap-2"
+                                onClick={() => {
+                                  setOpenMenuId(null);
+                                  onDelete(s.id);
+                                }}
+                                disabled={isBusy}
+                                title="Delete session"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => router.push(`/sessions/${s.id}`)}
-                      disabled={isBusy}
-                    >
-                      Open
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        router.push(`/facilitator/sessions/${s.id}/roster`)
-                      }
-                      disabled={isBusy}
-                    >
-                      Roster
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => onEnd(s.id)}
-                      disabled={isBusy}
-                    >
-                      End
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => onRestart(s.id)}
-                      disabled={isBusy}
-                    >
-                      Restart
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      onClick={() => onDelete(s.id)}
-                      disabled={isBusy}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </CardHeader>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

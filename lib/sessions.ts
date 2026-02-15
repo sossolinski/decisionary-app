@@ -80,6 +80,39 @@ function normalizeSessionInjectRow(row: any): SessionInject {
   } as SessionInject;
 }
 
+function safeRemoveChannel(ch: any) {
+  try {
+    supabase.removeChannel(ch);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Realtime subscription with coalescing (debounce) to avoid UI thrash.
+ * Multiple events within debounce window -> single cb() call.
+ */
+function debounceCoalesce(cb: () => void, debounceMs = 250) {
+  let t: ReturnType<typeof setTimeout> | null = null;
+
+  const fire = () => {
+    if (t) return;
+    t = setTimeout(() => {
+      t = null;
+      cb();
+    }, debounceMs);
+  };
+
+  const cancel = () => {
+    if (t) {
+      clearTimeout(t);
+      t = null;
+    }
+  };
+
+  return { fire, cancel };
+}
+
 /* =========================
    SITUATION
 ========================= */
@@ -200,15 +233,7 @@ export async function getSessionInbox(
  * - multiple events within debounce window -> single cb() call
  */
 export function subscribeInbox(sessionId: string, cb: () => void, debounceMs = 250) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-
-  const fire = () => {
-    if (t) return; // already scheduled
-    t = setTimeout(() => {
-      t = null;
-      cb();
-    }, debounceMs);
-  };
+  const d = debounceCoalesce(cb, debounceMs);
 
   const ch = supabase
     // UNIQUE channel name for Inbox
@@ -221,16 +246,13 @@ export function subscribeInbox(sessionId: string, cb: () => void, debounceMs = 2
         table: "session_injects",
         filter: `session_id=eq.${sessionId}`,
       },
-      () => fire()
+      () => d.fire()
     )
     .subscribe();
 
   return () => {
-    if (t) {
-      clearTimeout(t);
-      t = null;
-    }
-    supabase.removeChannel(ch);
+    d.cancel();
+    safeRemoveChannel(ch);
   };
 }
 
@@ -251,15 +273,7 @@ export async function getSessionPulse(
 }
 
 export function subscribePulse(sessionId: string, cb: () => void, debounceMs = 250) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-
-  const fire = () => {
-    if (t) return;
-    t = setTimeout(() => {
-      t = null;
-      cb();
-    }, debounceMs);
-  };
+  const d = debounceCoalesce(cb, debounceMs);
 
   const ch = supabase
     // UNIQUE channel name for Pulse
@@ -272,16 +286,13 @@ export function subscribePulse(sessionId: string, cb: () => void, debounceMs = 2
         table: "session_injects",
         filter: `session_id=eq.${sessionId}`,
       },
-      () => fire()
+      () => d.fire()
     )
     .subscribe();
 
   return () => {
-    if (t) {
-      clearTimeout(t);
-      t = null;
-    }
-    supabase.removeChannel(ch);
+    d.cancel();
+    safeRemoveChannel(ch);
   };
 }
 
@@ -462,15 +473,7 @@ export async function updateCasualties(params: {
 ========================= */
 
 export function subscribeActions(sessionId: string, cb: () => void, debounceMs = 250) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-
-  const fire = () => {
-    if (t) return;
-    t = setTimeout(() => {
-      t = null;
-      cb();
-    }, debounceMs);
-  };
+  const d = debounceCoalesce(cb, debounceMs);
 
   const ch = supabase
     .channel(`session_actions:${sessionId}`)
@@ -482,29 +485,18 @@ export function subscribeActions(sessionId: string, cb: () => void, debounceMs =
         table: "session_actions",
         filter: `session_id=eq.${sessionId}`,
       },
-      () => fire()
+      () => d.fire()
     )
     .subscribe();
 
   return () => {
-    if (t) {
-      clearTimeout(t);
-      t = null;
-    }
-    supabase.removeChannel(ch);
+    d.cancel();
+    safeRemoveChannel(ch);
   };
 }
 
 export function subscribeSituation(sessionId: string, cb: () => void, debounceMs = 250) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-
-  const fire = () => {
-    if (t) return;
-    t = setTimeout(() => {
-      t = null;
-      cb();
-    }, debounceMs);
-  };
+  const d = debounceCoalesce(cb, debounceMs);
 
   const ch = supabase
     .channel(`session_situation:${sessionId}`)
@@ -516,29 +508,18 @@ export function subscribeSituation(sessionId: string, cb: () => void, debounceMs
         table: "session_situation",
         filter: `session_id=eq.${sessionId}`,
       },
-      () => fire()
+      () => d.fire()
     )
     .subscribe();
 
   return () => {
-    if (t) {
-      clearTimeout(t);
-      t = null;
-    }
-    supabase.removeChannel(ch);
+    d.cancel();
+    safeRemoveChannel(ch);
   };
 }
 
 export function subscribeSessionMeta(sessionId: string, cb: () => void, debounceMs = 250) {
-  let t: ReturnType<typeof setTimeout> | null = null;
-
-  const fire = () => {
-    if (t) return;
-    t = setTimeout(() => {
-      t = null;
-      cb();
-    }, debounceMs);
-  };
+  const d = debounceCoalesce(cb, debounceMs);
 
   const ch = supabase
     .channel(`sessions:${sessionId}`)
@@ -550,16 +531,13 @@ export function subscribeSessionMeta(sessionId: string, cb: () => void, debounce
         table: "sessions",
         filter: `id=eq.${sessionId}`,
       },
-      () => fire()
+      () => d.fire()
     )
     .subscribe();
 
   return () => {
-    if (t) {
-      clearTimeout(t);
-      t = null;
-    }
-    supabase.removeChannel(ch);
+    d.cancel();
+    safeRemoveChannel(ch);
   };
 }
 
@@ -583,13 +561,17 @@ export function subscribeActionsPayload(
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        onInsert(payload.new as SessionAction);
+        try {
+          onInsert(payload.new as SessionAction);
+        } catch {
+          // ignore handler errors
+        }
       }
     )
     .subscribe();
 
   return () => {
-    supabase.removeChannel(ch);
+    safeRemoveChannel(ch);
   };
 }
 
@@ -608,13 +590,17 @@ export function subscribeSituationPayload(
         filter: `session_id=eq.${sessionId}`,
       },
       (payload) => {
-        if (payload.new) onUpsert(payload.new as SessionSituation);
+        try {
+          if (payload.new) onUpsert(payload.new as SessionSituation);
+        } catch {
+          // ignore handler errors
+        }
       }
     )
     .subscribe();
 
   return () => {
-    supabase.removeChannel(ch);
+    safeRemoveChannel(ch);
   };
 }
 
@@ -633,12 +619,16 @@ export function subscribeSessionMetaPayload(
         filter: `id=eq.${sessionId}`,
       },
       (payload) => {
-        if (payload.new) onUpdate(payload.new);
+        try {
+          if (payload.new) onUpdate(payload.new);
+        } catch {
+          // ignore handler errors
+        }
       }
     )
     .subscribe();
 
   return () => {
-    supabase.removeChannel(ch);
+    safeRemoveChannel(ch);
   };
 }

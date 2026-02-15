@@ -27,15 +27,6 @@ type SessionInject = {
   injects?: Inject | null;
 };
 
-type SessionAction = {
-  id: string;
-  created_at?: string;
-  action_type?: string | null;
-  source?: string | null;
-  comment?: string | null;
-  session_inject_id?: string | null;
-};
-
 function badgeClass(kind: "severity" | "channel", value: string) {
   const base =
     "inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold";
@@ -72,12 +63,9 @@ function fmtWhen(iso?: string) {
 
 export default function MessageDetail({
   item,
-  mode,
-  actions,
-  actionsLoading,
-  actionsError,
+  activeTab,
   comment,
-  onCommentChange,
+  setComment,
   onIgnore,
   onEscalate,
   onAct,
@@ -85,15 +73,10 @@ export default function MessageDetail({
   onDeny,
 }: {
   item: SessionInject | null;
-  mode: Mode;
-
-  // ✅ make optional (we will guard)
-  actions?: SessionAction[];
-  actionsLoading: boolean;
-  actionsError: string | null;
+  activeTab: Mode;
 
   comment: string;
-  onCommentChange: (v: string) => void;
+  setComment: (v: string) => void;
 
   onIgnore: () => void;
   onEscalate: () => void;
@@ -108,9 +91,6 @@ export default function MessageDetail({
   const body = inject?.body ?? "";
   const channel = inject?.channel ?? null;
   const severity = inject?.severity ?? null;
-
-  // ✅ ALWAYS an array (prevents `.length` crash)
-  const safeActions = Array.isArray(actions) ? actions : [];
 
   const senderLine = useMemo(() => {
     const name = inject?.sender_name?.trim();
@@ -132,9 +112,7 @@ export default function MessageDetail({
           <div className="space-y-2">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-base font-semibold leading-snug">
-                  {title}
-                </div>
+                <div className="text-base font-semibold leading-snug">{title}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {senderLine ? senderLine : "—"}
                   {item.delivered_at ? (
@@ -152,7 +130,7 @@ export default function MessageDetail({
                     {severity.toUpperCase()}
                   </span>
                 ) : null}
-                {mode === "inbox" && channel ? (
+                {activeTab === "inbox" && channel ? (
                   <span className={badgeClass("channel", channel)}>
                     {channel.toUpperCase()}
                   </span>
@@ -171,73 +149,14 @@ export default function MessageDetail({
             )}
           </div>
 
-          {/* Actions summary */}
-          <div className="rounded-[var(--radius)] border border-border bg-secondary/20 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold text-muted-foreground">
-                Decision log
-              </div>
-              {actionsLoading ? (
-                <div className="text-xs text-muted-foreground">Loading…</div>
-              ) : actionsError ? (
-                <div className="text-xs text-destructive">{actionsError}</div>
-              ) : (
-                <div className="text-xs text-muted-foreground">
-                  {safeActions.length} entr{safeActions.length === 1 ? "y" : "ies"}
-                </div>
-              )}
-            </div>
-
-            {!actionsLoading && safeActions.length > 0 ? (
-              <div className="mt-2 space-y-2">
-                {safeActions.slice(0, 5).map((a) => (
-                  <div
-                    key={a.id}
-                    className="rounded-[var(--radius)] border border-border bg-card px-3 py-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-semibold">
-                        {(a.action_type ?? "action").toUpperCase()}
-                        <span className="ml-2 text-[11px] font-semibold text-muted-foreground">
-                          {(a.source ?? mode).toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {fmtWhen(a.created_at) ?? ""}
-                      </div>
-                    </div>
-                    {a.comment ? (
-                      <div className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">
-                        {a.comment}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-                {safeActions.length > 5 ? (
-                  <div className="text-xs text-muted-foreground">
-                    + {safeActions.length - 5} more…
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {!actionsLoading && safeActions.length === 0 ? (
-              <div className="mt-2 text-xs text-muted-foreground">
-                No decisions recorded for this message yet.
-              </div>
-            ) : null}
-          </div>
-
           {/* Comment */}
           <div className="space-y-2">
-            <div className="text-xs font-semibold text-muted-foreground">
-              Comment
-            </div>
+            <div className="text-xs font-semibold text-muted-foreground">Comment</div>
             <Input
               value={comment}
-              onChange={(e) => onCommentChange(e.target.value)}
+              onChange={(e) => setComment(e.target.value)}
               placeholder={
-                mode === "pulse"
+                activeTab === "pulse"
                   ? "Optional: rationale, wording guidance, source confirmation…"
                   : "Optional: what you did / who you informed / next step…"
               }
@@ -246,7 +165,7 @@ export default function MessageDetail({
 
           {/* Primary actions */}
           <div className="flex flex-wrap items-center gap-2">
-            {mode === "pulse" ? (
+            {activeTab === "pulse" ? (
               <>
                 <Button variant="default" onClick={onConfirm}>
                   Confirm
@@ -271,8 +190,8 @@ export default function MessageDetail({
           </div>
 
           <div className="text-[11px] text-muted-foreground">
-            Tip: use “Act” to record a decision and optionally send an update
-            inject to the session.
+            Tip: use “Act” to record a decision and optionally send an update inject to the
+            session.
           </div>
         </>
       )}

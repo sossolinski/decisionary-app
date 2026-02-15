@@ -15,6 +15,21 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 
+import {
+  AlertTriangle,
+  CalendarDays,
+  Clock,
+  MapPin,
+  FileText,
+  Users,
+  Skull,
+  UserCheck,
+  HelpCircle,
+  Pencil,
+  Save,
+  X,
+} from "lucide-react";
+
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
   useEffect(() => {
@@ -67,10 +82,7 @@ function numOr(prev: number, raw: string) {
  * Converts IANA tz ("Europe/Warsaw") to "UTC+01:00" / "UTC+02:00"
  * Uses event_date (if provided) to get correct DST offset.
  */
-function tzToUtcOffsetLabel(
-  timeZone: string | null | undefined,
-  eventDateISO?: string | null
-) {
+function tzToUtcOffsetLabel(timeZone: string | null | undefined, eventDateISO?: string | null) {
   const tz = (timeZone ?? "").trim();
   if (!tz || tz === "—") return "—";
 
@@ -82,7 +94,6 @@ function tzToUtcOffsetLabel(
     return tz.toUpperCase().replace("GMT", "UTC").replace(/\s+/g, "");
   }
 
-  // Compute offset via Intl for the given timezone at the event date (or now)
   const base = eventDateISO ? new Date(eventDateISO) : new Date();
   const d = Number.isNaN(base.getTime()) ? new Date() : base;
 
@@ -99,8 +110,7 @@ function tzToUtcOffsetLabel(
     });
 
     const parts = dtf.formatToParts(d);
-    const get = (type: string) =>
-      parts.find((p) => p.type === type)?.value ?? "00";
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
 
     const y = Number(get("year"));
     const m = Number(get("month"));
@@ -117,28 +127,51 @@ function tzToUtcOffsetLabel(
     const abs = Math.abs(offsetMin);
     const oh = String(Math.floor(abs / 60)).padStart(2, "0");
     const om = String(abs % 60).padStart(2, "0");
+
     return `UTC${sign}${oh}:${om}`;
   } catch {
-    // fallback: show IANA if we can't compute
     return tz;
   }
 }
 
 function SmallStat({
+  icon,
   label,
   value,
 }: {
+  icon: React.ReactNode;
   label: string;
   value: number | null | undefined;
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2">
-      <div className="text-[11px] font-semibold text-muted-foreground">
-        {label}
+    <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+        <span className="opacity-80">{icon}</span>
+        <span className="font-semibold">{label}</span>
       </div>
-      <div className="mt-0.5 text-sm font-bold">
+      <div className="mt-1 text-lg font-semibold leading-none">
         {typeof value === "number" ? value : "—"}
       </div>
+    </div>
+  );
+}
+
+function FieldRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
+      <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+        <span className="opacity-80">{icon}</span>
+        <span className="font-semibold">{label}</span>
+      </div>
+      <div className="mt-1 text-sm font-semibold">{value}</div>
     </div>
   );
 }
@@ -183,38 +216,29 @@ export default function SituationCard({
   }, [situation?.updated_at, scenario?.id]);
 
   const hasScenarioFallback = useMemo(() => {
-    return (
-      !!scenario &&
-      (scenario.situation_type ||
-        scenario.short_description ||
-        scenario.location ||
-        typeof scenario.injured === "number" ||
-        typeof scenario.fatalities === "number" ||
-        typeof scenario.uninjured === "number" ||
-        typeof scenario.unknown === "number" ||
-        scenario.event_date ||
-        scenario.event_time ||
-        scenario.timezone)
+    return Boolean(
+      scenario &&
+        (scenario.situation_type ||
+          scenario.short_description ||
+          scenario.location ||
+          typeof scenario.injured === "number" ||
+          typeof scenario.fatalities === "number" ||
+          typeof scenario.uninjured === "number" ||
+          typeof scenario.unknown === "number" ||
+          scenario.event_date ||
+          scenario.event_time ||
+          scenario.timezone)
     );
   }, [scenario]);
 
   if (!situation && !hasScenarioFallback) {
-    return (
-      <div className="rounded-[var(--radius)] border border-border bg-card p-3 text-xs font-semibold text-muted-foreground">
-        Loading…
-      </div>
-    );
+    return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
   }
 
   const s = situation;
 
   const situationType = safeText(scenario?.situation_type ?? s?.situation_type);
-
-  // Single description (no duplication)
-  const shortDescription = safeText(
-    scenario?.short_description ?? s?.short_description,
-    " "
-  );
+  const shortDescription = safeText(scenario?.short_description ?? s?.short_description, " ");
 
   const dateISO = (scenario?.event_date ?? s?.event_date) ?? null;
   const date = fmtDate(dateISO);
@@ -225,29 +249,23 @@ export default function SituationCard({
 
   const location = safeText(scenario?.location ?? s?.location);
 
-  const injuredVal =
-    typeof s?.injured === "number" ? s?.injured : scenario?.injured;
-  const fatalitiesVal =
-    typeof s?.fatalities === "number" ? s?.fatalities : scenario?.fatalities;
-  const uninjuredVal =
-    typeof s?.uninjured === "number" ? s?.uninjured : scenario?.uninjured;
-  const unknownVal =
-    typeof s?.unknown === "number" ? s?.unknown : scenario?.unknown;
+  const injuredVal = typeof s?.injured === "number" ? s?.injured : scenario?.injured;
+  const fatalitiesVal = typeof s?.fatalities === "number" ? s?.fatalities : scenario?.fatalities;
+  const uninjuredVal = typeof s?.uninjured === "number" ? s?.uninjured : scenario?.uninjured;
+  const unknownVal = typeof s?.unknown === "number" ? s?.unknown : scenario?.unknown;
 
-  const updatedAt = s?.updated_at
-    ? new Date(s.updated_at).toLocaleString()
-    : null;
+  const updatedAt = s?.updated_at ? new Date(s.updated_at).toLocaleString() : null;
   const updatedBy = s?.updated_by ? String(s.updated_by) : null;
 
   async function onSave() {
     if (!onUpdateCasualties) return;
+
     setErr(null);
     setSaving(true);
 
     try {
       const baseInjured = typeof injuredVal === "number" ? injuredVal : 0;
-      const baseFatalities =
-        typeof fatalitiesVal === "number" ? fatalitiesVal : 0;
+      const baseFatalities = typeof fatalitiesVal === "number" ? fatalitiesVal : 0;
       const baseUninjured = typeof uninjuredVal === "number" ? uninjuredVal : 0;
       const baseUnknown = typeof unknownVal === "number" ? unknownVal : 0;
 
@@ -268,185 +286,186 @@ export default function SituationCard({
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-      {/* LEFT: Situation */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader>
-          <CardTitle>Situation</CardTitle>
-          <CardDescription>Classification and summary</CardDescription>
-        </CardHeader>
+    <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
+      {/* LEFT */}
+      <div className={isMobile ? "" : "col-span-7"}>
+        <Card className="shadow-soft">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 opacity-80" />
+              Situation
+            </CardTitle>
+            <CardDescription>Classification and summary</CardDescription>
+          </CardHeader>
 
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <div className="text-[11px] font-semibold text-muted-foreground">
-                Situation type
-              </div>
-              <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm font-semibold">
-                {situationType}
-              </div>
+          <CardContent className="space-y-3">
+            <FieldRow
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Situation type"
+              value={situationType}
+            />
+
+            <FieldRow
+              icon={<MapPin className="h-4 w-4" />}
+              label="Location"
+              value={location}
+            />
+
+            <div className={isMobile ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-3"}>
+              <FieldRow
+                icon={<CalendarDays className="h-4 w-4" />}
+                label="Date"
+                value={date}
+              />
+              <FieldRow
+                icon={<Clock className="h-4 w-4" />}
+                label="Time"
+                value={time}
+              />
+              <FieldRow
+                icon={<Clock className="h-4 w-4" />}
+                label="Timezone"
+                value={tz}
+              />
             </div>
 
-            <div className="space-y-1">
-              <div className="text-[11px] font-semibold text-muted-foreground">
-                Location
+            <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
+              <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+                <FileText className="h-4 w-4 opacity-80" />
+                <span className="font-semibold">Short description</span>
               </div>
-              <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm font-semibold">
-                {location}
-              </div>
+              <div className="mt-1 text-sm whitespace-pre-wrap">{shortDescription}</div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Event mini row */}
-          <div className="grid gap-2 sm:grid-cols-3">
-            <div className="rounded-[var(--radius)] border border-border bg-secondary/20 px-3 py-2">
-              <div className="text-[11px] font-semibold text-muted-foreground">
-                Date
-              </div>
-              <div className="mt-0.5 text-sm font-bold">{date}</div>
-            </div>
-            <div className="rounded-[var(--radius)] border border-border bg-secondary/20 px-3 py-2">
-              <div className="text-[11px] font-semibold text-muted-foreground">
-                Time
-              </div>
-              <div className="mt-0.5 text-sm font-bold">{time}</div>
-            </div>
-            <div className="rounded-[var(--radius)] border border-border bg-secondary/20 px-3 py-2">
-              <div className="text-[11px] font-semibold text-muted-foreground">
-                Timezone
-              </div>
-              <div className="mt-0.5 text-sm font-bold">{tz}</div>
-            </div>
-          </div>
-
-          {/* SINGLE description */}
-          <div className="space-y-1">
-            <div className="text-[11px] font-semibold text-muted-foreground">
-              Short description
-            </div>
-            <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm leading-relaxed">
-              {shortDescription}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* RIGHT: Casualties */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle>Casualties</CardTitle>
+      {/* RIGHT */}
+      <div className={isMobile ? "" : "col-span-5"}>
+        <Card className="shadow-soft">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-4 w-4 opacity-80" />
+              Casualties
+            </CardTitle>
             <CardDescription>Current numbers</CardDescription>
-          </div>
+          </CardHeader>
 
-          {onUpdateCasualties ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setEditOpen((v) => !v)}
-              disabled={saving}
-            >
-              {editOpen ? "Close" : "Edit"}
-            </Button>
-          ) : null}
-        </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <SmallStat
+                icon={<AlertTriangle className="h-4 w-4" />}
+                label="Injured"
+                value={injuredVal ?? null}
+              />
+              <SmallStat
+                icon={<Skull className="h-4 w-4" />}
+                label="Fatalities"
+                value={fatalitiesVal ?? null}
+              />
+              <SmallStat
+                icon={<UserCheck className="h-4 w-4" />}
+                label="Uninjured"
+                value={uninjuredVal ?? null}
+              />
+              <SmallStat
+                icon={<HelpCircle className="h-4 w-4" />}
+                label="Unknown"
+                value={unknownVal ?? null}
+              />
+            </div>
 
-        <CardContent className="space-y-3">
-          <div
-            className={["grid gap-2", isMobile ? "grid-cols-2" : "grid-cols-2"].join(
-              " "
-            )}
-          >
-            <SmallStat label="Injured" value={injuredVal as any} />
-            <SmallStat label="Fatalities" value={fatalitiesVal as any} />
-            <SmallStat label="Uninjured" value={uninjuredVal as any} />
-            <SmallStat label="Unknown" value={unknownVal as any} />
-          </div>
+            {onUpdateCasualties ? (
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  onClick={() => setEditOpen((v) => !v)}
+                  disabled={saving}
+                  className="gap-2"
+                >
+                  <Pencil className="h-4 w-4" />
+                  {editOpen ? "Close" : "Edit"}
+                </Button>
 
-          {editOpen ? (
-            <div className="space-y-2 rounded-[var(--radius)] border border-border bg-secondary/20 p-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">
-                    Injured
+                {s && (updatedAt || updatedBy) ? (
+                  <div className="text-xs text-[color:var(--studio-muted2)] text-right">
+                    {updatedAt ? `Last updated: ${updatedAt}` : ""}
+                    {updatedAt && updatedBy ? " · " : ""}
+                    {updatedBy ? `By: ${updatedBy}` : ""}
                   </div>
-                  <Input
-                    value={injured}
-                    onChange={(e) => setInjured(e.target.value)}
-                    placeholder="e.g. 2"
-                  />
+                ) : null}
+              </div>
+            ) : null}
+
+            {editOpen ? (
+              <div className="space-y-3 rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-[color:var(--studio-muted2)] mb-1">
+                      Injured
+                    </div>
+                    <Input
+                      value={injured}
+                      onChange={(e) => setInjured(e.target.value)}
+                      placeholder="e.g. 2"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-[color:var(--studio-muted2)] mb-1">
+                      Fatalities
+                    </div>
+                    <Input
+                      value={fatalities}
+                      onChange={(e) => setFatalities(e.target.value)}
+                      placeholder="e.g. 0"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-[color:var(--studio-muted2)] mb-1">
+                      Uninjured
+                    </div>
+                    <Input
+                      value={uninjured}
+                      onChange={(e) => setUninjured(e.target.value)}
+                      placeholder="e.g. 20"
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-[color:var(--studio-muted2)] mb-1">
+                      Unknown
+                    </div>
+                    <Input
+                      value={unknown}
+                      onChange={(e) => setUnknown(e.target.value)}
+                      placeholder="e.g. 1"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">
-                    Fatalities
+                {err ? (
+                  <div className="rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+                    {err}
                   </div>
-                  <Input
-                    value={fatalities}
-                    onChange={(e) => setFatalities(e.target.value)}
-                    placeholder="e.g. 0"
-                  />
-                </div>
+                ) : null}
 
-                <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">
-                    Uninjured
-                  </div>
-                  <Input
-                    value={uninjured}
-                    onChange={(e) => setUninjured(e.target.value)}
-                    placeholder="e.g. 20"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <div className="text-[11px] font-semibold text-muted-foreground">
-                    Unknown
-                  </div>
-                  <Input
-                    value={unknown}
-                    onChange={(e) => setUnknown(e.target.value)}
-                    placeholder="e.g. 1"
-                  />
+                <div className="flex items-center gap-2">
+                  <Button variant="secondary" onClick={() => setEditOpen(false)} disabled={saving} className="gap-2">
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                  <Button onClick={onSave} disabled={saving} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
                 </div>
               </div>
-
-              {err ? (
-                <div className="rounded-[var(--radius)] border border-border bg-destructive/5 p-2 text-xs font-semibold text-destructive">
-                  {err}
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEditOpen(false)}
-                  disabled={saving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={onSave}
-                  disabled={saving}
-                >
-                  {saving ? "Saving…" : "Save"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
-          {s && (updatedAt || updatedBy) ? (
-            <div className="text-[11px] text-muted-foreground">
-              {updatedAt ? `Last updated: ${updatedAt}` : ""}
-              {updatedAt && updatedBy ? " · " : ""}
-              {updatedBy ? `By: ${updatedBy}` : ""}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+            ) : null}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

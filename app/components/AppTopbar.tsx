@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, LogOut, Menu } from "lucide-react";
 
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/app/components/ui/button";
@@ -21,9 +21,11 @@ function titleFromPath(pathname: string) {
 }
 
 export default function AppTopbar({
-  onToggleMobile,
+  isMobile,
+  onToggleMobileSidebar,
 }: {
-  onToggleMobile?: () => void;
+  isMobile?: boolean;
+  onToggleMobileSidebar?: () => void;
 }) {
   const pathname = usePathname();
   const t = useMemo(() => titleFromPath(pathname), [pathname]);
@@ -43,9 +45,15 @@ export default function AppTopbar({
       <div className="studio-container">
         <div className="h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {onToggleMobile ? (
-              <Button variant="outline" size="icon" onClick={onToggleMobile} aria-label="Open menu">
-                <span className="text-lg leading-none">≡</span>
+            {isMobile && onToggleMobileSidebar ? (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={onToggleMobileSidebar}
+                aria-label="Open menu"
+                title="Menu"
+              >
+                <Menu className="h-4 w-4" />
               </Button>
             ) : null}
 

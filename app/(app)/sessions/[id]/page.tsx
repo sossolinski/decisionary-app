@@ -31,7 +31,17 @@ import PulseFeed from "@/app/components/PulseFeed";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { X, ChevronDown, SlidersHorizontal } from "lucide-react";
+import {
+  X,
+  ChevronDown,
+  SlidersHorizontal,
+  LayoutDashboard,
+  MessagesSquare,
+  Radio,
+  FileText,
+  ListChecks,
+  Wrench,
+} from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -229,7 +239,9 @@ export default function SessionParticipantPage() {
 
       const sa = (sess as any)?.started_at ?? null;
       setStartedAt(typeof sa === "string" && sa ? sa : null);
-      setSessionOwnerId(typeof ownerId === "string" && ownerId ? ownerId : null);
+      setSessionOwnerId(
+        typeof ownerId === "string" && ownerId ? ownerId : null
+      );
 
       if (!scenarioId) {
         setScenario(null);
@@ -250,13 +262,18 @@ export default function SessionParticipantPage() {
       setError(
         (prev) =>
           prev ??
-          (e?.message ? `Scenario/meta load: ${e.message}` : "Scenario/meta load failed")
+          (e?.message
+            ? `Scenario/meta load: ${e.message}`
+            : "Scenario/meta load failed")
       );
     }
   }
 
   function getSeen(kind: "inbox" | "pulse") {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(lsKey(sessionId, kind)) : null;
+    const raw =
+      typeof window !== "undefined"
+        ? localStorage.getItem(lsKey(sessionId, kind))
+        : null;
     const dt = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(dt) ? dt : 0;
   }
@@ -271,14 +288,12 @@ export default function SessionParticipantPage() {
   async function refreshUnseen() {
     if (!validSessionId) return;
 
-    // total new since seen
     const seenInbox = getSeen("inbox");
     const seenPulse = getSeen("pulse");
 
     const inboxSince = new Date(seenInbox || 0).toISOString();
     const pulseSince = new Date(seenPulse || 0).toISOString();
 
-    // total new since inboxSeen
     const { count: totalNewInbox } = await supabase
       .from("session_injects")
       .select("id", { count: "exact", head: true })
@@ -292,10 +307,12 @@ export default function SessionParticipantPage() {
       .gte("delivered_at", inboxSince)
       .eq("injects.channel", "pulse");
 
-    const inboxNew = Math.max(0, (totalNewInbox ?? 0) - (pulseNewForInbox ?? 0));
+    const inboxNew = Math.max(
+      0,
+      (totalNewInbox ?? 0) - (pulseNewForInbox ?? 0)
+    );
     setUnseenInbox(inboxNew);
 
-    // pulse new since pulseSeen
     const { count: pulseNew } = await supabase
       .from("session_injects")
       .select("id, injects:inject_id(channel)", { count: "exact", head: true })
@@ -352,15 +369,15 @@ export default function SessionParticipantPage() {
       }
     }
     function onDocMouseDown(e: MouseEvent) {
-      // tools
       if (toolsOpen) {
         const el = toolsWrapRef.current;
-        if (el && e.target instanceof Node && !el.contains(e.target)) setToolsOpen(false);
+        if (el && e.target instanceof Node && !el.contains(e.target))
+          setToolsOpen(false);
       }
-      // filters
       if (filtersOpen) {
         const el2 = filtersWrapRef.current;
-        if (el2 && e.target instanceof Node && !el2.contains(e.target)) setFiltersOpen(false);
+        if (el2 && e.target instanceof Node && !el2.contains(e.target))
+          setFiltersOpen(false);
       }
     }
     window.addEventListener("keydown", onKey);
@@ -371,7 +388,7 @@ export default function SessionParticipantPage() {
     };
   }, [toolsOpen, filtersOpen]);
 
-  // Role gating (session_role_assignments OR created_by fallback)
+  // ✅ Role gating (session_role_assignments OR created_by fallback)
   useEffect(() => {
     if (!validSessionId) return;
     let alive = true;
@@ -388,6 +405,7 @@ export default function SessionParticipantPage() {
           return;
         }
 
+        // owner = facilitator
         if (sessionOwnerId && sessionOwnerId === authUserId) {
           if (alive) setIsFacilitator(true);
           return;
@@ -450,7 +468,7 @@ export default function SessionParticipantPage() {
       });
     });
 
-    // Unseen subscriptions (cheap: just refresh counts)
+    // Unseen subscriptions
     const unsubInbox = subscribeInbox(sessionId, () => refreshUnseen(), 300);
     const unsubPulse = subscribePulse(sessionId, () => refreshUnseen(), 300);
 
@@ -484,7 +502,9 @@ export default function SessionParticipantPage() {
       setActions((prev) => [saved, ...prev]);
 
       if (actionType === "act") {
-        const title = `Update: action taken on "${selectedItem.injects?.title ?? "message"}"`;
+        const title = `Update: action taken on "${
+          selectedItem.injects?.title ?? "message"
+        }"`;
         const body =
           `Decision recorded.\n\n` +
           `Action: ACT\n` +
@@ -553,11 +573,18 @@ export default function SessionParticipantPage() {
   }
 
   const inboxFiltersActive =
-    Boolean(inboxSearch.trim()) || Boolean(inboxSeverity) || Boolean(inboxChannel);
-  const pulseFiltersActive = Boolean(pulseSearch.trim()) || Boolean(pulseSeverity);
+    Boolean(inboxSearch.trim()) ||
+    Boolean(inboxSeverity) ||
+    Boolean(inboxChannel);
+  const pulseFiltersActive =
+    Boolean(pulseSearch.trim()) || Boolean(pulseSeverity);
 
   if (!sessionId) {
-    return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
+    return (
+      <div className="text-sm text-[color:var(--studio-muted2)]">
+        Loading…
+      </div>
+    );
   }
 
   if (!validSessionId) {
@@ -583,7 +610,7 @@ export default function SessionParticipantPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
         <div className="px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -594,7 +621,9 @@ export default function SessionParticipantPage() {
             </h1>
             <div className="mt-1 text-sm text-[color:var(--studio-muted2)]">
               Exercise clock:{" "}
-              <span className="text-foreground font-medium">{exerciseClock}</span>
+              <span className="text-foreground font-medium">
+                {exerciseClock}
+              </span>
             </div>
           </div>
 
@@ -605,6 +634,7 @@ export default function SessionParticipantPage() {
               className="gap-2"
               title="Toggle COP"
             >
+              <LayoutDashboard className="h-4 w-4 opacity-80" />
               <span className="font-medium">COP</span>
               <ChevronDown
                 className={[
@@ -614,14 +644,7 @@ export default function SessionParticipantPage() {
               />
             </Button>
 
-            <Button variant="outline" onClick={refreshSituation}>
-              Refresh COP
-            </Button>
-            <Button variant="outline" onClick={refreshActions}>
-              Refresh actions
-            </Button>
-
-            <div className="relative" ref={toolsWrapRef}>
+            <div className="relative overflow-visible" ref={toolsWrapRef}>
               {roleLoading ? (
                 <div className="text-xs text-[color:var(--studio-muted2)] px-2">
                   Loading role…
@@ -633,15 +656,22 @@ export default function SessionParticipantPage() {
                       e.stopPropagation();
                       setToolsOpen((v) => !v);
                     }}
+                    className="gap-2"
                   >
+                    <Wrench className="h-4 w-4" />
                     Facilitator tools
                   </Button>
 
                   {toolsOpen ? (
-                    <div className="absolute right-0 mt-2 w-[460px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-20">
+                    <div className="absolute right-0 mt-2 w-[460px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
                       <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-                        <div className="text-sm font-semibold">Facilitator panel</div>
-                        <Button variant="outline" onClick={() => setToolsOpen(false)}>
+                        <div className="text-sm font-semibold">
+                          Facilitator panel
+                        </div>
+                        <Button
+                          variant="outline"
+                          onClick={() => setToolsOpen(false)}
+                        >
                           Close
                         </Button>
                       </div>
@@ -663,7 +693,10 @@ export default function SessionParticipantPage() {
             <div className="px-5 py-4">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
-                  <div className="text-sm font-semibold">Common Operating Picture</div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <LayoutDashboard className="h-4 w-4 opacity-80" />
+                    Common Operating Picture
+                  </div>
                   <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
                     Update key figures and keep the situation current.
                   </div>
@@ -690,13 +723,18 @@ export default function SessionParticipantPage() {
       </div>
 
       {/* Streams + Detail */}
-      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
-        {/* STREAMS (smaller) */}
+      <div
+        className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}
+      >
+        {/* STREAMS */}
         <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
             <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold">Streams</div>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <MessagesSquare className="h-4 w-4 opacity-80" />
+                  Streams
+                </div>
                 <div className="text-xs text-[color:var(--studio-muted2)]">
                   Inbox + Pulse. Badges show unseen messages.
                 </div>
@@ -706,7 +744,7 @@ export default function SessionParticipantPage() {
                 <button
                   type="button"
                   className={[
-                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition",
+                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
                     streamTab === "inbox"
                       ? "bg-primary/10 border-primary/25"
                       : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
@@ -714,18 +752,18 @@ export default function SessionParticipantPage() {
                   onClick={() => {
                     setStreamTab("inbox");
                     setSelectedSource("inbox");
-                    // optional: auto mark seen when user switches to inbox
                     markSeen("inbox");
                     refreshUnseen();
                   }}
                 >
+                  <MessagesSquare className="h-4 w-4 opacity-75" />
                   Inbox <Badge n={unseenInbox} />
                 </button>
 
                 <button
                   type="button"
                   className={[
-                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition",
+                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
                     streamTab === "pulse"
                       ? "bg-primary/10 border-primary/25"
                       : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
@@ -737,27 +775,41 @@ export default function SessionParticipantPage() {
                     refreshUnseen();
                   }}
                 >
+                  <Radio className="h-4 w-4 opacity-75" />
                   Pulse <Badge n={unseenPulse} />
                 </button>
 
-                <div className="relative" ref={filtersWrapRef}>
+                <div className="relative overflow-visible" ref={filtersWrapRef}>
                   <Button
                     variant="outline"
                     size="icon"
                     onClick={() => setFiltersOpen((v) => !v)}
                     title="Filters"
-                    className={streamTab === "inbox" ? (inboxFiltersActive ? "border-primary/25" : "") : pulseFiltersActive ? "border-primary/25" : ""}
+                    className={
+                      streamTab === "inbox"
+                        ? inboxFiltersActive
+                          ? "border-primary/25"
+                          : ""
+                        : pulseFiltersActive
+                        ? "border-primary/25"
+                        : ""
+                    }
                   >
                     <SlidersHorizontal className="h-4 w-4" />
                   </Button>
 
                   {filtersOpen ? (
-                    <div className="absolute right-0 mt-2 w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-20">
+                    <div className="absolute right-0 mt-2 w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
                       <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
                         <div className="text-sm font-semibold">
-                          {streamTab === "inbox" ? "Inbox filters" : "Pulse filters"}
+                          {streamTab === "inbox"
+                            ? "Inbox filters"
+                            : "Pulse filters"}
                         </div>
-                        <Button variant="outline" onClick={() => setFiltersOpen(false)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => setFiltersOpen(false)}
+                        >
                           Close
                         </Button>
                       </div>
@@ -774,7 +826,9 @@ export default function SessionParticipantPage() {
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Select
                                 value={inboxSeverity ?? ""}
-                                onChange={(v) => setInboxSeverity(v ? v : null)}
+                                onChange={(v) =>
+                                  setInboxSeverity(v ? v : null)
+                                }
                               >
                                 <option value="">Severity: All</option>
                                 <option value="low">LOW</option>
@@ -795,7 +849,11 @@ export default function SessionParticipantPage() {
                             </div>
 
                             <div className="flex gap-2">
-                              <Button variant="secondary" className="flex-1" onClick={clearInboxFilters}>
+                              <Button
+                                variant="secondary"
+                                className="flex-1"
+                                onClick={clearInboxFilters}
+                              >
                                 Clear
                               </Button>
                               <Button
@@ -842,7 +900,9 @@ export default function SessionParticipantPage() {
 
                             <Select
                               value={pulseSeverity ?? ""}
-                              onChange={(v) => setPulseSeverity(v ? v : null)}
+                              onChange={(v) =>
+                                setPulseSeverity(v ? v : null)
+                              }
                             >
                               <option value="">Severity: All</option>
                               <option value="low">LOW</option>
@@ -852,7 +912,11 @@ export default function SessionParticipantPage() {
                             </Select>
 
                             <div className="flex gap-2">
-                              <Button variant="secondary" className="flex-1" onClick={clearPulseFilters}>
+                              <Button
+                                variant="secondary"
+                                className="flex-1"
+                                onClick={clearPulseFilters}
+                              >
                                 Clear
                               </Button>
                               <Button
@@ -918,13 +982,18 @@ export default function SessionParticipantPage() {
           </div>
         </div>
 
-        {/* DETAIL (bigger) */}
+        {/* DETAIL */}
         <div className={isMobile ? "" : "col-span-8"}>
           <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
             <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-              <div className="text-sm font-semibold">Message detail</div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <FileText className="h-4 w-4 opacity-80" />
+                Message detail
+              </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
-                {selectedItem ? `Actions: ${actionsLoading ? "…" : selectedActions.length}` : "No selection"}
+                {selectedItem
+                  ? `Actions: ${actionsLoading ? "…" : selectedActions.length}`
+                  : "No selection"}
               </div>
             </div>
 
@@ -940,49 +1009,58 @@ export default function SessionParticipantPage() {
                 onConfirm={() => doPulseDecision("confirm")}
                 onDeny={() => doPulseDecision("deny")}
               />
-
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-semibold">Action log</div>
-                  <Button variant="outline" onClick={refreshActions}>
-                    Refresh
-                  </Button>
-                </div>
-
-                {actionsError ? (
-                  <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">{actionsError}</div>
-                ) : null}
-
-                <div className="mt-3 space-y-2">
-                  {actionsLoading ? (
-                    <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>
-                  ) : actions.length === 0 ? (
-                    <div className="text-sm text-[color:var(--studio-muted2)]">No actions yet.</div>
-                  ) : (
-                    actions.slice(0, 30).map((a) => (
-                      <div
-                        key={a.id}
-                        className="rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-3 py-2"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-xs text-[color:var(--studio-muted2)]">{fmt(a.created_at)}</div>
-                          <div className="text-xs font-semibold">{a.action_type.toUpperCase()}</div>
-                        </div>
-                        {a.comment ? <div className="mt-1 text-sm">{a.comment}</div> : null}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Small helper: if COP never loads */}
-          {!situation ? (
-            <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
-              COP data not loaded yet. Use <span className="font-medium">Refresh COP</span> or open COP panel.
-            </div>
-          ) : null}
+      {/* ACTION LOG – bottom */}
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <ListChecks className="h-4 w-4 opacity-80" />
+            Action log
+          </div>
+          <div className="text-xs text-[color:var(--studio-muted2)]">
+            {actionsLoading
+              ? "Loading…"
+              : actionsError
+              ? actionsError
+              : `${actions.length} total`}
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="space-y-2">
+            {actionsLoading ? (
+              <div className="text-sm text-[color:var(--studio-muted2)]">
+                Loading…
+              </div>
+            ) : actions.length === 0 ? (
+              <div className="text-sm text-[color:var(--studio-muted2)]">
+                No actions yet.
+              </div>
+            ) : (
+              actions.slice(0, 30).map((a) => (
+                <div
+                  key={a.id}
+                  className="rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-[color:var(--studio-muted2)]">
+                      {fmt(a.created_at)}
+                    </div>
+                    <div className="text-xs font-semibold">
+                      {a.action_type.toUpperCase()}
+                    </div>
+                  </div>
+                  {a.comment ? (
+                    <div className="mt-1 text-sm">{a.comment}</div>
+                  ) : null}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

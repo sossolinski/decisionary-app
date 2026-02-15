@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessions";
 import { Button } from "@/app/components/ui/button";
+import { Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
 type Props = {
   sessionId: string;
@@ -55,9 +56,18 @@ function saveSeen(key: string, set: Set<string>) {
   } catch {}
 }
 
+function severityIcon(sev?: string | null) {
+  const v = String(sev ?? "").toLowerCase();
+  if (v === "critical") return <Flame className="h-3.5 w-3.5" />;
+  if (v === "high") return <AlertTriangle className="h-3.5 w-3.5" />;
+  if (v === "medium") return <AlertCircle className="h-3.5 w-3.5" />;
+  if (v === "low") return <Circle className="h-3.5 w-3.5" />;
+  return <Circle className="h-3.5 w-3.5 opacity-60" />;
+}
+
 function badge(kind: "state" | "severity", value: string) {
   const base =
-    "inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-bold tracking-wide";
+    "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold tracking-wide";
   const v = value.toLowerCase();
 
   if (kind === "state") {
@@ -189,7 +199,6 @@ export default function PulseFeed({
   useEffect(() => {
     if (!sessionId) return;
 
-    // reset state on filter/session change
     setPage(1);
     pageRef.current = 1;
     prevIdsRef.current = new Set();
@@ -268,7 +277,6 @@ export default function PulseFeed({
         </div>
       ) : null}
 
-      {/* Container: stable height + scroll inside */}
       <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
         <div className="max-h-[65vh] overflow-auto p-2">
           {loading ? (
@@ -294,9 +302,8 @@ export default function PulseFeed({
                 [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
                 "Unknown source";
 
-              const sevTag = item.injects?.severity
-                ? String(item.injects.severity).toUpperCase()
-                : null;
+              const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
+              const sv = String(item.injects?.severity ?? "").toLowerCase();
 
               const time = fmtTime(item.delivered_at);
 
@@ -314,35 +321,50 @@ export default function PulseFeed({
                   className={[
                     "w-full text-left rounded-[var(--radius)] border px-3 py-3 transition-colors",
                     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-                    active
-                      ? "border-foreground/25 bg-secondary/70"
-                      : "border-border bg-card hover:bg-secondary/40",
+                    active ? "border-foreground/25 bg-secondary/70" : "border-border bg-card hover:bg-secondary/40",
                     flash ? "shadow-soft ring-2 ring-foreground/10" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-semibold">{title}</div>
+                    <div className="min-w-0 flex items-start gap-2">
+                      <div className="mt-0.5 shrink-0 opacity-80">
+                        <Radio className="h-4 w-4" />
+                      </div>
 
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        {unread ? <span className={badge("state", "unread")}>UNREAD</span> : null}
-                        {flash ? <span className={badge("state", "new")}>NEW</span> : null}
-                        {sevTag ? <span className={badge("severity", sevTag)}>{sevTag}</span> : null}
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold">{title}</div>
+
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
+                          {unread ? (
+                            <span className={badge("state", "unread")}>
+                              <Radio className="h-3.5 w-3.5" />
+                              UNREAD
+                            </span>
+                          ) : null}
+
+                          {flash ? (
+                            <span className={badge("state", "new")}>
+                              <Radio className="h-3.5 w-3.5" />
+                              NEW
+                            </span>
+                          ) : null}
+
+                          {sevTag ? (
+                            <span className={badge("severity", sevTag)}>
+                              {severityIcon(sv)}
+                              {sevTag}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-[11px] font-semibold text-muted-foreground">
-                      {time}
-                    </div>
+                    <div className="shrink-0 text-[11px] font-semibold text-muted-foreground">{time}</div>
                   </div>
 
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {preview ? preview : "(no content)"}
-                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">{preview ? preview : "(no content)"}</div>
 
-                  <div className="mt-2 text-[11px] font-semibold text-muted-foreground">
-                    {metaLeft}
-                  </div>
+                  <div className="mt-2 text-[11px] font-semibold text-muted-foreground">{metaLeft}</div>
                 </button>
               );
             })}
@@ -356,22 +378,12 @@ export default function PulseFeed({
         </div>
 
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
             Prev
           </Button>
 
           {pages.map((p) => (
-            <Button
-              key={p}
-              variant={p === page ? "secondary" : "ghost"}
-              size="sm"
-              onClick={() => setPage(p)}
-            >
+            <Button key={p} variant={p === page ? "secondary" : "ghost"} size="sm" onClick={() => setPage(p)}>
               {p}
             </Button>
           ))}

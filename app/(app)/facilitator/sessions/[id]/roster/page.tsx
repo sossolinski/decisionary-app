@@ -1,29 +1,51 @@
 // app/(app)/facilitator/sessions/[id]/roster/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { getMyRole } from "@/lib/users";
-import {
-  listSessionRoster,
-  kickFromSession,
-  type SessionRosterRow,
-} from "@/lib/sessionsRuntime";
+import { listSessionRoster, kickFromSession, type SessionRosterRow } from "@/lib/sessionsRuntime";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import { Users, RefreshCw, UserMinus, ArrowLeft, Shield, User } from "lucide-react";
+
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function fmt(dt?: string | null) {
+  if (!dt) return "—";
+  try {
+    return new Date(dt).toLocaleString();
+  } catch {
+    return dt;
+  }
+}
+
+function RolePill({ role }: { role?: string | null }) {
+  const r = String(role ?? "participant").toLowerCase();
+  const base =
+    "inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] px-2.5 py-1 text-xs font-semibold";
+  const cls =
+    r === "facilitator"
+      ? "bg-primary/10 text-primary"
+      : "bg-[var(--studio-surface2)] text-foreground";
+
+  return (
+    <span className={`${base} ${cls}`}>
+      {r === "facilitator" ? <Shield className="h-3.5 w-3.5 opacity-80" /> : <User className="h-3.5 w-3.5 opacity-70" />}
+      {r.toUpperCase()}
+    </span>
+  );
+}
 
 export default function FacilitatorRosterPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const sessionId = params?.id ?? "";
+  const valid = useMemo(() => isUuid(sessionId), [sessionId]);
 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -31,11 +53,17 @@ export default function FacilitatorRosterPage() {
   const [rows, setRows] = useState<SessionRosterRow[]>([]);
 
   async function load() {
+    if (!valid) {
+      setLoading(false);
+      setError("Invalid session id (expected UUID).");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
       const r = await listSessionRoster(sessionId);
-      setRows(r ?? []);
+      setRows((r ?? []) as SessionRosterRow[]);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -44,31 +72,47 @@ export default function FacilitatorRosterPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator") {
-        router.replace("/participant");
-        return;
-      }
-      await load();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, sessionId]);
+    let cancelled = false;
 
-  async function onKick(participantId: string) {
-    if (!confirm("Remove participant from this session?")) return;
+    (async () => {
+      try {
+        const role = await getMyRole();
+        if (cancelled) return;
+
+        if (!role) return router.replace("/login");
+        if (role !== "facilitator") return router.replace("/participant");
+
+        await load();
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.message ?? "Failed to load roster.");
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, sessionId, valid]);
+
+  async function onKick(participantId: string, displayName?: string | null) {
+    if (!valid) return;
+    if (busyId) return;
+
+    const label = displayName?.trim() ? displayName.trim() : participantId;
+    if (!confirm(`Remove "${label}" from this session?`)) return;
 
     setBusyId(participantId);
     setError(null);
     try {
       await kickFromSession(sessionId, participantId);
-      await load();
+      // optimistic remove
+      setRows((prev) => prev.filter((x: any) => x.participant_id !== participantId));
     } catch (e: any) {
       setError(e?.message ?? String(e));
+      // fallback to reload if needed
+      await load();
     } finally {
       setBusyId(null);
     }
@@ -80,36 +124,45 @@ export default function FacilitatorRosterPage() {
 
   return (
     <div className="mx-auto w-full max-w-[var(--studio-max)] p-6 space-y-6">
+      {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Roster</h1>
+        <div className="space-y-1 min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
+            <Users className="h-5 w-5 opacity-80" />
+            Roster
+          </h1>
           <p className="text-sm text-muted-foreground">
             Participants currently registered in this session.
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => router.push(`/sessions/${sessionId}`)}
-          >
+          <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2">
+            <ArrowLeft className="h-4 w-4" />
             Back to session
           </Button>
-          <Button variant="secondary" onClick={load} disabled={!!busyId}>
+
+          <Button variant="outline" onClick={load} disabled={!!busyId || !valid} className="gap-2">
+            <RefreshCw className={["h-4 w-4", busyId ? "animate-spin" : ""].join(" ")} />
             Refresh
           </Button>
         </div>
       </div>
 
+      {/* Error */}
       {error ? (
         <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
           {error}
         </div>
       ) : null}
 
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
+      {/* List */}
+      <Card className="surface shadow-soft border border-[var(--studio-border)] overflow-hidden">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Participants</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4 opacity-80" />
+            Participants
+          </CardTitle>
           <CardDescription className="text-sm">
             {rows.length} total
           </CardDescription>
@@ -117,15 +170,13 @@ export default function FacilitatorRosterPage() {
 
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <div className="p-4 text-sm text-muted-foreground">
-              No participants yet.
-            </div>
+            <div className="p-4 text-sm text-muted-foreground">No participants yet.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-card">
-                    <th className="px-4 py-3 text-left font-semibold">Name</th>
+                  <tr className="border-b border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+                    <th className="px-4 py-3 text-left font-semibold">Participant</th>
                     <th className="px-4 py-3 text-left font-semibold">Role</th>
                     <th className="px-4 py-3 text-left font-semibold">Joined</th>
                     <th className="px-4 py-3 text-right font-semibold">Actions</th>
@@ -133,38 +184,39 @@ export default function FacilitatorRosterPage() {
                 </thead>
                 <tbody>
                   {rows.map((r: any) => {
-                    const isBusy = busyId === r.participant_id;
+                    const pid = r.participant_id as string;
+                    const isBusy = busyId === pid;
+
                     return (
-                      <tr key={r.participant_id} className="border-b border-border">
+                      <tr key={pid} className="border-b border-[var(--studio-border)]">
                         <td className="px-4 py-3">
-                          <div className="font-semibold">
+                          <div className="font-semibold truncate max-w-[520px]">
                             {r.display_name ?? "Anonymous"}
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {r.participant_id}
+                          <div className="text-xs text-muted-foreground truncate max-w-[520px]">
+                            {pid}
                           </div>
                         </td>
 
                         <td className="px-4 py-3">
-                          <span className="rounded-full border border-border bg-secondary px-2 py-1 text-xs font-semibold">
-                            {r.role ?? "participant"}
-                          </span>
+                          <RolePill role={r.role ?? "participant"} />
                         </td>
 
                         <td className="px-4 py-3 text-muted-foreground">
-                          {r.joined_at
-                            ? new Date(r.joined_at).toLocaleString()
-                            : "—"}
+                          {fmt(r.joined_at ?? null)}
                         </td>
 
                         <td className="px-4 py-3 text-right">
                           <Button
                             variant="secondary"
                             size="sm"
-                            onClick={() => onKick(r.participant_id)}
+                            onClick={() => onKick(pid, r.display_name ?? null)}
                             disabled={isBusy}
+                            className="gap-2"
+                            title="Remove from session"
                           >
-                            {isBusy ? "..." : "Remove"}
+                            <UserMinus className="h-4 w-4" />
+                            {isBusy ? "…" : "Remove"}
                           </Button>
                         </td>
                       </tr>
