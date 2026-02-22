@@ -1,5 +1,6 @@
 // lib/facilitator.ts
 import { supabase } from "./supabaseClient";
+import { assertNonEmptyTrimmed } from "./validation";
 
 /* =========================
    TYPES
@@ -70,10 +71,7 @@ export async function listScenarios(): Promise<Scenario[]> {
 export async function createScenario(title: string): Promise<Scenario> {
   const uid = await requireUserId();
 
-  const t = (title ?? "").trim();
-  if (!t) {
-    throw new Error("Scenario title is required.");
-  }
+  const t = assertNonEmptyTrimmed(title ?? "", "Scenario title");
 
   const { data, error } = await supabase
     .from("scenarios")

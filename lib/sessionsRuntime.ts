@@ -1,5 +1,6 @@
 // lib/sessionsRuntime.ts
 import { supabase } from "./supabaseClient";
+import { assertNonEmptyTrimmed, assertValidJoinCode, normalizeJoinCode } from "./validation";
 
 /* =========================
    TYPES
@@ -48,6 +49,12 @@ export type SessionParticipant = {
   profile: ProfileLite | null;
 };
 
+export type ParticipantRow = {
+  user_id: string;
+  joined_at: string | null;
+  profile: { id: string; email: string | null } | null;
+};
+
 export type SessionRoleSlot = {
   id: string;
   session_id: string;
@@ -82,15 +89,12 @@ async function requireUserId(): Promise<string> {
   return uid;
 }
 
-function normCode(code: string) {
-  return code.trim().toUpperCase();
-}
 
 async function tryRpc<T>(
   fn: string,
-  args: Record<string, any>
+  args: Record<string, unknown>
 ): Promise<T | null> {
-  const { data, error } = await supabase.rpc(fn as any, args as any);
+  const { data, error } = await supabase.rpc(fn as never, args as never);
   if (!error) return data as T;
 
   const msg = String(error.message ?? "").toLowerCase();
@@ -134,8 +138,9 @@ async function fetchScenarioLiteByIds(
 
   if (error) throw error;
 
-  for (const row of (data ?? []) as any[]) {
-    if (row?.id) map.set(row.id, row as SessionScenarioLite);
+  for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+    const id = row["id"];
+    if (typeof id === "string") map.set(id, row as SessionScenarioLite);
   }
   return map;
 }
@@ -153,25 +158,27 @@ export async function listSessions(): Promise<Session[]> {
 
   if (error) throw error;
 
-  const rows = (data ?? []) as any[];
-  const scenarioIds = rows.map((r) => r?.scenario_id).filter(Boolean) as string[];
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+  const scenarioIds = rows
+    .map((r) => r["scenario_id"])
+    .filter((value): value is string => typeof value === "string" && value.length > 0);
   const scenarioMap = await fetchScenarioLiteByIds(scenarioIds);
 
   return rows.map((r) => {
-    const sid = (r?.scenario_id ?? null) as string | null;
+    const sid = typeof r["scenario_id"] === "string" ? r["scenario_id"] : null;
     const scenario = sid ? scenarioMap.get(sid) ?? null : null;
 
     return {
-      id: r.id,
-      title: r.title ?? null,
+      id: String(r["id"] ?? ""),
+      title: typeof r["title"] === "string" ? r["title"] : null,
       scenario_id: sid,
       scenario,
-      join_code: r.join_code,
-      status: r.status,
-      created_at: r.created_at ?? null,
-      created_by: r.created_by ?? null,
-      started_at: r.started_at ?? null,
-      ended_at: r.ended_at ?? null,
+      join_code: String(r["join_code"] ?? ""),
+      status: String(r["status"] ?? "draft"),
+      created_at: typeof r["created_at"] === "string" ? r["created_at"] : null,
+      created_by: typeof r["created_by"] === "string" ? r["created_by"] : null,
+      started_at: typeof r["started_at"] === "string" ? r["started_at"] : null,
+      ended_at: typeof r["ended_at"] === "string" ? r["ended_at"] : null,
     } as Session;
   });
 }
@@ -186,9 +193,11 @@ export async function createSessionFromScenario(params: {
 }): Promise<string> {
   await requireUserId();
 
+  const title = assertNonEmptyTrimmed(params.title, "Session title");
+
   const { data, error } = await supabase.rpc("create_session_from_scenario", {
     p_scenario_id: params.scenarioId,
-    p_title: params.title,
+    p_title: title,
   });
 
   if (error) throw error;
@@ -209,7 +218,7 @@ export async function createSessionFromScenario(params: {
       session_id: sessionId,
       user_id: await requireUserId(),
       role_key: "facilitator",
-    } as any);
+    });
   }
 
   return sessionId;
@@ -232,7 +241,7 @@ export async function setSessionStatus(
     // fallback: direct update
   }
 
-  const patch: any = { status };
+  const patch: { status: "draft" | "live" | "ended"; ended_at?: string } = { status };
   if (status === "ended") patch.ended_at = new Date().toISOString();
 
   const { error } = await supabase.from("sessions").update(patch).eq("id", sessionId);
@@ -282,7 +291,8 @@ export async function deleteSession(sessionId: string) {
 export async function joinSessionByCode(code: string): Promise<string> {
   await requireUserId();
 
-  const joinCode = normCode(code);
+  const joinCode = normalizeJoinCode(code);
+  assertValidJoinCode(joinCode);
 
   // prefer RPC join_session(p_code)
   const sid = await tryRpc<string>("join_session", { p_code: joinCode });
@@ -333,7 +343,7 @@ export async function listSessionParticipants(
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as any;
+  return (data ?? []) as ParticipantRow[];
 }
 
 /**
@@ -352,13 +362,19 @@ export async function listSessionRoleAssignments(
 
   if (error) throw error;
 
-  return (data ?? []).map((r: any) => ({
-    id: r.id,
-    session_id: r.session_id,
-    user_id: r.user_id,
-    role_key: r.role_key ?? null,
-    scenario_role_id: r.scenario_role_id ?? null,
-    assigned_at: r.assigned_at ?? r.created_at ?? null,
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: String(r["id"] ?? ""),
+    session_id: String(r["session_id"] ?? ""),
+    user_id: String(r["user_id"] ?? ""),
+    role_key: typeof r["role_key"] === "string" ? r["role_key"] : null,
+    scenario_role_id:
+      typeof r["scenario_role_id"] === "string" ? r["scenario_role_id"] : null,
+    assigned_at:
+      typeof r["assigned_at"] === "string"
+        ? r["assigned_at"]
+        : typeof r["created_at"] === "string"
+          ? r["created_at"]
+          : null,
   })) as SessionRoleAssignment[];
 }
 
@@ -385,17 +401,18 @@ export async function assignUserToSessionRole(params: {
       user_id: params.userId,
       role_key: params.roleKey,
       assigned_at: new Date().toISOString(),
-    } as any,
-    { onConflict: "session_id,user_id,role_key" } as any
+    },
+    { onConflict: "session_id,user_id,role_key" }
   );
 
   if (error) throw error;
 }
 
 export async function listSessionRoleSlots(
-  _sessionId: string
+  sessionId: string
 ): Promise<SessionRoleSlot[]> {
   await requireUserId();
+  void sessionId;
   return [];
 }
 
@@ -420,11 +437,11 @@ export async function listSessionRoster(sessionId: string): Promise<SessionRoste
 
   const roleByUser = new Map<string, string>();
   for (const a of assignments ?? []) {
-    const role = (a as any)?.role_key ?? null;
+    const role = a?.role_key ?? null;
     if (a?.user_id && role) roleByUser.set(a.user_id, String(role));
   }
 
-  return (participants ?? []).map((p: any) => ({
+  return (participants ?? []).map((p) => ({
     participant_id: p.user_id,
     display_name: p.profile?.email ?? null,
     role: roleByUser.get(p.user_id) ?? null,

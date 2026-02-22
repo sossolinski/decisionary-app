@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { getMyRole } from "@/lib/users";
 import { listScenarios, listSessions } from "@/lib/sessionsRuntime";
+import { toErrorMessage } from "@/lib/error-utils";
 
 import {
   Card,
@@ -29,8 +30,8 @@ export default function FacilitatorHomePage() {
       const [sc, se] = await Promise.all([listScenarios(), listSessions()]);
       setScenarioCount((sc ?? []).length);
       setSessionCount((se ?? []).length);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (error: unknown) {
+      setError(toErrorMessage(error, "Failed to load facilitator dashboard data."));
     }
   }
 
@@ -42,7 +43,6 @@ export default function FacilitatorHomePage() {
       await loadCounts();
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   return (
