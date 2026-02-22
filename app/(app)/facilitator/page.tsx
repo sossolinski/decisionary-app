@@ -29,15 +29,22 @@ export default function FacilitatorHomePage() {
       const [sc, se] = await Promise.all([listScenarios(), listSessions()]);
       setScenarioCount((sc ?? []).length);
       setSessionCount((se ?? []).length);
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   }
 
   useEffect(() => {
     (async () => {
       const role = await getMyRole();
-      if (!role) return router.replace("/login");
-      if (role !== "facilitator") return router.replace("/participant");
+      if (!role) {
+        router.replace("/login");
+        return;
+      }
+      if (role !== "facilitator") {
+        router.replace("/participant");
+        return;
+      }
       await loadCounts();
       setLoading(false);
     })();
