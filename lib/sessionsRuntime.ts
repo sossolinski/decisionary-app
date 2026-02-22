@@ -48,6 +48,12 @@ export type SessionParticipant = {
   profile: ProfileLite | null;
 };
 
+export type ParticipantRow = {
+  user_id: string;
+  joined_at: string | null;
+  profile: { id: string; email: string | null } | null;
+};
+
 export type SessionRoleSlot = {
   id: string;
   session_id: string;
@@ -209,7 +215,7 @@ export async function createSessionFromScenario(params: {
       session_id: sessionId,
       user_id: await requireUserId(),
       role_key: "facilitator",
-    } as any);
+    });
   }
 
   return sessionId;
@@ -232,7 +238,7 @@ export async function setSessionStatus(
     // fallback: direct update
   }
 
-  const patch: any = { status };
+  const patch: { status: "draft" | "live" | "ended"; ended_at?: string } = { status };
   if (status === "ended") patch.ended_at = new Date().toISOString();
 
   const { error } = await supabase.from("sessions").update(patch).eq("id", sessionId);
@@ -333,7 +339,7 @@ export async function listSessionParticipants(
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as any;
+  return (data ?? []) as ParticipantRow[];
 }
 
 /**
@@ -385,17 +391,18 @@ export async function assignUserToSessionRole(params: {
       user_id: params.userId,
       role_key: params.roleKey,
       assigned_at: new Date().toISOString(),
-    } as any,
-    { onConflict: "session_id,user_id,role_key" } as any
+    },
+    { onConflict: "session_id,user_id,role_key" }
   );
 
   if (error) throw error;
 }
 
 export async function listSessionRoleSlots(
-  _sessionId: string
+  sessionId: string
 ): Promise<SessionRoleSlot[]> {
   await requireUserId();
+  void sessionId;
   return [];
 }
 

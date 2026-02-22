@@ -29,7 +29,6 @@ export default function FacilitatorHomePage() {
       const [sc, se] = await Promise.all([listScenarios(), listSessions()]);
       setScenarioCount((sc ?? []).length);
       setSessionCount((se ?? []).length);
-    } catch (e: any) {
       setError(e?.message ?? String(e));
     }
   }
