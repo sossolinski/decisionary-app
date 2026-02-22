@@ -1,4 +1,3 @@
-// lib/sessionsRuntime.ts
 import { supabase } from "./supabaseClient";
 
 /* =========================
@@ -25,7 +24,6 @@ export type Session = {
   title: string | null;
   scenario_id: string | null;
 
-  // hydrated client-side (2nd query), no FK/embed required
   scenario: SessionScenarioLite | null;
 
   join_code: string;
@@ -65,14 +63,20 @@ export type SessionRoleAssignment = {
   id: string;
   session_id: string;
   user_id: string;
-
-  // schema cache may lag; keep optional
   role_key?: string | null;
-
-  // legacy columns may exist
   scenario_role_id?: string | null;
-
   assigned_at: string | null;
+};
+
+export type ParticipantSession = {
+  id: string;
+  title: string | null;
+  join_code: string;
+  status: string;
+  created_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  my_role_key: string | null;
 };
 
 /* =========================
@@ -100,14 +104,13 @@ async function tryRpc<T>(
   if (!error) return data as T;
 
   const msg = String(error.message ?? "").toLowerCase();
-  // treat missing function as "not available"
   if (msg.includes("does not exist") || msg.includes("function")) return null;
 
   throw error;
 }
 
 /* =========================
-   SCENARIOS (for dropdown)
+   SCENARIOS
 ========================= */
 
 export async function listScenarios(): Promise<ScenarioListItem[]> {
@@ -123,7 +126,7 @@ export async function listScenarios(): Promise<ScenarioListItem[]> {
 }
 
 /* =========================
-   SESSIONS LIST (NO EMBED)
+   SESSIONS LIST
 ========================= */
 
 async function fetchScenarioLiteByIds(
@@ -149,7 +152,6 @@ async function fetchScenarioLiteByIds(
 export async function listSessions(): Promise<Session[]> {
   await requireUserId();
 
-  // sessions without relational embed (avoids schema cache FK errors)
   const { data, error } = await supabase
     .from("sessions")
     .select(
@@ -183,6 +185,91 @@ export async function listSessions(): Promise<Session[]> {
 }
 
 /* =========================
+   PARTICIPANT: MY SESSIONS
+========================= */
+
+export async function listMyParticipantSessions(): Promise<ParticipantSession[]> {
+  const uid = await requireUserId();
+
+  // Preferred: session_role_assignments + embedded sessions
+  const { data, error } = await supabase
+    .from("session_role_assignments")
+    .select(
+      `
+      session_id,
+      role_key,
+      sessions:session_id (
+        id,
+        title,
+        join_code,
+        status,
+        created_at,
+        started_at,
+        ended_at
+      )
+    `
+    )
+    .eq("user_id", uid)
+    .order("assigned_at", { ascending: false });
+
+  if (!error && data) {
+    const rows = data as any[];
+
+    return rows
+      .map((r) => {
+        const s = r.sessions;
+        if (!s?.id) return null;
+
+        return {
+          id: s.id,
+          title: s.title ?? null,
+          join_code: s.join_code,
+          status: s.status,
+          created_at: s.created_at ?? null,
+          started_at: s.started_at ?? null,
+          ended_at: s.ended_at ?? null,
+          my_role_key: r.role_key ?? null,
+        } as ParticipantSession;
+      })
+      .filter(Boolean) as ParticipantSession[];
+  }
+
+  // Fallback (no embed support)
+  const { data: assigns, error: e2 } = await supabase
+    .from("session_role_assignments")
+    .select("session_id, role_key")
+    .eq("user_id", uid);
+
+  if (e2) throw e2;
+
+  const sessionIds = (assigns ?? []).map((a: any) => a.session_id).filter(Boolean);
+  if (sessionIds.length === 0) return [];
+
+  const { data: sessions, error: e3 } = await supabase
+    .from("sessions")
+    .select("id,title,join_code,status,created_at,started_at,ended_at")
+    .in("id", sessionIds);
+
+  if (e3) throw e3;
+
+  const roleMap = new Map<string, string | null>();
+  for (const a of assigns ?? []) {
+    roleMap.set(a.session_id, a.role_key ?? null);
+  }
+
+  return (sessions ?? []).map((s: any) => ({
+    id: s.id,
+    title: s.title ?? null,
+    join_code: s.join_code,
+    status: s.status,
+    created_at: s.created_at ?? null,
+    started_at: s.started_at ?? null,
+    ended_at: s.ended_at ?? null,
+    my_role_key: roleMap.get(s.id) ?? null,
+  })) as ParticipantSession[];
+}
+
+/* =========================
    CREATE SESSION
 ========================= */
 
@@ -201,8 +288,6 @@ export async function createSessionFromScenario(params: {
 
   const sessionId = data as string;
 
-  // ✅ ensure creator gets facilitator role for this session
-  // prefer RPC (security definer), fallback to direct insert
   const granted = await tryRpc("grant_session_role", {
     p_session_id: sessionId,
     p_role_key: "facilitator",
@@ -210,7 +295,6 @@ export async function createSessionFromScenario(params: {
   });
 
   if (granted === null) {
-    // fallback (may be blocked by RLS depending on your policies)
     await supabase.from("session_role_assignments").insert({
       session_id: sessionId,
       user_id: await requireUserId(),
@@ -222,7 +306,7 @@ export async function createSessionFromScenario(params: {
 }
 
 /* =========================
-   STATUS / START / END
+   STATUS
 ========================= */
 
 export async function setSessionStatus(
@@ -232,10 +316,8 @@ export async function setSessionStatus(
   await requireUserId();
 
   if (status === "live") {
-    // prefer RPC start_session(p_session_id)
     const ok = await tryRpc("start_session", { p_session_id: sessionId });
     if (ok !== null) return;
-    // fallback: direct update
   }
 
   const patch: { status: "draft" | "live" | "ended"; ended_at?: string } = { status };
@@ -260,7 +342,7 @@ export async function restartSession(sessionId: string) {
 }
 
 /* =========================
-   DELETE SESSION
+   DELETE
 ========================= */
 
 export async function deleteSession(sessionId: string) {
@@ -275,9 +357,7 @@ export async function deleteSession(sessionId: string) {
   if (error) throw error;
 
   if (!data || data.length === 0) {
-    throw new Error(
-      "Delete failed (0 rows deleted).\nMost likely RLS blocks delete or row not owned."
-    );
+    throw new Error("Delete blocked by RLS or not owned.");
   }
 }
 
@@ -290,11 +370,9 @@ export async function joinSessionByCode(code: string): Promise<string> {
 
   const joinCode = normCode(code);
 
-  // prefer RPC join_session(p_code)
   const sid = await tryRpc<string>("join_session", { p_code: joinCode });
   if (sid) return sid;
 
-  // fallback: old client-side lookup
   const { data, error } = await supabase
     .from("sessions")
     .select("id")
@@ -339,7 +417,7 @@ export async function listSessionParticipants(
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as ParticipantRow[];
+  return (data ?? []) as any;
 }
 
 /**
@@ -391,18 +469,17 @@ export async function assignUserToSessionRole(params: {
       user_id: params.userId,
       role_key: params.roleKey,
       assigned_at: new Date().toISOString(),
-    },
-    { onConflict: "session_id,user_id,role_key" }
+    } as any,
+    { onConflict: "session_id,user_id,role_key" } as any
   );
 
   if (error) throw error;
 }
 
 export async function listSessionRoleSlots(
-  sessionId: string
+  _sessionId: string
 ): Promise<SessionRoleSlot[]> {
   await requireUserId();
-  void sessionId;
   return [];
 }
 

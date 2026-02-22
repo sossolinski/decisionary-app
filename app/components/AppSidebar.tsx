@@ -12,7 +12,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   User,
+  Shield,
 } from "lucide-react";
+
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 const LS_KEY = "decisionary.sidebar.collapsed";
 
@@ -23,6 +26,8 @@ function itemActive(pathname: string, href: string) {
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const { loading, activeRole, isDisabled } = useRoleContext();
+
   const [collapsed, setCollapsed] = useState(true);
 
   useEffect(() => {
@@ -41,7 +46,15 @@ export default function AppSidebar() {
 
   const width = collapsed ? "w-[84px]" : "w-[260px]";
 
-  const nav = useMemo(
+  const canFacilitate =
+    !loading &&
+    !isDisabled &&
+    (activeRole === "admin" || activeRole === "facilitator");
+
+  const isParticipantView = !loading && !isDisabled && activeRole === "participant";
+  const isAdminView = !loading && !isDisabled && activeRole === "admin";
+
+  const facilitatorNav = useMemo(
     () => [
       {
         label: "Overview",
@@ -74,6 +87,51 @@ export default function AppSidebar() {
     "h-11 px-3 border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
     "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
 
+  function NavItem({
+    href,
+    label,
+    icon,
+  }: {
+    href: string;
+    label: string;
+    icon: React.ReactNode;
+  }) {
+    const active = itemActive(pathname ?? "", href);
+    return (
+      <Link
+        href={href}
+        title={collapsed ? label : undefined}
+        className={[
+          itemBase,
+          collapsed ? itemCollapsed : itemExpanded,
+          active ? "border-primary/25 bg-primary/10" : "border-[var(--studio-border)]",
+        ].join(" ")}
+      >
+        <span className={["text-foreground/80", active ? "text-foreground" : ""].join(" ")}>
+          {icon}
+        </span>
+        {!collapsed ? <span className="text-sm font-medium">{label}</span> : null}
+      </Link>
+    );
+  }
+
+  if (loading) {
+    // Keep layout stable; no flashing of links
+    return (
+      <aside
+        className={[
+          "fixed left-0 top-0 z-30 h-screen",
+          "pt-[76px]",
+          width,
+        ].join(" ")}
+      >
+        <div className="h-full px-3 pb-4">
+          <div className="h-full surface shadow-soft rounded-[18px]" />
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={[
@@ -100,82 +158,50 @@ export default function AppSidebar() {
                     "linear-gradient(135deg, var(--studio-accent-blue), var(--studio-accent-purple))",
                 }}
               />
-              {!collapsed ? (
-                <div className="text-sm font-semibold">Decisionary</div>
-              ) : null}
+              {!collapsed ? <div className="text-sm font-semibold">Decisionary</div> : null}
             </div>
           </div>
 
           {/* NAV */}
           <nav className="flex-1 px-2 py-2 space-y-2">
-            {nav.map((n) => {
-              const active = itemActive(pathname ?? "", n.href);
-              return (
-                <Link
-                  key={n.href}
-                  href={n.href}
-                  title={collapsed ? n.label : undefined}
-                  className={[
-                    itemBase,
-                    collapsed ? itemCollapsed : itemExpanded,
-                    active
-                      ? "border-primary/25 bg-primary/10"
-                      : "border-[var(--studio-border)]",
-                  ].join(" ")}
-                >
-                  <span
-                    className={[
-                      "text-foreground/80",
-                      active ? "text-foreground" : "",
-                    ].join(" ")}
-                  >
-                    {n.icon}
-                  </span>
+            {/* Facilitator nav visible only in facilitator/admin view */}
+            {canFacilitate
+              ? facilitatorNav.map((n) => (
+                  <NavItem key={n.href} href={n.href} label={n.label} icon={n.icon} />
+                ))
+              : null}
 
-                  {!collapsed ? (
-                    <span className="text-sm font-medium">{n.label}</span>
-                  ) : null}
-                </Link>
-              );
-            })}
+            {/* Admin nav visible only when VIEW AS admin */}
+            {isAdminView ? (
+              <NavItem
+                href="/admin/users"
+                label="Admin · Users"
+                icon={<Shield className="h-5 w-5" />}
+              />
+            ) : null}
           </nav>
 
           {/* Bottom */}
           <div className="px-2 pb-3 space-y-2">
-            <Link
-              href="/participant"
-              title={collapsed ? "Participant" : undefined}
-              className={[
-                itemBase,
-                collapsed ? itemCollapsed : itemExpanded,
-                itemActive(pathname ?? "", "/participant")
-                  ? "border-primary/25 bg-primary/10"
-                  : "border-[var(--studio-border)]",
-              ].join(" ")}
-            >
-              <User className="h-5 w-5 text-foreground/80" />
-              {!collapsed ? (
-                <span className="text-sm font-medium">Participant</span>
-              ) : null}
-            </Link>
+            {/* Participant shortcut visible only in participant view (full simulation) */}
+            {isParticipantView ? (
+              <NavItem
+                href="/participant"
+                label="Participant"
+                icon={<User className="h-5 w-5" />}
+              />
+            ) : null}
 
-            <Link
-              href="/facilitator/settings"
-              title={collapsed ? "Settings" : undefined}
-              className={[
-                itemBase,
-                collapsed ? itemCollapsed : itemExpanded,
-                itemActive(pathname ?? "", "/facilitator/settings")
-                  ? "border-primary/25 bg-primary/10"
-                  : "border-[var(--studio-border)]",
-              ].join(" ")}
-            >
-              <Settings className="h-5 w-5 text-foreground/80" />
-              {!collapsed ? (
-                <span className="text-sm font-medium">Settings</span>
-              ) : null}
-            </Link>
+            {/* Settings only for facilitator/admin views */}
+            {canFacilitate ? (
+              <NavItem
+                href="/facilitator/settings"
+                label="Settings"
+                icon={<Settings className="h-5 w-5" />}
+              />
+            ) : null}
 
+            {/* Collapse */}
             <button
               type="button"
               onClick={toggle}
@@ -192,10 +218,16 @@ export default function AppSidebar() {
               ) : (
                 <ChevronsLeft className="h-5 w-5 text-foreground/80" />
               )}
-              {!collapsed ? (
-                <span className="text-sm font-medium">Collapse</span>
-              ) : null}
+              {!collapsed ? <span className="text-sm font-medium">Collapse</span> : null}
             </button>
+
+            {/* Mini role indicator in sidebar (only expanded) */}
+            {!collapsed ? (
+              <div className="px-1 pt-1 text-xs text-[color:var(--studio-muted2)]">
+                View as: <b className="text-foreground">{activeRole ?? "—"}</b>
+                {isDisabled ? <span className="ml-2 text-red-400">disabled</span> : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

@@ -9,6 +9,9 @@ import { ChevronDown, LogOut, Menu } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/app/components/ui/button";
 
+import RoleSwitcher from "@/app/components/RoleSwitcher";
+import RoleBadge from "@/app/components/RoleBadge";
+
 function titleFromPath(pathname: string) {
   const parts = (pathname ?? "/").split("/").filter(Boolean);
   const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -70,41 +73,47 @@ export default function AppTopbar({
             </div>
           </div>
 
-          <div className="relative">
-            <Button
-              variant="outline"
-              className="min-w-[260px] justify-between"
-              onClick={() => setOpen((v) => !v)}
-            >
-              <span className="truncate">{email ?? "Signed out"}</span>
-              <ChevronDown className="h-4 w-4 opacity-70" />
-            </Button>
+          {/* RIGHT SIDE */}
+          <div className="flex items-center gap-3">
+            <RoleSwitcher />
+            <RoleBadge />
 
-            {open ? (
-              <div
-                className="absolute right-0 mt-2 w-[260px] popover-solid rounded-[14px] shadow-soft overflow-hidden"
-                onMouseLeave={() => setOpen(false)}
+            <div className="relative">
+              <Button
+                variant="outline"
+                className="min-w-[260px] justify-between"
+                onClick={() => setOpen((v) => !v)}
               >
-                <div className="px-4 py-3 border-b border-[color:var(--studio-border)]">
-                  <div className="text-xs text-[color:var(--studio-muted2)]">Account</div>
-                  <div className="text-sm font-semibold truncate">{email ?? "—"}</div>
+                <span className="truncate">{email ?? "Signed out"}</span>
+                <ChevronDown className="h-4 w-4 opacity-70" />
+              </Button>
+
+              {open ? (
+                <div
+                  className="absolute right-0 mt-2 w-[260px] popover-solid rounded-[14px] shadow-soft overflow-hidden"
+                  onMouseLeave={() => setOpen(false)}
+                >
+                  <div className="px-4 py-3 border-b border-[color:var(--studio-border)]">
+                    <div className="text-xs text-[color:var(--studio-muted2)]">Account</div>
+                    <div className="text-sm font-semibold truncate">{email ?? "—"}</div>
+                  </div>
+                  <div className="p-2">
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start"
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        setOpen(false);
+                        window.location.href = "/login";
+                      }}
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sign out
+                    </Button>
+                  </div>
                 </div>
-                <div className="p-2">
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={async () => {
-                      await supabase.auth.signOut();
-                      setOpen(false);
-                      window.location.href = "/login";
-                    }}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Sign out
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
