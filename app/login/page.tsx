@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { joinSessionByCode } from "@/lib/sessionsRuntime";
+import { toErrorMessage } from "@/lib/error-utils";
+import { assertValidJoinCode, normalizeJoinCode } from "@/lib/validation";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Card } from "@/app/components/ui/card";
@@ -25,8 +27,8 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       router.replace("/facilitator");
-    } catch (err: any) {
-      setMsg(err?.message ?? "Login failed.");
+    } catch (error: unknown) {
+      setMsg(toErrorMessage(error, "Login failed."));
     } finally {
       setLoading(false);
     }
@@ -37,10 +39,13 @@ export default function LoginPage() {
     setMsg(null);
     setLoading(true);
     try {
-      const sessionId = await joinSessionByCode(joinCode);
+      const normalizedCode = normalizeJoinCode(joinCode);
+      assertValidJoinCode(normalizedCode);
+
+      const sessionId = await joinSessionByCode(normalizedCode);
       router.replace(`/sessions/${sessionId}`);
-    } catch (err: any) {
-      setMsg(err?.message ?? "Join failed.");
+    } catch (error: unknown) {
+      setMsg(toErrorMessage(error, "Join failed."));
     } finally {
       setLoading(false);
     }

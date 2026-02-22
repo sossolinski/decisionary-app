@@ -5,6 +5,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { joinSessionByCode } from "@/lib/sessionsRuntime";
+import { toErrorMessage } from "@/lib/error-utils";
+import { assertValidJoinCode, normalizeJoinCode } from "@/lib/validation";
 
 import {
   Card,
@@ -24,7 +26,8 @@ export default function JoinPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function onJoin() {
-    if (!code.trim()) {
+    const normalizedCode = normalizeJoinCode(code);
+    if (!normalizedCode) {
       setError("Enter join code.");
       return;
     }
@@ -33,10 +36,11 @@ export default function JoinPage() {
     setError(null);
 
     try {
-      const sessionId = await joinSessionByCode(code.trim());
+      assertValidJoinCode(normalizedCode);
+      const sessionId = await joinSessionByCode(normalizedCode);
       router.push(`/sessions/${sessionId}`);
-    } catch (e: any) {
-      setError(e?.message ?? "Join failed");
+    } catch (error: unknown) {
+      setError(toErrorMessage(error, "Join failed"));
     } finally {
       setLoading(false);
     }
