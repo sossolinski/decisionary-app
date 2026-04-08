@@ -165,7 +165,7 @@ export default function FacilitatorScenarioEditorPage() {
     (async () => {
       const role = await getMyRole();
       if (!role) return router.replace("/login");
-      if (role !== "facilitator") return router.replace("/participant");
+      if (role !== "facilitator" && role !== "admin") return router.replace("/participant");
       await load();
     })();
   }, [router, id, load]);

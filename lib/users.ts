@@ -1,9 +1,9 @@
 import { supabase } from "./supabaseClient";
 
-export type UserRole = "participant" | "facilitator";
+export type UserRole = "admin" | "participant" | "facilitator";
 
 export type Profile = {
-  id: string;
+  user_id: string;
   role: UserRole;
   created_at: string;
   updated_at: string;
@@ -17,7 +17,7 @@ export async function getMyRole(): Promise<UserRole | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select("role")
-    .eq("id", user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
   if (error) throw error;

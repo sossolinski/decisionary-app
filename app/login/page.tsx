@@ -164,7 +164,18 @@ export default function LoginPage() {
         return;
       }
 
-      router.replace("/facilitator");
+      const { data: profileData } = await supabase.rpc("get_my_profile");
+      const profileRow = Array.isArray(profileData) ? profileData[0] : profileData;
+      const nextRole = (profileRow?.active_role ?? profileRow?.role ?? null) as Role | null;
+      if (nextRole === "admin") {
+        router.replace("/admin/organizations");
+        return;
+      }
+      if (nextRole === "facilitator") {
+        router.replace("/facilitator");
+        return;
+      }
+      router.replace("/participant");
     } catch (err: unknown) {
       setMsg(errMessage(err, "Login failed."));
     } finally {
@@ -245,7 +256,7 @@ export default function LoginPage() {
         </Card>
 
         <Card className="p-4 space-y-3">
-          <div className="text-sm font-semibold">Facilitator</div>
+          <div className="text-sm font-semibold">Account login (admin / facilitator / participant)</div>
           <form onSubmit={handleFacilitatorLogin} className="space-y-2">
             <Input
               value={email}
@@ -261,7 +272,7 @@ export default function LoginPage() {
               autoComplete="current-password"
             />
             <Button type="submit" variant="default" disabled={loading} className="w-full">
-              {loading ? "…" : "Sign in"}
+              {loading ? "…" : "Sign in with email"}
             </Button>
           </form>
         </Card>
@@ -281,7 +292,7 @@ export default function LoginPage() {
           </form>
 
           <div className="text-xs text-muted-foreground">
-            Joining creates an anonymous session (no email required).
+            Joining works also without account (anonymous participant).
           </div>
         </Card>
       </div>

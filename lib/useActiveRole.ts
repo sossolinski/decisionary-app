@@ -40,7 +40,9 @@ export function useActiveRole() {
 
     const { data, error } = await supabase.rpc("get_my_profile");
 
-    if (error || !data || !data[0]) {
+    const row = Array.isArray(data) ? data[0] : data;
+
+    if (error || !row) {
       setState({
         loading: false,
         signedIn: true,
@@ -49,8 +51,6 @@ export function useActiveRole() {
       });
       return;
     }
-
-    const row = data[0];
 
     setState({
       loading: false,

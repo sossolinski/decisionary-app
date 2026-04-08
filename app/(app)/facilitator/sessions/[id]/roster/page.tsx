@@ -84,7 +84,7 @@ export default function FacilitatorRosterPage() {
         if (cancelled) return;
 
         if (!role) return router.replace("/login");
-        if (role !== "facilitator") return router.replace("/participant");
+        if (role !== "facilitator" && role !== "admin") return router.replace("/participant");
 
         await load();
       } catch (e: unknown) {

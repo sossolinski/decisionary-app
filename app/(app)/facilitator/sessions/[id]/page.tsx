@@ -49,7 +49,7 @@ export default function FacilitatorSessionPage() {
           return;
         }
 
-        if (role !== "facilitator") {
+        if (role !== "facilitator" && role !== "admin") {
           router.replace("/participant");
           return;
         }

@@ -158,7 +158,7 @@ export default function FacilitatorScenariosPage() {
         router.replace("/login");
         return;
       }
-      if (role !== "facilitator") {
+      if (role !== "facilitator" && role !== "admin") {
         router.replace("/participant");
         return;
       }
