@@ -27,8 +27,8 @@ export function useRoleContext(): RoleContext {
   const [activeRole, setActiveRole] = useState<Role | null>(null);
   const [isDisabled, setIsDisabled] = useState(false);
 
-  async function load() {
-    setLoading(true);
+  async function load(markLoading = true) {
+    if (markLoading) setLoading(true);
 
     const { data: auth, error: authErr } = await supabase.auth.getUser();
     if (authErr) console.error("[useRoleContext] auth error:", authErr);
@@ -81,10 +81,16 @@ export function useRoleContext(): RoleContext {
   }
 
   useEffect(() => {
-    void load();
-    const { data: sub } = supabase.auth.onAuthStateChange(() => void load());
-    return () => sub.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const t = setTimeout(() => {
+      void load(false);
+    }, 0);
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      void load();
+    });
+    return () => {
+      clearTimeout(t);
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   const isPermAdmin = role === "admin" && !isDisabled;

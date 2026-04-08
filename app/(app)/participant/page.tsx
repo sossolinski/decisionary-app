@@ -28,6 +28,10 @@ function fmt(dt?: string | null) {
   }
 }
 
+function errMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export default function ParticipantPage() {
   const router = useRouter();
   const { loading, userId, email } = useRequireAuth();
@@ -42,16 +46,15 @@ export default function ParticipantPage() {
     try {
       const rows = await listMyParticipantSessions();
       setItems(rows ?? []);
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setErr(errMessage(e));
     } finally {
       setBusy(false);
     }
   }
 
   useEffect(() => {
-    if (!loading && userId) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!loading && userId) void load();
   }, [loading, userId]);
 
   if (loading) {
@@ -132,7 +135,7 @@ export default function ParticipantPage() {
                 >
                   <div className="min-w-0">
                     <div className="font-medium truncate">
-                      {s.title ?? s.scenario?.title ?? "Session"}
+                      {s.title ?? "Session"}
                     </div>
                     <div className="text-xs text-[hsl(var(--muted-foreground))]">
                       Status: {s.status} · Joined: {fmt(s.joined_at)}

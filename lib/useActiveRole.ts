@@ -20,8 +20,10 @@ export function useActiveRole() {
     activeRole: null,
   });
 
-  async function load() {
-    setState((s) => ({ ...s, loading: true }));
+  async function load(markLoading = true) {
+    if (markLoading) {
+      setState((s) => ({ ...s, loading: true }));
+    }
 
     const { data: auth } = await supabase.auth.getUser();
     const user = auth.user;
@@ -59,9 +61,16 @@ export function useActiveRole() {
   }
 
   useEffect(() => {
-    load();
-    const { data: sub } = supabase.auth.onAuthStateChange(load);
-    return () => sub.subscription.unsubscribe();
+    const t = setTimeout(() => {
+      void load(false);
+    }, 0);
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      void load();
+    });
+    return () => {
+      clearTimeout(t);
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   return state;

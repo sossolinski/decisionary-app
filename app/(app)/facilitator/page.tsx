@@ -48,7 +48,6 @@ export default function FacilitatorHomePage() {
       await loadCounts();
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   return (

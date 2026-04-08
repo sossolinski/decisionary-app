@@ -12,11 +12,19 @@ export default function Collapsible({
   durationMs?: number;
 }) {
   const innerRef = useRef<HTMLDivElement | null>(null);
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [height, setHeight] = useState<number>(0);
   const [render, setRender] = useState(open);
 
   useEffect(() => {
-    if (open) setRender(true);
+    if (!open) return;
+    openTimerRef.current = setTimeout(() => setRender(true), 0);
+    return () => {
+      if (openTimerRef.current) {
+        clearTimeout(openTimerRef.current);
+        openTimerRef.current = null;
+      }
+    };
   }, [open]);
 
   // Measure content height whenever it might change

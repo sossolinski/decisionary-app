@@ -28,8 +28,8 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<ProfileRow[]>([]);
 
-  async function load() {
-    setLoading(true);
+  async function load(withSpinner = true) {
+    if (withSpinner) setLoading(true);
 
     // 1) check if I'm permanent admin
     const { data: me } = await supabase
@@ -59,7 +59,10 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    void load();
+    const t = setTimeout(() => {
+      void load(false);
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   const filtered = useMemo(() => {
@@ -96,7 +99,7 @@ export default function AdminUsersPage() {
             Manage facilitators/participants. (Auth user creation is done via Invite/Edge Function; here you manage DB roles & access.)
           </p>
         </div>
-        <Button onClick={load} disabled={loading}>Refresh</Button>
+        <Button onClick={() => void load()} disabled={loading}>Refresh</Button>
       </div>
 
       {!meAdmin && (
