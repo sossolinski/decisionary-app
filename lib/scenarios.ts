@@ -24,7 +24,7 @@ export type Scenario = {
   unknown: number;
 
   created_at: string;
-  updated_at?: string; // optional (jeśli nie ma w schemacie)
+  updated_at?: string; // optional (if not present in the schema)
 };
 
 export type Inject = {
@@ -99,7 +99,7 @@ export async function updateScenario(
   id: string,
   patch: Partial<Scenario>
 ): Promise<Scenario> {
-  // IMPORTANT: nie dotykaj updated_at jeśli nie istnieje w DB
+  // IMPORTANT: do not touch updated_at if it does not exist in DB
   const { data, error } = await supabase
     .from("scenarios")
     .update({ ...patch })

@@ -92,7 +92,7 @@ export default function AdminOrganizationsPage() {
         <div>
           <h1 className="text-xl font-semibold">Admin · Organizations</h1>
           <p className="text-sm text-muted-foreground">
-            Zarządzanie klientami, facilitatorami i participantami (MVP local store, bez SQL).
+            Manage clients, facilitators, and participants (MVP local store, no SQL).
           </p>
         </div>
 

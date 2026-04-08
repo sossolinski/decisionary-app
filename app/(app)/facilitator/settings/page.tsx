@@ -58,7 +58,7 @@ export default function FacilitatorSettingsPage() {
       <div>
         <h1 className="text-xl font-semibold">Facilitator · Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Aktywna organizacja, roster participantów i operacje administracyjne dla sesji.
+          Active organization, participant roster, and session administration actions.
         </p>
       </div>
 

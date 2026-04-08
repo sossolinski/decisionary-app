@@ -30,7 +30,7 @@ export default function Home() {
           Decisionary MVP
         </h1>
         <p style={{ opacity: 0.75, marginBottom: 14 }}>
-          Wklej Session ID (UUID), żeby przejść do ćwiczenia.
+          Paste the Session ID (UUID) to open the exercise.
         </p>
 
         <input
@@ -76,12 +76,12 @@ export default function Home() {
 
         {!valid && cleaned.length > 0 && (
           <p style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
-            To nie wygląda jak UUID. Skopiuj <code>sessions.id</code> z Supabase.
+            This does not look like a UUID. Copy <code>sessions.id</code> from Supabase.
           </p>
         )}
 
         <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-          Tip: Session ID znajdziesz w Supabase → tabela <code>sessions</code>.
+          Tip: You can find the Session ID in Supabase → <code>sessions</code> table.
         </p>
       </div>
     </main>

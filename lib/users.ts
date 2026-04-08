@@ -22,7 +22,7 @@ export async function getMyRole(): Promise<UserRole | null> {
 
   if (error) throw error;
 
-  // jeśli profil jeszcze się nie utworzył (race condition na świeżym signup)
-  // traktujemy jako participant (MVP-safe)
+  // if the profile has not been created yet (race condition on fresh signup)
+  // default to participant (MVP-safe)
   return (data?.role as UserRole) ?? "participant";
 }

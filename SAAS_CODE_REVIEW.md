@@ -1,104 +1,104 @@
-# Analiza kodu SaaS – Decisionary
+# SaaS Code Review - Decisionary
 
-## 1) Szybkie podsumowanie
+## 1) Quick Summary
 
-Aplikacja to **frontend-first SaaS** oparty o Next.js (App Router) i Supabase, z logiką biznesową wykonywaną głównie po stronie klienta (wywołania Supabase z przeglądarki). Model produktu: platforma do prowadzenia symulacji tabletop (scenariusze, sesje, uczestnicy, injecty, akcje).
+The application is a **frontend-first SaaS** built on Next.js (App Router) and Supabase, with most business logic executed in the browser (Supabase calls from the client). The product model is a tabletop simulation platform (scenarios, sessions, participants, injects, actions).
 
-Największe atuty:
-- Spójny podział na moduły domenowe (`sessions`, `sessionsRuntime`, `facilitator`, `users`).
-- Sensowna obsługa realtime + debouncing subskrypcji.
-- Rozsądne fallbacki RPC -> bezpośrednie zapytania.
+Top strengths:
+- Clear domain split across modules (`sessions`, `sessionsRuntime`, `facilitator`, `users`).
+- Solid realtime handling with subscription debouncing.
+- Reasonable RPC -> direct-query fallback strategy.
 
-Największe ryzyka:
-- Duża część autoryzacji jest oparta o klienta (wymaga bardzo dobrych polityk RLS i RPC security definer).
-- Duplikacja logiki między `lib/sessions.ts` i `lib/sessionsRuntime.ts` zwiększa koszt utrzymania.
-- Brak testów i uboga dokumentacja architektury/operacji.
+Top risks:
+- A large part of authorization depends on client-side checks (requires strong RLS and SECURITY DEFINER RPC design).
+- Duplicated logic between `lib/sessions.ts` and `lib/sessionsRuntime.ts` increases maintenance cost.
+- Lack of tests and limited architecture/operations documentation.
 
-## 2) Architektura i warstwy
+## 2) Architecture and Layers
 
-### Stos
-- Next.js 16 + React 19 + TypeScript.
-- Supabase JS (auth, query, realtime).
-- UI: komponenty własne + Radix.
+### Stack
+- Next.js 16 + React 19 + TypeScript
+- Supabase JS (auth, query, realtime)
+- UI: custom components + Radix
 
-### Warstwa aplikacyjna
-- Logika domenowa głównie w `lib/*`.
-- Widoki w `app/*`.
-- Middleware tylko przekierowuje `/` -> `/login` (bez auth gate na serwerze).
+### App Layer
+- Domain logic is mainly in `lib/*`.
+- Views are in `app/*`.
+- Middleware currently only redirects `/` -> `/login` (no server-side auth gate).
 
-Ocena: **dobra baza MVP**, ale przy skalowaniu warto przesuwać krytyczne operacje na serwerowe route handlers / server actions.
+Assessment: **strong MVP baseline**, but as scale grows it is worth moving critical operations to server route handlers / server actions.
 
-## 3) Model auth i bezpieczeństwo
+## 3) Auth Model and Security
 
-### Co działa dobrze
-- Wymuszanie sesji użytkownika przez `requireUserId()` przed operacjami mutującymi.
-- Preferencja dla RPC (np. `grant_session_role`, `start_session`, `join_session`) może dobrze centralizować reguły dostępu.
+### What works well
+- User session enforcement via `requireUserId()` before mutating operations.
+- RPC-first approach (e.g. `grant_session_role`, `start_session`, `join_session`) can centralize access rules well.
 
-### Ryzyka
-1. **Client-side gating** w UI:
-   - routing i role gate są wykonywane po stronie klienta.
-   - Bez mocnego RLS daje to ryzyko obejścia zasad.
+### Risks
+1. **Client-side gating in UI**:
+   - routing and role gates run in the browser.
+   - Without strict RLS, this can be bypassed.
 
-2. **Fallbacki do direct insert/update/delete**:
-   - gdy RPC nie istnieje, kod próbuje bezpośrednich operacji.
-   - To jest OK dla kompatybilności, ale bezpieczeństwo musi być absolutnie zamknięte w RLS.
+2. **Fallback to direct insert/update/delete**:
+   - when RPC is missing, code attempts direct operations.
+   - Useful for compatibility, but security must remain fully enforced by RLS.
 
-3. **Brak walidacji wejść na granicy serwera**:
-   - np. teksty injectów, nazwy scenariuszy/sesji są walidowane minimalnie.
+3. **Limited server-boundary input validation**:
+   - e.g. inject text and scenario/session names are only lightly validated.
 
-Rekomendacja krytyczna:
-- Traktować klienta jako niezaufany; wszystkie uprawnienia egzekwować w RLS + RPC.
-- Dodać checklistę bezpieczeństwa Supabase (RLS, funkcje SECURITY DEFINER, audyt grants).
+Critical recommendation:
+- Treat the client as untrusted; enforce permissions in RLS + RPC.
+- Maintain a Supabase security checklist (RLS, SECURITY DEFINER functions, grants audit).
 
-## 4) Jakość kodu i utrzymanie
+## 4) Code Quality and Maintainability
 
-### Plusy
-- Czytelne sekcje i nazewnictwo funkcji.
-- Jawne typy TS dla większości encji.
-- Dobra praktyka debounce przy subskrypcjach realtime.
+### Positives
+- Readable sections and function naming.
+- Explicit TS types for most entities.
+- Good debounce practice around realtime subscriptions.
 
-### Obszary do poprawy
-1. **Duplikacja modułów sesji**:
-   - `lib/sessions.ts` i `lib/sessionsRuntime.ts` pokrywają podobny zakres.
-   - Ryzyko rozjechania zachowań i bugów regresyjnych.
+### Improvement areas
+1. **Session module duplication**:
+   - `lib/sessions.ts` and `lib/sessionsRuntime.ts` cover overlapping behavior.
+   - Risk of behavioral drift and regression bugs.
 
-2. **Szerokie użycie `any`**:
-   - W kilku miejscach osłabia bezpieczeństwo typów.
+2. **Broad `any` usage**:
+   - Weakens type safety in several places.
 
-3. **Brak centralnej walidacji danych wejściowych**:
-   - Warto dodać schematy (np. Zod) dla payloadów formularzy.
+3. **No central input schema validation**:
+   - Consider schema-based validation (e.g. Zod) for form payloads.
 
-4. **Brak testów automatycznych**:
-   - Na tym etapie utrudnia bezpieczne refaktoryzacje.
+4. **No automated tests**:
+   - Makes safe refactoring harder.
 
-## 5) Skalowalność produktu (SaaS readiness)
+## 5) Product Scalability (SaaS Readiness)
 
-Aktualny kod jest odpowiedni dla MVP / early stage.
-Do etapu produkcyjnego dla większej liczby klientów rekomendowane:
+Current code is suitable for MVP / early stage.
+For production and larger customer volume, recommended next steps:
 
-- **Observability**: błędy, metryki, telemetry, tracing.
-- **Multi-tenant hardening**: jednoznaczna izolacja danych tenantów (jeśli planowana).
-- **Background jobs**: harmonogram injectów i cięższe operacje poza request/response.
-- **Audyt działań**: pełny dziennik istotnych zmian i akcji moderatorów.
+- **Observability**: errors, metrics, telemetry, tracing.
+- **Multi-tenant hardening**: explicit tenant isolation (if multi-tenant architecture is planned).
+- **Background jobs**: inject scheduling and heavier work outside request/response.
+- **Audit trail**: full log of critical changes and moderator actions.
 
-## 6) Priorytety wdrożeniowe (30/60/90 dni)
+## 6) Delivery Priorities (30/60/90 Days)
 
-### 0-30 dni (najwyższy priorytet)
-- Przegląd i utwardzenie wszystkich RLS policy + RPC permissions.
-- Ustalenie jednego modułu sesji (usunąć duplikację lub wydzielić common core).
-- Dodanie minimalnego zestawu testów krytycznych flow (login, join, create/start/end session).
+### 0-30 days (highest priority)
+- Review and harden all RLS policies + RPC permissions.
+- Consolidate to one session module (remove duplication or extract common core).
+- Add minimal tests for critical flows (login, join, create/start/end session).
 
-### 31-60 dni
-- Walidacja wejść przez schematy.
-- Standaryzacja błędów i komunikatów do UI.
-- Dodanie monitoringu błędów i metryk.
+### 31-60 days
+- Add schema-based input validation.
+- Standardize errors and UI messages.
+- Add error monitoring and metrics.
 
-### 61-90 dni
-- Refaktoryzacja do wyraźnej granicy: client UI vs server-domain API.
-- Rozbudowa audytu i raportowania po sesji.
+### 61-90 days
+- Refactor toward a clearer boundary: client UI vs server-domain API.
+- Expand audit and post-session reporting.
 
-## 7) Ocena końcowa
+## 7) Final Assessment
 
-- **Mocne strony**: szybkie MVP, dobra ergonomia pracy z Supabase, czytelna organizacja.
-- **Słabe strony**: bezpieczeństwo zależne od konfiguracji DB, duplikacja logiki, brak testów.
-- **Gotowość SaaS (obecnie)**: **średnia** (dobry fundament, ale wymaga hardeningu przed większą skalą).
+- **Strengths**: fast MVP delivery, strong Supabase ergonomics, clear project structure.
+- **Weaknesses**: security quality depends heavily on DB configuration, duplicated domain logic, no tests.
+- **Current SaaS readiness**: **medium** (good foundation, requires hardening for larger scale).

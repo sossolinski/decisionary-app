@@ -43,14 +43,14 @@
     --studio-bg: hsl(var(--background));
     --studio-text: hsl(var(--foreground));
 
-    /* Minimal surfaces: mniej "glassy", mniej ramek */
+    /* Minimal surfaces: less "glassy", fewer borders */
     --studio-surface: hsl(var(--card) / 0.90);
     --studio-surface2: hsl(var(--card) / 0.96);
 
     --studio-muted: hsl(var(--foreground) / 0.62);
     --studio-muted2: hsl(var(--foreground) / 0.48);
 
-    /* Minimal borders: cień > border */
+    /* Minimal borders: shadow > border */
     --studio-border: hsl(220 10% 86% / 0.35);
     --studio-border-strong: hsl(220 10% 84% / 0.55);
 
@@ -270,7 +270,7 @@
     box-shadow: var(--studio-shadow2);
   }
 
-  /* Minimal surfaces: praktycznie bez borderów */
+  /* Minimal surfaces: almost borderless */
   .surface {
     background: var(--studio-surface);
     border: 1px solid var(--studio-border);

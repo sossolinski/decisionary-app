@@ -6,7 +6,7 @@ import AppShell from "@/app/components/AppShell";
 export default function ClientChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  // Tu możesz dopisać kolejne ścieżki bez chrome, np. "/join"
+  // Add more routes without chrome here, e.g. "/join"
   const noChrome = pathname === "/login";
 
   if (noChrome) return <>{children}</>;

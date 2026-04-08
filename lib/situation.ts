@@ -1,7 +1,7 @@
 import { supabase } from "./supabaseClient";
 
 export async function getSituationForSession(sessionId: string) {
-  // 1) spróbuj session_situation
+  // 1) try session_situation
   const { data: sessionSituation, error: ssError } = await supabase
     .from("session_situation")
     .select("*")
