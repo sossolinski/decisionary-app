@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { logClientError } from "@/lib/errors";
 import {
@@ -32,7 +40,7 @@ export type RoleContext = {
   reloadOrganizations: () => void;
 };
 
-export function useRoleContext(): RoleContext {
+function useRoleContextValue(): RoleContext {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -171,4 +179,19 @@ export function useRoleContext(): RoleContext {
     setActiveOrgId,
     reloadOrganizations,
   };
+}
+
+const RoleContextState = createContext<RoleContext | null>(null);
+
+export function RoleContextProvider({ children }: { children: ReactNode }) {
+  const value = useRoleContextValue();
+  return createElement(RoleContextState.Provider, { value }, children);
+}
+
+export function useRoleContext(): RoleContext {
+  const ctx = useContext(RoleContextState);
+  if (!ctx) {
+    throw new Error("useRoleContext must be used within RoleContextProvider");
+  }
+  return ctx;
 }

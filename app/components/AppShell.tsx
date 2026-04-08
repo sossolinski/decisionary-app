@@ -9,6 +9,8 @@ import AppSidebar from "@/app/components/AppSidebar";
 import MobileSidebar from "@/app/components/MobileSidebar";
 import AppTopbar from "@/app/components/AppTopbar";
 
+const SIDEBAR_LS_KEY = "decisionary.sidebar.collapsed";
+
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
   useEffect(() => {
@@ -24,6 +26,12 @@ function useMediaQuery(query: string) {
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 1024px)");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const v = window.localStorage.getItem(SIDEBAR_LS_KEY);
+    if (v === "0") return false;
+    return true;
+  });
 
   // Hide shell on login / landing routes
   const hideShell =
@@ -32,6 +40,14 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname?.startsWith("/join");
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  function toggleDesktopSidebar() {
+    setSidebarCollapsed((v) => {
+      const next = !v;
+      window.localStorage.setItem(SIDEBAR_LS_KEY, next ? "1" : "0");
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!mobileOpen) return;
@@ -51,17 +67,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Sidebar pinned left */}
       {isMobile ? (
         <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen}>
-          <AppSidebar />
+          <AppSidebar
+            mobile
+            collapsed={false}
+            onToggleCollapsed={() => {
+              // no-op in mobile sheet
+            }}
+          />
         </MobileSidebar>
       ) : (
-        <AppSidebar />
+        <AppSidebar collapsed={sidebarCollapsed} onToggleCollapsed={toggleDesktopSidebar} />
       )}
 
       {/* Main content */}
       <main
         className={[
           "pt-14", // ✅ matches topbar height (h-14 = 56px)
-          isMobile ? "" : "pl-[84px]", // sidebar (collapsed width)
+          isMobile ? "" : sidebarCollapsed ? "pl-[84px]" : "pl-[260px]",
+          "transition-[padding] duration-200",
         ].join(" ")}
       >
         <div className="mx-auto w-full max-w-[1400px] px-5 py-6">{children}</div>

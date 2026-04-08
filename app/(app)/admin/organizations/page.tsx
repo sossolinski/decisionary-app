@@ -17,6 +17,7 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import { copyTextToClipboard } from "@/lib/clientClipboard";
 
 type NoticeTone = "ok" | "err";
 
@@ -50,6 +51,7 @@ export default function AdminOrganizationsPage() {
   const [membershipRole, setMembershipRole] = useState<"facilitator" | "participant">("facilitator");
   const [participantName, setParticipantName] = useState("");
   const [participantEmail, setParticipantEmail] = useState("");
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const memberships = activeOrgId ? listMembershipsForOrg(activeOrgId) : [];
   const invites = activeOrgId ? listInvitesForOrg(activeOrgId) : [];
@@ -57,6 +59,12 @@ export default function AdminOrganizationsPage() {
 
   function pushNotice(tone: NoticeTone, text: string) {
     setNotice({ tone, text });
+  }
+
+  async function copyOrWarn(value: string, okMessage: string) {
+    const ok = await copyTextToClipboard(value);
+    if (ok) pushNotice("ok", okMessage);
+    else pushNotice("err", "Clipboard unavailable. Copy manually.");
   }
 
   if (loading) {
@@ -143,8 +151,10 @@ export default function AdminOrganizationsPage() {
               />
               <Button
                 className="w-full"
+                disabled={busyKey !== null}
                 onClick={() => {
                   try {
+                    setBusyKey("org:create");
                     const org = createOrganization({
                       name: orgName,
                       createdByUserId: userId,
@@ -156,10 +166,12 @@ export default function AdminOrganizationsPage() {
                     pushNotice("ok", `Organization \"${org.name}\" created.`);
                   } catch (err: unknown) {
                     pushNotice("err", toMessage(err, "Failed to create organization."));
+                  } finally {
+                    setBusyKey(null);
                   }
                 }}
               >
-                Create organization
+                {busyKey === "org:create" ? "Creating…" : "Create organization"}
               </Button>
             </div>
           </CardContent>
@@ -188,8 +200,10 @@ export default function AdminOrganizationsPage() {
                     />
                     <Button
                       className="w-full"
-                      onClick={() => {
+                      disabled={busyKey !== null}
+                      onClick={async () => {
                         try {
+                          setBusyKey("invite:create");
                           const invite = createFacilitatorInvite({
                             orgId: activeOrgId,
                             email: facilitatorEmail,
@@ -199,14 +213,15 @@ export default function AdminOrganizationsPage() {
                           reloadOrganizations();
 
                           const link = `${registrationBase}/register/facilitator?token=${invite.token}`;
-                          void navigator.clipboard.writeText(link);
-                          pushNotice("ok", "Invite created. Registration link copied to clipboard.");
+                          await copyOrWarn(link, "Invite created. Registration link copied.");
                         } catch (err: unknown) {
                           pushNotice("err", toMessage(err, "Failed to create facilitator invite."));
+                        } finally {
+                          setBusyKey(null);
                         }
                       }}
                     >
-                      Generate invite link
+                      {busyKey === "invite:create" ? "Generating…" : "Generate invite link"}
                     </Button>
                   </div>
 
@@ -232,8 +247,10 @@ export default function AdminOrganizationsPage() {
                     <Button
                       className="w-full"
                       variant="secondary"
+                      disabled={busyKey !== null}
                       onClick={() => {
                         try {
+                          setBusyKey("membership:add");
                           addMembership({
                             orgId: activeOrgId,
                             role: membershipRole,
@@ -245,10 +262,12 @@ export default function AdminOrganizationsPage() {
                           pushNotice("ok", "Membership added.");
                         } catch (err: unknown) {
                           pushNotice("err", toMessage(err, "Failed to add membership."));
+                        } finally {
+                          setBusyKey(null);
                         }
                       }}
                     >
-                      Add membership
+                      {busyKey === "membership:add" ? "Adding…" : "Add membership"}
                     </Button>
                   </div>
                 </div>
@@ -270,8 +289,10 @@ export default function AdminOrganizationsPage() {
                   <Button
                     className="w-full md:w-auto"
                     variant="secondary"
+                    disabled={busyKey !== null}
                     onClick={() => {
                       try {
+                        setBusyKey("participant:add");
                         const p = addManagedParticipant({
                           orgId: activeOrgId,
                           displayName: participantName,
@@ -284,10 +305,12 @@ export default function AdminOrganizationsPage() {
                         pushNotice("ok", `Participant created. Join code: ${p.join_code}`);
                       } catch (err: unknown) {
                         pushNotice("err", toMessage(err, "Failed to create participant."));
+                      } finally {
+                        setBusyKey(null);
                       }
                     }}
                   >
-                    Add participant
+                    {busyKey === "participant:add" ? "Creating…" : "Add participant"}
                   </Button>
                 </div>
 
@@ -310,10 +333,12 @@ export default function AdminOrganizationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
+                              if (!confirm("Remove this membership?")) return;
                               removeMembership(m.id);
                               reloadOrganizations();
                               pushNotice("ok", "Membership removed.");
                             }}
+                            disabled={busyKey !== null}
                           >
                             Remove
                           </Button>
@@ -347,9 +372,9 @@ export default function AdminOrganizationsPage() {
                                 <Button
                                   size="sm"
                                   variant="secondary"
-                                  onClick={() => {
-                                    void navigator.clipboard.writeText(link);
-                                    pushNotice("ok", "Registration link copied.");
+                                  disabled={busyKey !== null}
+                                  onClick={async () => {
+                                    await copyOrWarn(link, "Registration link copied.");
                                   }}
                                 >
                                   Copy link
@@ -359,10 +384,12 @@ export default function AdminOrganizationsPage() {
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
+                                      if (!confirm("Revoke this invite?")) return;
                                       revokeFacilitatorInvite(inv.id);
                                       reloadOrganizations();
                                       pushNotice("ok", "Invite revoked.");
                                     }}
+                                    disabled={busyKey !== null}
                                   >
                                     Revoke
                                   </Button>
@@ -397,10 +424,12 @@ export default function AdminOrganizationsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
+                              if (!confirm("Deactivate this participant account?")) return;
                               deactivateManagedParticipant(p.id);
                               reloadOrganizations();
                               pushNotice("ok", "Participant deactivated.");
                             }}
+                            disabled={busyKey !== null}
                           >
                             Deactivate
                           </Button>

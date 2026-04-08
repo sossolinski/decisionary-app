@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import {
   LayoutGrid,
   BookOpen,
@@ -16,8 +16,6 @@ import {
 } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
-
-const LS_KEY = "decisionary.sidebar.collapsed";
 
 function itemActive(pathname: string, href: string) {
   if (href === "/facilitator") return pathname === "/facilitator";
@@ -64,27 +62,24 @@ function NavItem({
   );
 }
 
-export default function AppSidebar() {
+type AppSidebarProps = {
+  mobile?: boolean;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+};
+
+export default function AppSidebar({
+  mobile = false,
+  collapsed,
+  onToggleCollapsed,
+}: AppSidebarProps) {
   const pathname = usePathname();
   const { loading, activeRole, isDisabled } = useRoleContext();
 
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const v = window.localStorage.getItem(LS_KEY);
-    if (v === "0") return false;
-    if (v === "1") return true;
-    return true;
-  });
-
-  function toggle() {
-    setCollapsed((v) => {
-      const next = !v;
-      localStorage.setItem(LS_KEY, next ? "1" : "0");
-      return next;
-    });
-  }
-
   const width = collapsed ? "w-[84px]" : "w-[260px]";
+  const asidePosition = mobile
+    ? "relative h-full w-full pt-0"
+    : ["fixed left-0 top-0 z-30 h-screen", "pt-[76px]", width].join(" ");
 
   const canFacilitate =
     !loading &&
@@ -130,13 +125,7 @@ export default function AppSidebar() {
   if (loading) {
     // Keep layout stable; no flashing of links
     return (
-      <aside
-        className={[
-          "fixed left-0 top-0 z-30 h-screen",
-          "pt-[76px]",
-          width,
-        ].join(" ")}
-      >
+      <aside className={asidePosition}>
         <div className="h-full px-3 pb-4">
           <div className="h-full surface shadow-soft rounded-[18px]" />
         </div>
@@ -145,13 +134,7 @@ export default function AppSidebar() {
   }
 
   return (
-    <aside
-      className={[
-        "fixed left-0 top-0 z-30 h-screen",
-        "pt-[76px]", // under topbar
-        width,
-      ].join(" ")}
-    >
+    <aside className={asidePosition}>
       <div className="h-full px-3 pb-4">
         <div className="h-full surface shadow-soft rounded-[18px] flex flex-col">
           {/* Top spacer / tiny brand */}
@@ -251,24 +234,26 @@ export default function AppSidebar() {
             ) : null}
 
             {/* Collapse */}
-            <button
-              type="button"
-              onClick={toggle}
-              className={[
-                itemBase,
-                collapsed ? itemCollapsed : itemExpanded,
-                "border-[var(--studio-border)] bg-[var(--studio-surface2)]",
-                "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]",
-              ].join(" ")}
-              title={collapsed ? "Expand" : "Collapse"}
-            >
-              {collapsed ? (
-                <ChevronsRight className="h-5 w-5 text-foreground/80" />
-              ) : (
-                <ChevronsLeft className="h-5 w-5 text-foreground/80" />
-              )}
-              {!collapsed ? <span className="text-sm font-medium">Collapse</span> : null}
-            </button>
+            {!mobile ? (
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                className={[
+                  itemBase,
+                  collapsed ? itemCollapsed : itemExpanded,
+                  "border-[var(--studio-border)] bg-[var(--studio-surface2)]",
+                  "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]",
+                ].join(" ")}
+                title={collapsed ? "Expand" : "Collapse"}
+              >
+                {collapsed ? (
+                  <ChevronsRight className="h-5 w-5 text-foreground/80" />
+                ) : (
+                  <ChevronsLeft className="h-5 w-5 text-foreground/80" />
+                )}
+                {!collapsed ? <span className="text-sm font-medium">Collapse</span> : null}
+              </button>
+            ) : null}
 
             {/* Mini role indicator in sidebar (only expanded) */}
             {!collapsed ? (

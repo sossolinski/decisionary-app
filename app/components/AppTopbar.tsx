@@ -1,7 +1,7 @@
 // app/components/AppTopbar.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LogOut, Menu } from "lucide-react";
@@ -37,6 +37,7 @@ export default function AppTopbar({
 
   const [email, setEmail] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -44,6 +45,29 @@ export default function AppTopbar({
       setEmail(data.user?.email ?? null);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function onDocMouseDown(e: MouseEvent) {
+      const root = accountMenuRef.current;
+      if (!root) return;
+      if (e.target instanceof Node && !root.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onDocMouseDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-[color:var(--studio-border)] bg-[var(--studio-surface)] backdrop-blur-xl">
@@ -88,7 +112,7 @@ export default function AppTopbar({
             <RoleSwitcher />
             <RoleBadge />
 
-            <div className="relative">
+            <div className="relative" ref={accountMenuRef}>
               <Button
                 variant="outline"
                 className="min-w-[260px] justify-between"
@@ -99,10 +123,7 @@ export default function AppTopbar({
               </Button>
 
               {open ? (
-                <div
-                  className="absolute right-0 mt-2 w-[260px] popover-solid rounded-[14px] shadow-soft overflow-hidden"
-                  onMouseLeave={() => setOpen(false)}
-                >
+                <div className="absolute right-0 mt-2 w-[260px] popover-solid rounded-[14px] shadow-soft overflow-hidden">
                   <div className="px-4 py-3 border-b border-[color:var(--studio-border)]">
                     <div className="text-xs text-[color:var(--studio-muted2)]">Account</div>
                     <div className="text-sm font-semibold truncate">{email ?? "—"}</div>

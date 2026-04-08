@@ -10,6 +10,7 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import { copyTextToClipboard } from "@/lib/clientClipboard";
 
 function toMessage(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
@@ -31,6 +32,7 @@ export default function FacilitatorSettingsPage() {
   const [participantEmail, setParticipantEmail] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const participants = activeOrgId ? listParticipantsForOrg(activeOrgId) : [];
 
@@ -126,10 +128,12 @@ export default function FacilitatorSettingsPage() {
 
               <div className="flex flex-wrap gap-2">
                 <Button
+                  disabled={busyKey !== null}
                   onClick={() => {
                     setErr(null);
                     setMsg(null);
                     try {
+                      setBusyKey("participant:add");
                       const p = addManagedParticipant({
                         orgId: activeOrgId,
                         displayName: participantName,
@@ -142,14 +146,17 @@ export default function FacilitatorSettingsPage() {
                       setMsg(`Participant created. Join code: ${p.join_code}`);
                     } catch (e: unknown) {
                       setErr(toMessage(e, "Failed to create participant."));
+                    } finally {
+                      setBusyKey(null);
                     }
                   }}
                 >
-                  Add participant
+                  {busyKey === "participant:add" ? "Adding…" : "Add participant"}
                 </Button>
 
                 <Button
                   variant="secondary"
+                  disabled={busyKey !== null}
                   onClick={() => {
                     reloadOrganizations();
                     setMsg("Participants refreshed.");
@@ -179,10 +186,15 @@ export default function FacilitatorSettingsPage() {
                         <Button
                           size="sm"
                           variant="secondary"
-                          onClick={() => {
-                            void navigator.clipboard.writeText(p.join_code);
-                            setMsg("Join code copied.");
-                            setErr(null);
+                          disabled={busyKey !== null}
+                          onClick={async () => {
+                            const ok = await copyTextToClipboard(p.join_code);
+                            if (ok) {
+                              setMsg("Join code copied.");
+                              setErr(null);
+                              return;
+                            }
+                            setErr("Clipboard unavailable. Copy code manually.");
                           }}
                         >
                           Copy code
@@ -191,11 +203,13 @@ export default function FacilitatorSettingsPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => {
+                            if (!confirm("Deactivate this participant account?")) return;
                             deactivateManagedParticipant(p.id);
                             reloadOrganizations();
                             setMsg("Participant deactivated.");
                             setErr(null);
                           }}
+                          disabled={busyKey !== null}
                         >
                           Deactivate
                         </Button>
