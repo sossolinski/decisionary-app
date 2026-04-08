@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { normalizeSessionStatus, type SessionStatus } from "./sessionStatus";
 
 /* =========================
    TYPES
@@ -27,7 +28,7 @@ export type Session = {
   scenario: SessionScenarioLite | null;
 
   join_code: string;
-  status: "draft" | "live" | "ended" | string;
+  status: SessionStatus;
 
   created_at: string | null;
   created_by: string | null;
@@ -72,7 +73,7 @@ export type ParticipantSession = {
   id: string;
   title: string | null;
   join_code: string;
-  status: string;
+  status: SessionStatus;
   joined_at: string | null;
   created_at: string | null;
   started_at: string | null;
@@ -186,7 +187,7 @@ export async function listSessions(): Promise<Session[]> {
       scenario_id: sid,
       scenario,
       join_code: r.join_code,
-      status: r.status,
+      status: normalizeSessionStatus(r.status),
       created_at: r.created_at ?? null,
       created_by: r.created_by ?? null,
       started_at: r.started_at ?? null,
@@ -260,7 +261,7 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
           id: s.id,
           title: s.title ?? null,
           join_code: s.join_code,
-          status: s.status,
+          status: normalizeSessionStatus(s.status),
           joined_at: r.assigned_at ?? null,
           created_at: s.created_at ?? null,
           started_at: s.started_at ?? null,
@@ -312,7 +313,7 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
       id: s.id,
       title: s.title ?? null,
       join_code: s.join_code,
-      status: s.status,
+      status: normalizeSessionStatus(s.status),
       joined_at: assignment?.joinedAt ?? null,
       created_at: s.created_at ?? null,
       started_at: s.started_at ?? null,

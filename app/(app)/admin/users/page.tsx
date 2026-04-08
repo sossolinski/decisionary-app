@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getErrorMessage, logClientError } from "@/lib/errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -24,12 +25,14 @@ export default function AdminUsersPage() {
   const [meAdmin, setMeAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<ProfileRow[]>([]);
 
   async function load(withSpinner = true) {
     if (withSpinner) setLoading(true);
+    setError(null);
 
     // 1) check if I'm permanent admin
     const { data: me } = await supabase
@@ -49,7 +52,10 @@ export default function AdminUsersPage() {
         .order("created_at", { ascending: false })
         .limit(500);
 
-      if (error) console.error(error);
+      if (error) {
+        logClientError("AdminUsersPage.load.listProfiles", error);
+        setError(getErrorMessage(error, "Failed to load users."));
+      }
       setRows((data ?? []) as ProfileRow[]);
     } else {
       setRows([]);
@@ -77,7 +83,10 @@ export default function AdminUsersPage() {
   async function setRole(userId: string, role: ProfileRow["role"]) {
     setBusy(userId);
     const { error } = await supabase.rpc("admin_set_user_role", { p_user_id: userId, p_role: role });
-    if (error) console.error(error);
+    if (error) {
+      logClientError("AdminUsersPage.setRole", error);
+      setError(getErrorMessage(error, "Failed to change role."));
+    }
     await load();
     setBusy(null);
   }
@@ -85,7 +94,10 @@ export default function AdminUsersPage() {
   async function setDisabled(userId: string, disabled: boolean) {
     setBusy(userId);
     const { error } = await supabase.rpc("admin_set_user_disabled", { p_user_id: userId, p_disabled: disabled });
-    if (error) console.error(error);
+    if (error) {
+      logClientError("AdminUsersPage.setDisabled", error);
+      setError(getErrorMessage(error, "Failed to update disabled flag."));
+    }
     await load();
     setBusy(null);
   }
@@ -110,6 +122,12 @@ export default function AdminUsersPage() {
           </CardHeader>
         </Card>
       )}
+
+      {error ? (
+        <Card className="border-destructive/40">
+          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
 
       {meAdmin && (
         <>

@@ -18,6 +18,7 @@ import {
 } from "@/lib/facilitator";
 
 import { getMyRole } from "@/lib/users";
+import { getErrorMessage } from "@/lib/errors";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -49,10 +50,6 @@ function fmt(dt?: string | null) {
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-}
-
-function errMessage(e: unknown, fallback: string) {
-  return e instanceof Error ? e.message : fallback;
 }
 
 function useOutsideClose(
@@ -139,6 +136,7 @@ export default function FacilitatorScenariosPage() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // search
   const [q, setQ] = useState("");
@@ -165,17 +163,18 @@ export default function FacilitatorScenariosPage() {
         return;
       }
       await load();
-    })().catch((e: unknown) => setError(errMessage(e, "Failed to load")));
+    })().catch((e: unknown) => setError(getErrorMessage(e, "Failed to load")));
   }, [router]);
 
   async function load() {
     setError(null);
+    setNotice(null);
     try {
       const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
       setScenarios(scs ?? []);
       setFacilitators((facs ?? []) as FacilitatorProfile[]);
     } catch (e: unknown) {
-      setError(errMessage(e, "Load failed"));
+      setError(getErrorMessage(e, "Load failed"));
     }
   }
 
@@ -184,12 +183,13 @@ export default function FacilitatorScenariosPage() {
     if (!newTitle.trim()) return;
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const s = await createScenario(newTitle.trim());
       setScenarios((prev) => [s, ...prev]);
       setNewTitle("");
     } catch (e: unknown) {
-      setError(errMessage(e, "Create failed"));
+      setError(getErrorMessage(e, "Create failed"));
     } finally {
       setLoading(false);
     }
@@ -198,13 +198,14 @@ export default function FacilitatorScenariosPage() {
   async function onDelete(id: string) {
     if (!confirm("Delete this scenario?")) return;
     setError(null);
+    setNotice(null);
     setBusyId(id);
     try {
       await deleteScenario(id);
       setScenarios((prev) => prev.filter((s) => s.id !== id));
       if (manageOpenId === id) setManageOpenId(null);
     } catch (e: unknown) {
-      setError(errMessage(e, "Delete failed"));
+      setError(getErrorMessage(e, "Delete failed"));
     } finally {
       setBusyId(null);
     }
@@ -212,13 +213,14 @@ export default function FacilitatorScenariosPage() {
 
   async function onDuplicate(id: string) {
     setError(null);
+    setNotice(null);
     setBusyId(id);
     try {
       const copy = await duplicateScenario(id);
       setScenarios((prev) => [copy, ...prev]);
       if (manageOpenId === id) setManageOpenId(null);
     } catch (e: unknown) {
-      setError(errMessage(e, "Duplicate failed"));
+      setError(getErrorMessage(e, "Duplicate failed"));
     } finally {
       setBusyId(null);
     }
@@ -231,6 +233,7 @@ export default function FacilitatorScenariosPage() {
       return;
     }
     setError(null);
+    setNotice(null);
     setBusyId(scenarioId);
     try {
       await transferScenarioOwnership(scenarioId, newOwnerId);
@@ -238,7 +241,7 @@ export default function FacilitatorScenariosPage() {
       setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
       setManageOpenId(null);
     } catch (e: unknown) {
-      setError(errMessage(e, "Transfer failed"));
+      setError(getErrorMessage(e, "Transfer failed"));
     } finally {
       setBusyId(null);
     }
@@ -251,13 +254,14 @@ export default function FacilitatorScenariosPage() {
       return;
     }
     setError(null);
+    setNotice(null);
     setBusyId(scenarioId);
     try {
       await shareScenario(scenarioId, targetId, "read");
-      alert("Shared (read-only).");
+      setNotice("Shared (read-only).");
       setManageOpenId(null);
     } catch (e: unknown) {
-      setError(errMessage(e, "Share failed"));
+      setError(getErrorMessage(e, "Share failed"));
     } finally {
       setBusyId(null);
     }
@@ -270,13 +274,14 @@ export default function FacilitatorScenariosPage() {
       return;
     }
     setError(null);
+    setNotice(null);
     setBusyId(scenarioId);
     try {
       await revokeScenarioShare(scenarioId, targetId);
-      alert("Share revoked.");
+      setNotice("Share revoked.");
       setManageOpenId(null);
     } catch (e: unknown) {
-      setError(errMessage(e, "Revoke failed"));
+      setError(getErrorMessage(e, "Revoke failed"));
     } finally {
       setBusyId(null);
     }
@@ -359,6 +364,12 @@ export default function FacilitatorScenariosPage() {
       {error ? (
         <div className="rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
           {error}
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="rounded-[14px] border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+          {notice}
         </div>
       ) : null}
 

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import type { Scenario } from "@/lib/scenarios";
+import { getErrorMessage } from "@/lib/errors";
 
 import {
   getSessionSituation,
@@ -136,10 +137,6 @@ function lsKey(sessionId: string, kind: "inbox" | "pulse") {
   return `decisionary.seen.${kind}.${sessionId}`;
 }
 
-function errMessage(e: unknown, fallback: string) {
-  return e instanceof Error ? e.message : fallback;
-}
-
 type SessionMetaRow = {
   scenario_id?: string | null;
   scenario?: string | null;
@@ -227,7 +224,7 @@ export default function SessionParticipantPage() {
       const s = await getSessionSituation(sessionId);
       setSituation(s);
     } catch (e: unknown) {
-      setError(errMessage(e, "Failed to load situation"));
+      setError(getErrorMessage(e, "Failed to load situation"));
     }
   }
 
@@ -239,7 +236,7 @@ export default function SessionParticipantPage() {
       const rows = await getSessionActions(sessionId, 50);
       setActions(rows);
     } catch (e: unknown) {
-      setActionsError(errMessage(e, "Failed to load actions"));
+      setActionsError(getErrorMessage(e, "Failed to load actions"));
     } finally {
       setActionsLoading(false);
     }
@@ -541,7 +538,7 @@ export default function SessionParticipantPage() {
 
       setComment("");
     } catch (e: unknown) {
-      alert(errMessage(e, "Failed to save action"));
+      setActionsError(getErrorMessage(e, "Failed to save action"));
     }
   }
 
@@ -580,7 +577,7 @@ export default function SessionParticipantPage() {
       await sendInjectToSession(sessionId, title, body);
       setComment("");
     } catch (e: unknown) {
-      alert(errMessage(e, "Failed to process Pulse decision"));
+      setActionsError(getErrorMessage(e, "Failed to process Pulse decision"));
     }
   }
 

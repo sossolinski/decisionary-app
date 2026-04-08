@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { logClientError } from "@/lib/errors";
 
 export type Role = "admin" | "facilitator" | "participant";
 
@@ -31,7 +32,7 @@ export function useRoleContext(): RoleContext {
     if (markLoading) setLoading(true);
 
     const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr) console.error("[useRoleContext] auth error:", authErr);
+    if (authErr) logClientError("useRoleContext.auth", authErr);
 
     const u = auth.user ?? null;
     setUserId(u?.id ?? null);
@@ -68,7 +69,7 @@ export function useRoleContext(): RoleContext {
       .eq("user_id", u.id)
       .maybeSingle();
 
-    if (profErr) console.error("[useRoleContext] profiles select error:", profErr);
+    if (profErr) logClientError("useRoleContext.profiles", profErr);
 
     const r2 = (prof?.role ?? null) as Role | null;
     const ar2 = ((prof?.active_role ?? prof?.role) ?? null) as Role | null;

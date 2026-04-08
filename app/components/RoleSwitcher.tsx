@@ -4,6 +4,7 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/app/components/ui/button";
 import { useRoleContext, type Role } from "@/app/components/useRoleContext";
+import { logClientError } from "@/lib/errors";
 
 const ROLES: Role[] = ["admin", "facilitator", "participant"];
 
@@ -17,7 +18,7 @@ export default function RoleSwitcher() {
   async function setViewAs(r: Role) {
     setBusy(r);
     const { error } = await supabase.rpc("set_my_active_role", { p_role: r });
-    if (error) console.error("[RoleSwitcher] set_my_active_role error:", error);
+    if (error) logClientError("RoleSwitcher.set_my_active_role", error);
     setBusy(null);
   }
 

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { deliverDueInjects, sendInjectToSession } from "@/lib/sessions";
 import { listScenarioInjects, type ScenarioInject } from "@/lib/scenarios";
+import { getErrorMessage } from "@/lib/errors";
+import { normalizeSessionStatus } from "@/lib/sessionStatus";
+import { validateMessagePayload } from "@/lib/validators";
 import {
   Card,
   CardContent,
@@ -32,10 +35,6 @@ function fmtIso(iso: string | null | undefined) {
   } catch {
     return "—";
   }
-}
-
-function errMessage(e: unknown, fallback: string) {
-  return e instanceof Error ? e.message : fallback;
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
@@ -197,7 +196,7 @@ export default function FacilitatorToolsPanel({
         const { error: updErr } = await supabase
           .from("sessions")
           .update({
-            status: "running",
+            status: "live",
             started_at: nowIso,
             ended_at: null,
           })
@@ -209,7 +208,7 @@ export default function FacilitatorToolsPanel({
       setMsg("Exercise started (T=0).");
       await refreshMeta();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to start exercise."));
+      setMsg(getErrorMessage(e, "Failed to start exercise."));
     } finally {
       setLoading(false);
     }
@@ -228,7 +227,7 @@ export default function FacilitatorToolsPanel({
       setMsg("Exercise ended.");
       await refreshMeta();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to end exercise."));
+      setMsg(getErrorMessage(e, "Failed to end exercise."));
     } finally {
       setLoading(false);
     }
@@ -257,7 +256,7 @@ export default function FacilitatorToolsPanel({
       await refreshMeta();
       await refreshInjectLibrary();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to restart session."));
+      setMsg(getErrorMessage(e, "Failed to restart session."));
     } finally {
       setLoading(false);
     }
@@ -275,7 +274,7 @@ export default function FacilitatorToolsPanel({
       setMsg(`Delivered ${res.delivered} due inject(s).`);
       await refreshInjectLibrary();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to deliver due injects."));
+      setMsg(getErrorMessage(e, "Failed to deliver due injects."));
     } finally {
       setLoading(false);
     }
@@ -300,7 +299,7 @@ export default function FacilitatorToolsPanel({
       setMsg(`Delivered: ${selectedSI.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to deliver inject."));
+      setMsg(getErrorMessage(e, "Failed to deliver inject."));
     } finally {
       setLoading(false);
     }
@@ -316,7 +315,7 @@ export default function FacilitatorToolsPanel({
       setMsg(`Delivered next: ${next.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to deliver next inject."));
+      setMsg(getErrorMessage(e, "Failed to deliver next inject."));
     } finally {
       setLoading(false);
     }
@@ -327,14 +326,15 @@ export default function FacilitatorToolsPanel({
   // =========================
 
   async function sendQuickMessage() {
-    if (!qmTitle.trim() || !qmBody.trim()) {
-      setMsg("Quick message requires both title and body.");
+    const validPayload = validateMessagePayload(qmTitle, qmBody);
+    if (!validPayload.ok) {
+      setMsg(validPayload.error);
       return;
     }
     setLoading(true);
     setMsg(null);
     try {
-      await sendInjectToSession(sessionId, qmTitle.trim(), qmBody.trim(), {
+      await sendInjectToSession(sessionId, validPayload.value.title, validPayload.value.body, {
         channel: (qmChannel ?? "ops").trim() || "ops",
         severity: qmSeverity.trim() ? qmSeverity.trim() : null,
         sender_name: qmSenderName.trim() ? qmSenderName.trim() : null,
@@ -346,7 +346,7 @@ export default function FacilitatorToolsPanel({
       setQmSeverity("");
       await refreshInjectLibrary();
     } catch (e: unknown) {
-      setMsg(errMessage(e, "Failed to send quick message."));
+      setMsg(getErrorMessage(e, "Failed to send quick message."));
     } finally {
       setLoading(false);
     }
@@ -365,7 +365,7 @@ export default function FacilitatorToolsPanel({
         <CardContent className="space-y-4">
           {/* Meta */}
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>Status: {meta?.status ?? "—"}</Badge>
+            <Badge>Status: {normalizeSessionStatus(meta?.status ?? null)}</Badge>
             <Badge>Join code: {meta?.join_code ?? "—"}</Badge>
             <Badge>Started: {fmtIso(meta?.started_at)}</Badge>
             <Badge>Ended: {fmtIso(meta?.ended_at)}</Badge>

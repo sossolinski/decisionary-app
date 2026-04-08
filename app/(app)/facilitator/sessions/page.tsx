@@ -15,6 +15,9 @@ import {
   type Session,
   type ScenarioListItem,
 } from "@/lib/sessionsRuntime";
+import { getErrorMessage } from "@/lib/errors";
+import { normalizeSessionStatus, type SessionStatus } from "@/lib/sessionStatus";
+import { validateSessionTitle } from "@/lib/validators";
 
 import {
   Card,
@@ -41,14 +44,10 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-type StatusFilter = "all" | "active" | "ended";
-
-function errMessage(e: unknown) {
-  return e instanceof Error ? e.message : String(e);
-}
+type StatusFilter = "all" | "live" | "ended";
 
 function toStatusFilter(value: string): StatusFilter {
-  return value === "active" || value === "ended" ? value : "all";
+  return value === "live" || value === "ended" ? value : "all";
 }
 
 function fmt(dt?: string | null) {
@@ -60,20 +59,22 @@ function fmt(dt?: string | null) {
   }
 }
 
-function statusTone(status?: string | null) {
-  const s = String(status ?? "").toLowerCase();
-  if (s === "active")
+function statusTone(status?: SessionStatus | null) {
+  const s = normalizeSessionStatus(status);
+  if (s === "live")
     return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
   if (s === "ended")
     return "border-border bg-secondary/50 text-foreground";
+  if (s === "unknown")
+    return "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300";
   return "border-[var(--studio-border)] bg-[var(--studio-surface2)] text-foreground";
 }
 
-function StatusPill({ status }: { status?: string | null }) {
-  const s = String(status ?? "—");
+function StatusPill({ status }: { status?: SessionStatus | null }) {
+  const s = normalizeSessionStatus(status);
   const base =
     "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide";
-  return <span className={`${base} ${statusTone(status)}`}>{s.toUpperCase()}</span>;
+  return <span className={`${base} ${statusTone(s)}`}>{s.toUpperCase()}</span>;
 }
 
 function Select({
@@ -183,7 +184,7 @@ export default function FacilitatorSessionsPage() {
       setSessions((ses ?? []) as Session[]);
       setScenarios((scs ?? []) as ScenarioListItem[]);
     } catch (e: unknown) {
-      setError(errMessage(e));
+      setError(getErrorMessage(e, "Failed to load sessions."));
     } finally {
       setLoading(false);
     }
@@ -205,7 +206,7 @@ export default function FacilitatorSessionsPage() {
   }, [scenarios]);
 
   const activeCount = useMemo(() => {
-    return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "active").length;
+    return sessions.filter((s) => s.status === "live").length;
   }, [sessions]);
 
   const endedCount = useMemo(() => {
@@ -216,7 +217,7 @@ export default function FacilitatorSessionsPage() {
     const qq = q.trim().toLowerCase();
 
     return sessions.filter((s) => {
-      const st = String(s.status ?? "").toLowerCase();
+      const st = normalizeSessionStatus(s.status);
       if (statusFilter !== "all" && st !== statusFilter) return false;
 
       if (!qq) return true;
@@ -238,17 +239,22 @@ export default function FacilitatorSessionsPage() {
       setError("Select a scenario.");
       return;
     }
+    const validTitle = validateSessionTitle(title);
+    if (!validTitle.ok) {
+      setError(validTitle.error);
+      return;
+    }
     setBusyId("create");
     setError(null);
     try {
       const id = await createSessionFromScenario({
         scenarioId,
-        title: title.trim() || "New session",
+        title: validTitle.value,
       });
       await load();
       router.push(`/sessions/${id}`);
     } catch (e: unknown) {
-      setError(errMessage(e));
+      setError(getErrorMessage(e, "Failed to create session."));
     } finally {
       setBusyId(null);
     }
@@ -262,7 +268,7 @@ export default function FacilitatorSessionsPage() {
       await setSessionStatus(sessionId, "ended");
       await load();
     } catch (e: unknown) {
-      setError(errMessage(e));
+      setError(getErrorMessage(e, "Failed to end session."));
     } finally {
       setBusyId(null);
     }
@@ -276,7 +282,7 @@ export default function FacilitatorSessionsPage() {
       await restartSession(sessionId);
       await load();
     } catch (e: unknown) {
-      setError(errMessage(e));
+      setError(getErrorMessage(e, "Failed to restart session."));
     } finally {
       setBusyId(null);
     }
@@ -290,7 +296,7 @@ export default function FacilitatorSessionsPage() {
       await deleteSession(sessionId);
       await load();
     } catch (e: unknown) {
-      setError(errMessage(e));
+      setError(getErrorMessage(e, "Failed to delete session."));
     } finally {
       setBusyId(null);
     }
@@ -316,7 +322,7 @@ export default function FacilitatorSessionsPage() {
             </span>
             <span className="text-xs text-muted-foreground">•</span>
             <span className="text-xs font-semibold text-muted-foreground">
-              Active: <span className="text-foreground">{activeCount}</span>
+              Live: <span className="text-foreground">{activeCount}</span>
             </span>
             <span className="text-xs text-muted-foreground">•</span>
             <span className="text-xs font-semibold text-muted-foreground">
@@ -413,7 +419,7 @@ export default function FacilitatorSessionsPage() {
 
             <Select value={statusFilter} onChange={(v) => setStatusFilter(toStatusFilter(v))}>
               <option value="all">Status: All</option>
-              <option value="active">Status: Active</option>
+              <option value="live">Status: Live</option>
               <option value="ended">Status: Ended</option>
             </Select>
           </div>
