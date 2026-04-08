@@ -3,7 +3,7 @@
 import { useRoleContext } from "@/app/components/useRoleContext";
 
 export default function RoleBadge() {
-  const { loading, role, activeRole, isDisabled } = useRoleContext();
+  const { loading, role, activeRole, isDisabled, activeOrg } = useRoleContext();
   if (loading) return null;
 
   const perm = role ?? "—";
@@ -20,6 +20,11 @@ export default function RoleBadge() {
       {isDisabled ? (
         <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1 text-red-400">
           disabled
+        </span>
+      ) : null}
+      {activeOrg ? (
+        <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1 max-w-[220px] truncate">
+          org: <b>{activeOrg.name}</b>
         </span>
       ) : null}
     </div>

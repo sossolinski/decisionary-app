@@ -195,16 +195,28 @@ export default function AppSidebar() {
 
             {/* Admin nav visible only when VIEW AS admin */}
             {isAdminView ? (
-              <NavItem
-                href="/admin/users"
-                label="Admin · Users"
-                icon={<Shield className="h-5 w-5" />}
-                pathname={pathname ?? ""}
-                collapsed={collapsed}
-                itemBase={itemBase}
-                itemCollapsed={itemCollapsed}
-                itemExpanded={itemExpanded}
-              />
+              <>
+                <NavItem
+                  href="/admin/organizations"
+                  label="Admin · Orgs"
+                  icon={<Shield className="h-5 w-5" />}
+                  pathname={pathname ?? ""}
+                  collapsed={collapsed}
+                  itemBase={itemBase}
+                  itemCollapsed={itemCollapsed}
+                  itemExpanded={itemExpanded}
+                />
+                <NavItem
+                  href="/admin/users"
+                  label="Admin · Users"
+                  icon={<Shield className="h-5 w-5" />}
+                  pathname={pathname ?? ""}
+                  collapsed={collapsed}
+                  itemBase={itemBase}
+                  itemCollapsed={itemCollapsed}
+                  itemExpanded={itemExpanded}
+                />
+              </>
             ) : null}
           </nav>
 

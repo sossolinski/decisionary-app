@@ -8,6 +8,7 @@ import { ChevronDown, LogOut, Menu } from "lucide-react";
 
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/app/components/ui/button";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import RoleSwitcher from "@/app/components/RoleSwitcher";
 import RoleBadge from "@/app/components/RoleBadge";
@@ -32,6 +33,7 @@ export default function AppTopbar({
 }) {
   const pathname = usePathname();
   const t = useMemo(() => titleFromPath(pathname), [pathname]);
+  const { activeOrg } = useRoleContext();
 
   const [email, setEmail] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -70,6 +72,14 @@ export default function AppTopbar({
                 <span className="text-[color:var(--studio-muted2)]">/</span>
                 <span className="truncate">{t.page}</span>
               </div>
+              {activeOrg ? (
+                <>
+                  <span className="text-[color:var(--studio-muted2)]">•</span>
+                  <div className="hidden md:block text-xs text-[color:var(--studio-muted)] truncate max-w-[240px]">
+                    org: <span className="font-medium text-foreground/90">{activeOrg.name}</span>
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
 

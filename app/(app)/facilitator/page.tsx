@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import { getMyRole } from "@/lib/users";
 import { listScenarios, listSessions } from "@/lib/sessionsRuntime";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import {
   Card,
@@ -18,6 +19,7 @@ import { Button } from "@/app/components/ui/button";
 
 export default function FacilitatorHomePage() {
   const router = useRouter();
+  const { activeOrg } = useRoleContext();
   const [loading, setLoading] = useState(true);
   const [scenarioCount, setScenarioCount] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
@@ -41,7 +43,7 @@ export default function FacilitatorHomePage() {
         router.replace("/login");
         return;
       }
-      if (role !== "facilitator") {
+      if (role !== "facilitator" && role !== "admin") {
         router.replace("/participant");
         return;
       }
@@ -58,6 +60,9 @@ export default function FacilitatorHomePage() {
           <CardDescription>
             Build scenarios, run sessions, and coordinate the exercise flow — all
             in one place.
+          </CardDescription>
+          <CardDescription>
+            Active organization: <b>{activeOrg?.name ?? "not selected"}</b>
           </CardDescription>
         </CardHeader>
 
