@@ -1,7 +1,7 @@
 // app/(app)/facilitator/scenarios/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -83,6 +83,10 @@ function fmt(iso?: string | null) {
   }
 }
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function FacilitatorScenarioEditorPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -126,7 +130,7 @@ export default function FacilitatorScenarioEditorPage() {
   const [openSiId, setOpenSiId] = useState<string | null>(null);
   const [newInjectOpen, setNewInjectOpen] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -150,12 +154,12 @@ export default function FacilitatorScenarioEditorPage() {
       setFatalities(String(s?.fatalities ?? 0));
       setUninjured(String(s?.uninjured ?? 0));
       setUnknown(String(s?.unknown ?? 0));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to load scenario."));
     } finally {
       setLoading(false);
     }
-  }
+  }, [id]);
 
   useEffect(() => {
     (async () => {
@@ -164,8 +168,7 @@ export default function FacilitatorScenarioEditorPage() {
       if (role !== "facilitator") return router.replace("/participant");
       await load();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, id]);
+  }, [router, id, load]);
 
   const sortedInjects = useMemo(() => {
     return [...injects].sort((a, b) => {
@@ -251,8 +254,8 @@ export default function FacilitatorScenarioEditorPage() {
       setFatalities(String(updated.fatalities ?? 0));
       setUninjured(String(updated.uninjured ?? 0));
       setUnknown(String(updated.unknown ?? 0));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to save scenario."));
     } finally {
       setSaving(false);
     }
@@ -294,8 +297,8 @@ export default function FacilitatorScenarioEditorPage() {
 
       setNewInjectOpen(false);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to create inject."));
     } finally {
       setBusyKey(null);
     }
@@ -308,8 +311,8 @@ export default function FacilitatorScenarioEditorPage() {
     try {
       await detachScenarioInject(siId);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to detach inject."));
     } finally {
       setBusyKey(null);
     }
@@ -323,8 +326,8 @@ export default function FacilitatorScenarioEditorPage() {
       const { error } = await supabase.from("injects").delete().eq("id", injectId);
       if (error) throw error;
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to delete inject."));
     } finally {
       setBusyKey(null);
     }
@@ -337,8 +340,8 @@ export default function FacilitatorScenarioEditorPage() {
       const { error } = await supabase.from("injects").update(patch).eq("id", injectId);
       if (error) throw error;
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to update inject."));
     } finally {
       setBusyKey(null);
     }
@@ -353,8 +356,8 @@ export default function FacilitatorScenarioEditorPage() {
         scheduled_at: fromDatetimeLocal(scheduledLocal),
       });
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to reschedule inject."));
     } finally {
       setBusyKey(null);
     }
@@ -379,8 +382,8 @@ export default function FacilitatorScenarioEditorPage() {
         updateScenarioInject({ id: b.id, order_index: a.order_index }),
       ]);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to reorder inject."));
     } finally {
       setBusyKey(null);
     }

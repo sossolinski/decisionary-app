@@ -15,6 +15,10 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function FacilitatorControls({
   sessionId,
   onStarted,
@@ -56,7 +60,7 @@ export default function FacilitatorControls({
         try {
           await supabase
             .from("sessions")
-            .update({ started_at: new Date().toISOString() } as any)
+            .update({ started_at: new Date().toISOString() })
             .eq("id", sessionId);
         } catch {
           // ignore
@@ -70,8 +74,8 @@ export default function FacilitatorControls({
       }
 
       setMsg(em || "Failed to start");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to start");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to start"));
     } finally {
       setStarting(false);
     }
@@ -86,8 +90,8 @@ export default function FacilitatorControls({
     try {
       const res = await deliverDueInjects(sessionId);
       setMsg(`Delivered ${res.delivered} scheduled inject(s)`);
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed"));
     } finally {
       setDelivering(false);
     }

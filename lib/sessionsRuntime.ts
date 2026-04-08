@@ -73,6 +73,7 @@ export type ParticipantSession = {
   title: string | null;
   join_code: string;
   status: string;
+  joined_at: string | null;
   created_at: string | null;
   started_at: string | null;
   ended_at: string | null;
@@ -98,9 +99,9 @@ function normCode(code: string) {
 
 async function tryRpc<T>(
   fn: string,
-  args: Record<string, any>
+  args: Record<string, unknown>
 ): Promise<T | null> {
-  const { data, error } = await supabase.rpc(fn as any, args as any);
+  const { data, error } = await supabase.rpc(fn as never, args as never);
   if (!error) return data as T;
 
   const msg = String(error.message ?? "").toLowerCase();
@@ -143,7 +144,7 @@ async function fetchScenarioLiteByIds(
 
   if (error) throw error;
 
-  for (const row of (data ?? []) as any[]) {
+  for (const row of (data ?? []) as Array<{ id?: string } & SessionScenarioLite>) {
     if (row?.id) map.set(row.id, row as SessionScenarioLite);
   }
   return map;
@@ -161,7 +162,17 @@ export async function listSessions(): Promise<Session[]> {
 
   if (error) throw error;
 
-  const rows = (data ?? []) as any[];
+  const rows = (data ?? []) as Array<{
+    id: string;
+    title: string | null;
+    scenario_id: string | null;
+    join_code: string;
+    status: string;
+    created_at: string | null;
+    created_by: string | null;
+    started_at: string | null;
+    ended_at: string | null;
+  }>;
   const scenarioIds = rows.map((r) => r?.scenario_id).filter(Boolean) as string[];
   const scenarioMap = await fetchScenarioLiteByIds(scenarioIds);
 
@@ -198,6 +209,7 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
       `
       session_id,
       role_key,
+      assigned_at,
       sessions:session_id (
         id,
         title,
@@ -213,11 +225,35 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
     .order("assigned_at", { ascending: false });
 
   if (!error && data) {
-    const rows = data as any[];
+    const rows = data as unknown as Array<{
+      role_key: string | null;
+      assigned_at: string | null;
+      sessions:
+        | {
+            id: string;
+            title: string | null;
+            join_code: string;
+            status: string;
+            created_at: string | null;
+            started_at: string | null;
+            ended_at: string | null;
+          }
+        | Array<{
+            id: string;
+            title: string | null;
+            join_code: string;
+            status: string;
+            created_at: string | null;
+            started_at: string | null;
+            ended_at: string | null;
+          }>
+        | null;
+    }>;
 
     return rows
       .map((r) => {
-        const s = r.sessions;
+        const sRaw = r.sessions;
+        const s = Array.isArray(sRaw) ? (sRaw[0] ?? null) : sRaw;
         if (!s?.id) return null;
 
         return {
@@ -225,6 +261,7 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
           title: s.title ?? null,
           join_code: s.join_code,
           status: s.status,
+          joined_at: r.assigned_at ?? null,
           created_at: s.created_at ?? null,
           started_at: s.started_at ?? null,
           ended_at: s.ended_at ?? null,
@@ -237,12 +274,18 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
   // Fallback (no embed support)
   const { data: assigns, error: e2 } = await supabase
     .from("session_role_assignments")
-    .select("session_id, role_key")
+    .select("session_id, role_key, assigned_at")
     .eq("user_id", uid);
 
   if (e2) throw e2;
 
-  const sessionIds = (assigns ?? []).map((a: any) => a.session_id).filter(Boolean);
+  const assignmentRows = (assigns ?? []) as Array<{
+    session_id: string;
+    role_key: string | null;
+    assigned_at: string | null;
+  }>;
+
+  const sessionIds = assignmentRows.map((a) => a.session_id).filter(Boolean);
   if (sessionIds.length === 0) return [];
 
   const { data: sessions, error: e3 } = await supabase
@@ -252,21 +295,31 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
 
   if (e3) throw e3;
 
-  const roleMap = new Map<string, string | null>();
-  for (const a of assigns ?? []) {
-    roleMap.set(a.session_id, a.role_key ?? null);
+  const assignmentBySession = new Map<
+    string,
+    { roleKey: string | null; joinedAt: string | null }
+  >();
+  for (const a of assignmentRows) {
+    assignmentBySession.set(a.session_id, {
+      roleKey: a.role_key ?? null,
+      joinedAt: a.assigned_at ?? null,
+    });
   }
 
-  return (sessions ?? []).map((s: any) => ({
-    id: s.id,
-    title: s.title ?? null,
-    join_code: s.join_code,
-    status: s.status,
-    created_at: s.created_at ?? null,
-    started_at: s.started_at ?? null,
-    ended_at: s.ended_at ?? null,
-    my_role_key: roleMap.get(s.id) ?? null,
-  })) as ParticipantSession[];
+  return (sessions ?? []).map((s) => {
+    const assignment = assignmentBySession.get(s.id);
+    return {
+      id: s.id,
+      title: s.title ?? null,
+      join_code: s.join_code,
+      status: s.status,
+      joined_at: assignment?.joinedAt ?? null,
+      created_at: s.created_at ?? null,
+      started_at: s.started_at ?? null,
+      ended_at: s.ended_at ?? null,
+      my_role_key: assignment?.roleKey ?? null,
+    };
+  }) as ParticipantSession[];
 }
 
 /* =========================
@@ -417,7 +470,25 @@ export async function listSessionParticipants(
     .order("joined_at", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as any;
+
+  const rows = (data ?? []) as unknown as Array<{
+    user_id: string;
+    joined_at: string | null;
+    profile:
+      | { id: string; email: string | null }
+      | Array<{ id: string; email: string | null }>
+      | null;
+  }>;
+
+  return rows.map((row) => {
+    const profileRaw = row.profile;
+    const profile = Array.isArray(profileRaw) ? (profileRaw[0] ?? null) : profileRaw;
+    return {
+      user_id: row.user_id,
+      joined_at: row.joined_at ?? null,
+      profile: profile ? { id: profile.id, email: profile.email ?? null } : null,
+    };
+  });
 }
 
 /**
@@ -436,7 +507,7 @@ export async function listSessionRoleAssignments(
 
   if (error) throw error;
 
-  return (data ?? []).map((r: any) => ({
+  return (data ?? []).map((r) => ({
     id: r.id,
     session_id: r.session_id,
     user_id: r.user_id,
@@ -469,17 +540,18 @@ export async function assignUserToSessionRole(params: {
       user_id: params.userId,
       role_key: params.roleKey,
       assigned_at: new Date().toISOString(),
-    } as any,
-    { onConflict: "session_id,user_id,role_key" } as any
+    },
+    { onConflict: "session_id,user_id,role_key" }
   );
 
   if (error) throw error;
 }
 
 export async function listSessionRoleSlots(
-  _sessionId: string
+  sessionId: string
 ): Promise<SessionRoleSlot[]> {
   await requireUserId();
+  void sessionId;
   return [];
 }
 
@@ -504,11 +576,11 @@ export async function listSessionRoster(sessionId: string): Promise<SessionRoste
 
   const roleByUser = new Map<string, string>();
   for (const a of assignments ?? []) {
-    const role = (a as any)?.role_key ?? null;
+    const role = a?.role_key ?? null;
     if (a?.user_id && role) roleByUser.set(a.user_id, String(role));
   }
 
-  return (participants ?? []).map((p: any) => ({
+  return (participants ?? []).map((p) => ({
     participant_id: p.user_id,
     display_name: p.profile?.email ?? null,
     role: roleByUser.get(p.user_id) ?? null,

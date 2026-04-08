@@ -5,6 +5,10 @@ import { getSessionInbox, subscribeInbox, type SessionInject } from "@/lib/sessi
 import { Button } from "@/app/components/ui/button";
 import { Mail, Briefcase, Newspaper, AtSign, Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 type Props = {
   sessionId: string;
   mode?: "inbox" | "pulse";
@@ -146,7 +150,7 @@ export default function Inbox({
   const pendingReloadRef = useRef(false);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function buildQueryOpts(p: number) {
+  function buildQueryOpts(p: number): Parameters<typeof getSessionInbox>[1] {
     if (channel) return { page: p, pageSize, channel, severity };
     if (mode === "pulse") {
       return { page: p, pageSize, channel: "pulse" as const, severity };
@@ -169,7 +173,7 @@ export default function Inbox({
       setLoading(true);
 
       const opts = buildQueryOpts(p);
-      const res = await getSessionInbox(sessionId, opts as any);
+      const res = await getSessionInbox(sessionId, opts);
 
       const next = res.items ?? [];
       setItems(next);
@@ -205,8 +209,8 @@ export default function Inbox({
           });
         }, 2500);
       }
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load inbox");
+    } catch (e: unknown) {
+      setErr(errMessage(e, "Failed to load inbox"));
     } finally {
       setLoading(false);
       inFlightRef.current = false;

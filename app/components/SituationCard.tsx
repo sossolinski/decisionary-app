@@ -42,7 +42,7 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
-function safeText(v: any, fallback = "—") {
+function safeText(v: unknown, fallback = "—") {
   const s = typeof v === "string" ? v.trim() : v;
   return s ? String(s) : fallback;
 }
@@ -76,6 +76,10 @@ function numOr(prev: number, raw: string) {
   const n = Number(t);
   if (!Number.isFinite(n)) return prev;
   return Math.max(0, Math.floor(n));
+}
+
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
 }
 
 /**
@@ -213,7 +217,19 @@ export default function SituationCard({
     setFatalities(String(scenario?.fatalities ?? 0));
     setUninjured(String(scenario?.uninjured ?? 0));
     setUnknown(String(scenario?.unknown ?? 0));
-  }, [situation?.updated_at, scenario?.id]);
+  }, [
+    situation,
+    situation?.updated_at,
+    situation?.injured,
+    situation?.fatalities,
+    situation?.uninjured,
+    situation?.unknown,
+    scenario?.id,
+    scenario?.injured,
+    scenario?.fatalities,
+    scenario?.uninjured,
+    scenario?.unknown,
+  ]);
 
   const hasScenarioFallback = useMemo(() => {
     return Boolean(
@@ -278,8 +294,8 @@ export default function SituationCard({
 
       await onUpdateCasualties(payload);
       setEditOpen(false);
-    } catch (e: any) {
-      setErr(e?.message ?? "Update failed");
+    } catch (e: unknown) {
+      setErr(errMessage(e, "Update failed"));
     } finally {
       setSaving(false);
     }

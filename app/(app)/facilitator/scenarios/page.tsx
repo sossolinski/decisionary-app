@@ -19,7 +19,6 @@ import {
 
 import { getMyRole } from "@/lib/users";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
@@ -50,6 +49,10 @@ function fmt(dt?: string | null) {
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
 }
 
 function useOutsideClose(
@@ -162,8 +165,7 @@ export default function FacilitatorScenariosPage() {
         return;
       }
       await load();
-    })().catch((e: any) => setError(e?.message ?? "Failed to load"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    })().catch((e: unknown) => setError(errMessage(e, "Failed to load")));
   }, [router]);
 
   async function load() {
@@ -172,8 +174,8 @@ export default function FacilitatorScenariosPage() {
       const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
       setScenarios(scs ?? []);
       setFacilitators((facs ?? []) as FacilitatorProfile[]);
-    } catch (e: any) {
-      setError(e?.message ?? "Load failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Load failed"));
     }
   }
 
@@ -186,8 +188,8 @@ export default function FacilitatorScenariosPage() {
       const s = await createScenario(newTitle.trim());
       setScenarios((prev) => [s, ...prev]);
       setNewTitle("");
-    } catch (e: any) {
-      setError(e?.message ?? "Create failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Create failed"));
     } finally {
       setLoading(false);
     }
@@ -201,8 +203,8 @@ export default function FacilitatorScenariosPage() {
       await deleteScenario(id);
       setScenarios((prev) => prev.filter((s) => s.id !== id));
       if (manageOpenId === id) setManageOpenId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Delete failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Delete failed"));
     } finally {
       setBusyId(null);
     }
@@ -215,8 +217,8 @@ export default function FacilitatorScenariosPage() {
       const copy = await duplicateScenario(id);
       setScenarios((prev) => [copy, ...prev]);
       if (manageOpenId === id) setManageOpenId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Duplicate failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Duplicate failed"));
     } finally {
       setBusyId(null);
     }
@@ -235,8 +237,8 @@ export default function FacilitatorScenariosPage() {
       // remove from my list (as before)
       setScenarios((prev) => prev.filter((s) => s.id !== scenarioId));
       setManageOpenId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Transfer failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Transfer failed"));
     } finally {
       setBusyId(null);
     }
@@ -254,8 +256,8 @@ export default function FacilitatorScenariosPage() {
       await shareScenario(scenarioId, targetId, "read");
       alert("Shared (read-only).");
       setManageOpenId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Share failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Share failed"));
     } finally {
       setBusyId(null);
     }
@@ -273,8 +275,8 @@ export default function FacilitatorScenariosPage() {
       await revokeScenarioShare(scenarioId, targetId);
       alert("Share revoked.");
       setManageOpenId(null);
-    } catch (e: any) {
-      setError(e?.message ?? "Revoke failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Revoke failed"));
     } finally {
       setBusyId(null);
     }

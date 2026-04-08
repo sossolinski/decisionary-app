@@ -16,6 +16,10 @@ import {
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function JoinPage() {
   const router = useRouter();
 
@@ -35,8 +39,8 @@ export default function JoinPage() {
     try {
       const sessionId = await joinSessionByCode(code.trim());
       router.push(`/sessions/${sessionId}`);
-    } catch (e: any) {
-      setError(e?.message ?? "Join failed");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Join failed"));
     } finally {
       setLoading(false);
     }

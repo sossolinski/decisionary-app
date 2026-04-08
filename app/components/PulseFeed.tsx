@@ -5,6 +5,10 @@ import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessi
 import { Button } from "@/app/components/ui/button";
 import { Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 type Props = {
   sessionId: string;
   selectedId: string | null;
@@ -175,8 +179,8 @@ export default function PulseFeed({
           });
         }, 2500);
       }
-    } catch (e: any) {
-      setErr(e?.message ?? "Failed to load pulse");
+    } catch (e: unknown) {
+      setErr(errMessage(e, "Failed to load pulse"));
     } finally {
       setLoading(false);
       inFlightRef.current = false;

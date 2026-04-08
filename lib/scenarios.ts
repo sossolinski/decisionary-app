@@ -65,16 +65,19 @@ export type ScenarioRole = {
 
 // Supabase embed can come back as object OR array (depending on query shape / typing)
 // Normalize to a single object for our ScenarioInject type.
-function normalizeInject(v: any): Inject | null {
+function normalizeInject(v: unknown): Inject | null {
   if (!v) return null;
-  return Array.isArray(v) ? (v[0] ?? null) : v;
+  const item = Array.isArray(v) ? (v[0] ?? null) : v;
+  return item ? (item as Inject) : null;
 }
 
-function normalizeScenarioInjectRow(row: any): ScenarioInject {
+function normalizeScenarioInjectRow(
+  row: Omit<ScenarioInject, "injects"> & { injects: unknown }
+): ScenarioInject {
   return {
     ...row,
     injects: normalizeInject(row.injects),
-  } as ScenarioInject;
+  };
 }
 
 /* =========================
@@ -232,7 +235,7 @@ export async function updateScenarioInject(params: {
   scheduled_at?: string | null;
   order_index?: number;
 }): Promise<void> {
-  const patch: any = {};
+  const patch: Record<string, unknown> = {};
   if ("scheduled_at" in params) patch.scheduled_at = params.scheduled_at ?? null;
   if ("order_index" in params) patch.order_index = params.order_index;
 
@@ -297,7 +300,7 @@ export async function updateScenarioRole(params: {
 }): Promise<ScenarioRole> {
   const { id, ...patch } = params;
 
-  const update: any = {};
+  const update: Record<string, unknown> = {};
   if (patch.roleKey !== undefined) update.role_key = patch.roleKey.trim();
   if (patch.roleName !== undefined) update.role_name = patch.roleName.trim();
   if (patch.roleDescription !== undefined) update.role_description = patch.roleDescription;

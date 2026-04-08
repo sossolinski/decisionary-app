@@ -9,6 +9,10 @@ function clampNonNeg(n: number) {
   return Math.max(0, Math.floor(n));
 }
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function CasualtyEditor({
   situation,
   editable = true,
@@ -47,8 +51,8 @@ export default function CasualtyEditor({
       });
       onUpdated(updated);
       setMsg("Saved.");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to save.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to save."));
     } finally {
       setSaving(false);
     }

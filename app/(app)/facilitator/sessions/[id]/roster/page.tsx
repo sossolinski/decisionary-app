@@ -1,7 +1,7 @@
 // app/(app)/facilitator/sessions/[id]/roster/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { getMyRole } from "@/lib/users";
@@ -22,6 +22,10 @@ function fmt(dt?: string | null) {
   } catch {
     return dt;
   }
+}
+
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
 }
 
 function RolePill({ role }: { role?: string | null }) {
@@ -52,7 +56,7 @@ export default function FacilitatorRosterPage() {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<SessionRosterRow[]>([]);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!valid) {
       setLoading(false);
       setError("Invalid session id (expected UUID).");
@@ -64,12 +68,12 @@ export default function FacilitatorRosterPage() {
     try {
       const r = await listSessionRoster(sessionId);
       setRows((r ?? []) as SessionRosterRow[]);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to load roster."));
     } finally {
       setLoading(false);
     }
-  }
+  }, [sessionId, valid]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,9 +87,9 @@ export default function FacilitatorRosterPage() {
         if (role !== "facilitator") return router.replace("/participant");
 
         await load();
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
-        setError(e?.message ?? "Failed to load roster.");
+        setError(errMessage(e, "Failed to load roster."));
         setLoading(false);
       }
     })();
@@ -93,8 +97,7 @@ export default function FacilitatorRosterPage() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, sessionId, valid]);
+  }, [router, sessionId, valid, load]);
 
   async function onKick(participantId: string, displayName?: string | null) {
     if (!valid) return;
@@ -108,9 +111,9 @@ export default function FacilitatorRosterPage() {
     try {
       await kickFromSession(sessionId, participantId);
       // optimistic remove
-      setRows((prev) => prev.filter((x: any) => x.participant_id !== participantId));
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+      setRows((prev) => prev.filter((x) => x.participant_id !== participantId));
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to remove participant."));
       // fallback to reload if needed
       await load();
     } finally {
@@ -183,8 +186,8 @@ export default function FacilitatorRosterPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r: any) => {
-                    const pid = r.participant_id as string;
+                  {rows.map((r) => {
+                    const pid = r.participant_id;
                     const isBusy = busyId === pid;
 
                     return (

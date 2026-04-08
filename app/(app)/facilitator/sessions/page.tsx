@@ -41,6 +41,16 @@ import {
   ChevronDown,
 } from "lucide-react";
 
+type StatusFilter = "all" | "active" | "ended";
+
+function errMessage(e: unknown) {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function toStatusFilter(value: string): StatusFilter {
+  return value === "active" || value === "ended" ? value : "all";
+}
+
 function fmt(dt?: string | null) {
   if (!dt) return "—";
   try {
@@ -160,7 +170,7 @@ export default function FacilitatorSessionsPage() {
 
   // UI: quick filters
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "ended">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   // UI: minimal actions toggle per-row
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -172,8 +182,8 @@ export default function FacilitatorSessionsPage() {
       const [ses, scs] = await Promise.all([listSessions(), listScenarios()]);
       setSessions((ses ?? []) as Session[]);
       setScenarios((scs ?? []) as ScenarioListItem[]);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e));
     } finally {
       setLoading(false);
     }
@@ -186,7 +196,6 @@ export default function FacilitatorSessionsPage() {
       if (role !== "facilitator") return router.replace("/participant");
       await load();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
   const scenarioTitleById = useMemo(() => {
@@ -196,18 +205,18 @@ export default function FacilitatorSessionsPage() {
   }, [scenarios]);
 
   const activeCount = useMemo(() => {
-    return sessions.filter((s: any) => String(s?.status ?? "").toLowerCase() === "active").length;
+    return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "active").length;
   }, [sessions]);
 
   const endedCount = useMemo(() => {
-    return sessions.filter((s: any) => String(s?.status ?? "").toLowerCase() === "ended").length;
+    return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "ended").length;
   }, [sessions]);
 
   const filteredSessions = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
-    return sessions.filter((s: any) => {
-      const st = String(s?.status ?? "").toLowerCase();
+    return sessions.filter((s) => {
+      const st = String(s.status ?? "").toLowerCase();
       if (statusFilter !== "all" && st !== statusFilter) return false;
 
       if (!qq) return true;
@@ -216,9 +225,9 @@ export default function FacilitatorSessionsPage() {
         s.scenario?.title ??
         (s.scenario_id ? scenarioTitleById.get(s.scenario_id) : null) ??
         "";
-      const joinCode = String(s?.join_code ?? "");
-      const title = String(s?.title ?? "");
-      const id = String(s?.id ?? "");
+      const joinCode = String(s.join_code ?? "");
+      const title = String(s.title ?? "");
+      const id = String(s.id ?? "");
 
       return `${title}\n${scenarioTitle}\n${joinCode}\n${id}`.toLowerCase().includes(qq);
     });
@@ -238,8 +247,8 @@ export default function FacilitatorSessionsPage() {
       });
       await load();
       router.push(`/sessions/${id}`);
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e));
     } finally {
       setBusyId(null);
     }
@@ -252,8 +261,8 @@ export default function FacilitatorSessionsPage() {
     try {
       await setSessionStatus(sessionId, "ended");
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e));
     } finally {
       setBusyId(null);
     }
@@ -266,8 +275,8 @@ export default function FacilitatorSessionsPage() {
     try {
       await restartSession(sessionId);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e));
     } finally {
       setBusyId(null);
     }
@@ -280,8 +289,8 @@ export default function FacilitatorSessionsPage() {
     try {
       await deleteSession(sessionId);
       await load();
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
+    } catch (e: unknown) {
+      setError(errMessage(e));
     } finally {
       setBusyId(null);
     }
@@ -402,7 +411,7 @@ export default function FacilitatorSessionsPage() {
               />
             </div>
 
-            <Select value={statusFilter} onChange={(v) => setStatusFilter(v as any)}>
+            <Select value={statusFilter} onChange={(v) => setStatusFilter(toStatusFilter(v))}>
               <option value="all">Status: All</option>
               <option value="active">Status: Active</option>
               <option value="ended">Status: Ended</option>
@@ -427,7 +436,7 @@ export default function FacilitatorSessionsPage() {
               No sessions matching current filters.
             </div>
           ) : (
-            filteredSessions.map((s: any) => {
+            filteredSessions.map((s) => {
               const isBusy = busyId === s.id;
 
               const scenarioTitle =
@@ -436,7 +445,7 @@ export default function FacilitatorSessionsPage() {
                 "—";
 
               const joinCode = String(s?.join_code ?? "—");
-              const status = (s as any).status ?? null;
+              const status = s.status ?? null;
 
               return (
                 <div
@@ -461,9 +470,9 @@ export default function FacilitatorSessionsPage() {
                       </div>
 
                       <div className="mt-2 text-xs text-muted-foreground">
-                        Created: {fmt((s as any).created_at)} <span className="mx-2">•</span>
-                        Started: {fmt((s as any).started_at)} <span className="mx-2">•</span>
-                        Ended: {fmt((s as any).ended_at)}
+                        Created: {fmt(s.created_at)} <span className="mx-2">•</span>
+                        Started: {fmt(s.started_at)} <span className="mx-2">•</span>
+                        Ended: {fmt(s.ended_at)}
                       </div>
                     </div>
 

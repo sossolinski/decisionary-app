@@ -68,21 +68,24 @@ export type PagedResult<T> = {
 
 // Supabase embed can sometimes come back as object OR array depending on query shape.
 // Normalize to a single object for our types.
-function normalizeInject(v: any): Inject | null {
+function normalizeInject(v: unknown): Inject | null {
   if (!v) return null;
-  return Array.isArray(v) ? (v[0] ?? null) : v;
+  const item = Array.isArray(v) ? (v[0] ?? null) : v;
+  return item ? (item as Inject) : null;
 }
 
-function normalizeSessionInjectRow(row: any): SessionInject {
+function normalizeSessionInjectRow(
+  row: Omit<SessionInject, "injects"> & { injects: unknown }
+): SessionInject {
   return {
     ...row,
     injects: normalizeInject(row.injects),
-  } as SessionInject;
+  };
 }
 
-function safeRemoveChannel(ch: any) {
+function safeRemoveChannel(ch: unknown) {
   try {
-    supabase.removeChannel(ch);
+    supabase.removeChannel(ch as never);
   } catch {
     // ignore
   }
@@ -140,7 +143,9 @@ export async function getSessionScenarioId(sessionId: string): Promise<string | 
     .maybeSingle();
 
   if (error) throw error;
-  return ((data as any)?.scenario_id ?? null) as string | null;
+  return ((data as { scenario_id?: string | null } | null)?.scenario_id ?? null) as
+    | string
+    | null;
 }
 
 /* =========================
@@ -373,13 +378,13 @@ export async function sendInjectToSession(
   // 2) attach to session
   const { error: linkErr } = await supabase.from("session_injects").insert({
     session_id: sessionId,
-    inject_id: (inj as any).id,
+    inject_id: (inj as { id: string }).id,
     delivered_at: new Date().toISOString(),
   });
 
   if (linkErr) throw linkErr;
 
-  return (inj as any).id as string;
+  return (inj as { id: string }).id;
 }
 
 /* =========================
@@ -395,7 +400,7 @@ export async function deliverDueInjects(sessionId: string): Promise<{ delivered:
 
   if (sessErr) throw sessErr;
 
-  const scenarioId = (sess as any)?.scenario_id;
+  const scenarioId = (sess as { scenario_id?: string | null } | null)?.scenario_id;
   if (!scenarioId) return { delivered: 0 };
 
   const { data: due, error: dueErr } = await supabase
@@ -407,7 +412,7 @@ export async function deliverDueInjects(sessionId: string): Promise<{ delivered:
 
   if (dueErr) throw dueErr;
 
-  const dueRows = (due ?? []) as any[];
+  const dueRows = (due ?? []) as Array<{ inject_id: string }>;
   if (dueRows.length === 0) return { delivered: 0 };
 
   const injectIds = Array.from(new Set(dueRows.map((r) => r.inject_id)));
@@ -420,7 +425,7 @@ export async function deliverDueInjects(sessionId: string): Promise<{ delivered:
 
   if (alreadyErr) throw alreadyErr;
 
-  const alreadySet = new Set((already ?? []).map((r: any) => r.inject_id));
+  const alreadySet = new Set((already ?? []).map((r) => r.inject_id));
   const toDeliver = dueRows.filter((r) => !alreadySet.has(r.inject_id));
 
   if (toDeliver.length === 0) return { delivered: 0 };
@@ -606,7 +611,7 @@ export function subscribeSituationPayload(
 
 export function subscribeSessionMetaPayload(
   sessionId: string,
-  onUpdate: (row: any) => void
+  onUpdate: (row: unknown) => void
 ) {
   const ch = supabase
     .channel(`sessions:payload:${sessionId}`)

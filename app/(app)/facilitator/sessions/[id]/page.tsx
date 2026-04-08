@@ -14,6 +14,10 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function FacilitatorSessionPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -52,10 +56,10 @@ export default function FacilitatorSessionPage() {
 
         setStatus("redirecting");
         router.replace(`/sessions/${id}`);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (cancelled) return;
         setStatus("error");
-        setErr(e?.message ?? "Failed to open session.");
+        setErr(errMessage(e, "Failed to open session."));
       }
     })();
 
