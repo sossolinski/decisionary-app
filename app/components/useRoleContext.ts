@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { logClientError } from "@/lib/errors";
+import {
+  ensureAdminBootstrap,
+  getActiveOrgId,
+  listOrganizationsForUser,
+  setActiveOrgId as persistActiveOrgId,
+  type Organization,
+} from "@/lib/organizationsMvp";
 
 export type Role = "admin" | "facilitator" | "participant";
 
@@ -17,6 +24,12 @@ export type RoleContext = {
 
   isPermAdmin: boolean;
   canFacilitate: boolean;
+
+  organizations: Organization[];
+  activeOrgId: string | null;
+  activeOrg: Organization | null;
+  setActiveOrgId: (orgId: string | null) => void;
+  reloadOrganizations: () => void;
 };
 
 export function useRoleContext(): RoleContext {
@@ -27,8 +40,37 @@ export function useRoleContext(): RoleContext {
   const [role, setRole] = useState<Role | null>(null);
   const [activeRole, setActiveRole] = useState<Role | null>(null);
   const [isDisabled, setIsDisabled] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [activeOrgId, setActiveOrgIdState] = useState<string | null>(null);
 
-  async function load(markLoading = true) {
+  function syncOrganizations(uid: string | null, em: string | null, r: Role | null) {
+    if (!uid) {
+      setOrganizations([]);
+      setActiveOrgIdState(null);
+      return;
+    }
+
+    if (r === "admin") {
+      ensureAdminBootstrap({ userId: uid, email: em });
+    }
+
+    const orgs = listOrganizationsForUser({ userId: uid, email: em, role: r });
+    setOrganizations(orgs);
+
+    const saved = getActiveOrgId({ userId: uid, email: em });
+    const validSaved = saved && orgs.some((org) => org.id === saved) ? saved : null;
+    const next = validSaved ?? (orgs[0]?.id ?? null);
+
+    setActiveOrgIdState(next);
+
+    if (next) {
+      persistActiveOrgId({ userId: uid, email: em, orgId: next });
+    } else {
+      persistActiveOrgId({ userId: uid, email: em, orgId: null });
+    }
+  }
+
+  const load = useCallback(async (markLoading = true) => {
     if (markLoading) setLoading(true);
 
     const { data: auth, error: authErr } = await supabase.auth.getUser();
@@ -42,6 +84,8 @@ export function useRoleContext(): RoleContext {
       setRole(null);
       setActiveRole(null);
       setIsDisabled(false);
+      setOrganizations([]);
+      setActiveOrgIdState(null);
       setLoading(false);
       return;
     }
@@ -57,6 +101,7 @@ export function useRoleContext(): RoleContext {
       setRole(r);
       setActiveRole(ar);
       setIsDisabled(!!row?.is_disabled);
+      syncOrganizations(u.id, u.email ?? null, r);
 
       setLoading(false);
       return;
@@ -77,9 +122,10 @@ export function useRoleContext(): RoleContext {
     setRole(r2);
     setActiveRole(ar2);
     setIsDisabled(!!prof?.is_disabled);
+    syncOrganizations(u.id, u.email ?? null, r2);
 
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -92,10 +138,37 @@ export function useRoleContext(): RoleContext {
       clearTimeout(t);
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [load]);
 
   const isPermAdmin = role === "admin" && !isDisabled;
   const canFacilitate = (activeRole === "admin" || activeRole === "facilitator") && !isDisabled;
+  const activeOrg =
+    activeOrgId && organizations.some((org) => org.id === activeOrgId)
+      ? organizations.find((org) => org.id === activeOrgId) ?? null
+      : null;
 
-  return { loading, userId, email, role, activeRole, isDisabled, isPermAdmin, canFacilitate };
+  function setActiveOrgId(orgId: string | null) {
+    setActiveOrgIdState(orgId);
+    persistActiveOrgId({ userId, email, orgId });
+  }
+
+  function reloadOrganizations() {
+    syncOrganizations(userId, email, role);
+  }
+
+  return {
+    loading,
+    userId,
+    email,
+    role,
+    activeRole,
+    isDisabled,
+    isPermAdmin,
+    canFacilitate,
+    organizations,
+    activeOrgId,
+    activeOrg,
+    setActiveOrgId,
+    reloadOrganizations,
+  };
 }
