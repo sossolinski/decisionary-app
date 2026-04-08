@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   LayoutGrid,
   BookOpen,
@@ -24,17 +24,57 @@ function itemActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+type NavItemProps = {
+  href: string;
+  label: string;
+  icon: ReactNode;
+  pathname: string;
+  collapsed: boolean;
+  itemBase: string;
+  itemCollapsed: string;
+  itemExpanded: string;
+};
+
+function NavItem({
+  href,
+  label,
+  icon,
+  pathname,
+  collapsed,
+  itemBase,
+  itemCollapsed,
+  itemExpanded,
+}: NavItemProps) {
+  const active = itemActive(pathname, href);
+  return (
+    <Link
+      href={href}
+      title={collapsed ? label : undefined}
+      className={[
+        itemBase,
+        collapsed ? itemCollapsed : itemExpanded,
+        active ? "border-primary/25 bg-primary/10" : "border-[var(--studio-border)]",
+      ].join(" ")}
+    >
+      <span className={["text-foreground/80", active ? "text-foreground" : ""].join(" ")}>
+        {icon}
+      </span>
+      {!collapsed ? <span className="text-sm font-medium">{label}</span> : null}
+    </Link>
+  );
+}
+
 export default function AppSidebar() {
   const pathname = usePathname();
   const { loading, activeRole, isDisabled } = useRoleContext();
 
-  const [collapsed, setCollapsed] = useState(true);
-
-  useEffect(() => {
-    const v = localStorage.getItem(LS_KEY);
-    if (v === "0") setCollapsed(false);
-    if (v === "1") setCollapsed(true);
-  }, []);
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const v = window.localStorage.getItem(LS_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+    return true;
+  });
 
   function toggle() {
     setCollapsed((v) => {
@@ -86,34 +126,6 @@ export default function AppSidebar() {
   const itemExpanded =
     "h-11 px-3 border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
     "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
-
-  function NavItem({
-    href,
-    label,
-    icon,
-  }: {
-    href: string;
-    label: string;
-    icon: React.ReactNode;
-  }) {
-    const active = itemActive(pathname ?? "", href);
-    return (
-      <Link
-        href={href}
-        title={collapsed ? label : undefined}
-        className={[
-          itemBase,
-          collapsed ? itemCollapsed : itemExpanded,
-          active ? "border-primary/25 bg-primary/10" : "border-[var(--studio-border)]",
-        ].join(" ")}
-      >
-        <span className={["text-foreground/80", active ? "text-foreground" : ""].join(" ")}>
-          {icon}
-        </span>
-        {!collapsed ? <span className="text-sm font-medium">{label}</span> : null}
-      </Link>
-    );
-  }
 
   if (loading) {
     // Keep layout stable; no flashing of links
@@ -167,7 +179,17 @@ export default function AppSidebar() {
             {/* Facilitator nav visible only in facilitator/admin view */}
             {canFacilitate
               ? facilitatorNav.map((n) => (
-                  <NavItem key={n.href} href={n.href} label={n.label} icon={n.icon} />
+                  <NavItem
+                    key={n.href}
+                    href={n.href}
+                    label={n.label}
+                    icon={n.icon}
+                    pathname={pathname ?? ""}
+                    collapsed={collapsed}
+                    itemBase={itemBase}
+                    itemCollapsed={itemCollapsed}
+                    itemExpanded={itemExpanded}
+                  />
                 ))
               : null}
 
@@ -177,6 +199,11 @@ export default function AppSidebar() {
                 href="/admin/users"
                 label="Admin · Users"
                 icon={<Shield className="h-5 w-5" />}
+                pathname={pathname ?? ""}
+                collapsed={collapsed}
+                itemBase={itemBase}
+                itemCollapsed={itemCollapsed}
+                itemExpanded={itemExpanded}
               />
             ) : null}
           </nav>
@@ -189,6 +216,11 @@ export default function AppSidebar() {
                 href="/participant"
                 label="Participant"
                 icon={<User className="h-5 w-5" />}
+                pathname={pathname ?? ""}
+                collapsed={collapsed}
+                itemBase={itemBase}
+                itemCollapsed={itemCollapsed}
+                itemExpanded={itemExpanded}
               />
             ) : null}
 
@@ -198,6 +230,11 @@ export default function AppSidebar() {
                 href="/facilitator/settings"
                 label="Settings"
                 icon={<Settings className="h-5 w-5" />}
+                pathname={pathname ?? ""}
+                collapsed={collapsed}
+                itemBase={itemBase}
+                itemCollapsed={itemCollapsed}
+                itemExpanded={itemExpanded}
               />
             ) : null}
 

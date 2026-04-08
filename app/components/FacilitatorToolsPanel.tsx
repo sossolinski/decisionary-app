@@ -34,7 +34,11 @@ function fmtIso(iso: string | null | undefined) {
   }
 }
 
-function Badge({ children }: { children: any }) {
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
+function Badge({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-[var(--radius)] border border-border bg-card px-2 py-1 text-xs font-semibold">
       {children}
@@ -100,7 +104,7 @@ export default function FacilitatorToolsPanel({
       .eq("id", sessionId)
       .maybeSingle();
 
-    if (!error) setMeta((data ?? null) as any);
+    if (!error) setMeta((data ?? null) as SessionMeta | null);
   }
 
   async function refreshInjectLibrary() {
@@ -135,7 +139,9 @@ export default function FacilitatorToolsPanel({
     }
 
     const set = new Set<string>(
-      (delivered ?? []).map((r: any) => r.inject_id).filter(Boolean)
+      (delivered ?? [])
+        .map((r) => r.inject_id)
+        .filter((v): v is string => typeof v === "string" && Boolean(v))
     );
     setDeliveredIds(set);
 
@@ -202,8 +208,8 @@ export default function FacilitatorToolsPanel({
 
       setMsg("Exercise started (T=0).");
       await refreshMeta();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to start exercise.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to start exercise."));
     } finally {
       setLoading(false);
     }
@@ -221,8 +227,8 @@ export default function FacilitatorToolsPanel({
       if (error) throw error;
       setMsg("Exercise ended.");
       await refreshMeta();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to end exercise.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to end exercise."));
     } finally {
       setLoading(false);
     }
@@ -250,8 +256,8 @@ export default function FacilitatorToolsPanel({
       setMsg("Session restarted.");
       await refreshMeta();
       await refreshInjectLibrary();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to restart session.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to restart session."));
     } finally {
       setLoading(false);
     }
@@ -268,8 +274,8 @@ export default function FacilitatorToolsPanel({
       const res = await deliverDueInjects(sessionId);
       setMsg(`Delivered ${res.delivered} due inject(s).`);
       await refreshInjectLibrary();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to deliver due injects.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to deliver due injects."));
     } finally {
       setLoading(false);
     }
@@ -293,8 +299,8 @@ export default function FacilitatorToolsPanel({
       await deliverInjectNow(selectedSI.inject_id);
       setMsg(`Delivered: ${selectedSI.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to deliver inject.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to deliver inject."));
     } finally {
       setLoading(false);
     }
@@ -309,8 +315,8 @@ export default function FacilitatorToolsPanel({
       await deliverInjectNow(next.inject_id);
       setMsg(`Delivered next: ${next.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to deliver next inject.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to deliver next inject."));
     } finally {
       setLoading(false);
     }
@@ -339,8 +345,8 @@ export default function FacilitatorToolsPanel({
       setQmBody("");
       setQmSeverity("");
       await refreshInjectLibrary();
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed to send quick message.");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed to send quick message."));
     } finally {
       setLoading(false);
     }
@@ -383,10 +389,10 @@ export default function FacilitatorToolsPanel({
 
           {/* Exercise */}
           <div className="grid gap-2 sm:grid-cols-3">
-            <Button variant="primary" onClick={startExercise} disabled={loading}>
+            <Button variant="default" onClick={startExercise} disabled={loading}>
               {loading ? "..." : "Start (T=0)"}
             </Button>
-            <Button variant="danger" onClick={endExercise} disabled={loading}>
+            <Button variant="destructive" onClick={endExercise} disabled={loading}>
               {loading ? "..." : "End"}
             </Button>
             <Button
@@ -438,7 +444,7 @@ export default function FacilitatorToolsPanel({
                     Deliver due
                   </Button>
                   <Button
-                    variant="primary"
+                    variant="default"
                     size="sm"
                     onClick={deliverNextPending}
                     disabled={loading || pending.length === 0}
@@ -460,7 +466,7 @@ export default function FacilitatorToolsPanel({
                   </Select>
 
                   <Button
-                    variant="primary"
+                    variant="default"
                     onClick={deliverSelected}
                     disabled={loading || !selectedSI?.inject_id}
                   >
@@ -585,7 +591,7 @@ export default function FacilitatorToolsPanel({
 
                 <div className="mt-3">
                   <Button
-                    variant="primary"
+                    variant="default"
                     onClick={sendQuickMessage}
                     disabled={loading}
                   >

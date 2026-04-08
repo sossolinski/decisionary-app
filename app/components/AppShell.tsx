@@ -34,19 +34,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    // close on route change
-    setMobileOpen(false);
-  }, [pathname]);
+    if (!mobileOpen) return;
+    const t = setTimeout(() => setMobileOpen(false), 0);
+    return () => clearTimeout(t);
+  }, [pathname, mobileOpen]);
 
   if (hideShell) return <>{children}</>;
 
   return (
     <div className="min-h-screen">
-      <AppTopbar onToggleMobile={isMobile ? () => setMobileOpen((v) => !v) : undefined} />
+      <AppTopbar
+        isMobile={isMobile}
+        onToggleMobileSidebar={isMobile ? () => setMobileOpen((v) => !v) : undefined}
+      />
 
       {/* Sidebar pinned left */}
       {isMobile ? (
-        <MobileSidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
+        <MobileSidebar open={mobileOpen} onOpenChange={setMobileOpen}>
+          <AppSidebar />
+        </MobileSidebar>
       ) : (
         <AppSidebar />
       )}

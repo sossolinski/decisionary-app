@@ -6,6 +6,10 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function AddInjectForm({ sessionId }: { sessionId: string }) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -21,8 +25,8 @@ export default function AddInjectForm({ sessionId }: { sessionId: string }) {
       setTitle("");
       setBody("");
       setMsg("Inject sent");
-    } catch (e: any) {
-      setMsg(e?.message ?? "Failed");
+    } catch (e: unknown) {
+      setMsg(errMessage(e, "Failed"));
     } finally {
       setSending(false);
     }
@@ -48,7 +52,7 @@ export default function AddInjectForm({ sessionId }: { sessionId: string }) {
         />
 
         <div className="flex items-center gap-3">
-          <Button onClick={handleSend} variant="primary" disabled={sending}>
+          <Button onClick={handleSend} variant="default" disabled={sending}>
             {sending ? "Sending…" : "Send inject"}
           </Button>
           {msg ? <div className="text-sm text-muted-foreground">{msg}</div> : null}

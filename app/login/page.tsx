@@ -28,6 +28,10 @@ async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function errMessage(e: unknown, fallback = "Unknown error") {
+  return e instanceof Error ? e.message : fallback;
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -117,11 +121,11 @@ export default function LoginPage() {
         isDisabled,
         lastError: null,
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       setDbg((s) => ({
         ...s,
         loading: false,
-        lastError: e?.message ?? "Unknown error",
+        lastError: errMessage(e),
       }));
     }
   }
@@ -131,7 +135,6 @@ export default function LoginPage() {
 
     const { data: sub } = supabase.auth.onAuthStateChange(() => void refreshDebug());
     return () => sub.subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function waitForSession(maxMs = 2500) {
@@ -162,8 +165,8 @@ export default function LoginPage() {
       }
 
       router.replace("/facilitator");
-    } catch (err: any) {
-      setMsg(err?.message ?? "Login failed.");
+    } catch (err: unknown) {
+      setMsg(errMessage(err, "Login failed."));
     } finally {
       setLoading(false);
     }
@@ -177,8 +180,8 @@ export default function LoginPage() {
     try {
       const sessionId = await joinSessionByCode(joinCode);
       router.replace(`/sessions/${sessionId}`);
-    } catch (err: any) {
-      setMsg(err?.message ?? "Join failed.");
+    } catch (err: unknown) {
+      setMsg(errMessage(err, "Join failed."));
     } finally {
       setLoading(false);
     }
@@ -257,7 +260,7 @@ export default function LoginPage() {
               placeholder="••••••••"
               autoComplete="current-password"
             />
-            <Button type="submit" variant="primary" disabled={loading} className="w-full">
+            <Button type="submit" variant="default" disabled={loading} className="w-full">
               {loading ? "…" : "Sign in"}
             </Button>
           </form>

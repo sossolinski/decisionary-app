@@ -136,6 +136,33 @@ function lsKey(sessionId: string, kind: "inbox" | "pulse") {
   return `decisionary.seen.${kind}.${sessionId}`;
 }
 
+function errMessage(e: unknown, fallback: string) {
+  return e instanceof Error ? e.message : fallback;
+}
+
+type SessionMetaRow = {
+  scenario_id?: string | null;
+  scenario?: string | null;
+  scenarioId?: string | null;
+  started_at?: string | null;
+  created_by?: string | null;
+};
+
+type SessionRoleRow = {
+  role_key?: string | null;
+  role?: string | null;
+  role_id?: string | null;
+  user_id?: string | null;
+  member_id?: string | null;
+  profile_id?: string | null;
+  participant_id?: string | null;
+  owner_id?: string | null;
+};
+
+type SessionMetaPayloadRow = {
+  started_at?: string | null;
+};
+
 export default function SessionParticipantPage() {
   const params = useParams<{ id: string }>();
   const sessionId = params?.id ?? "";
@@ -199,8 +226,8 @@ export default function SessionParticipantPage() {
     try {
       const s = await getSessionSituation(sessionId);
       setSituation(s);
-    } catch (e: any) {
-      setError(e?.message ?? "Failed to load situation");
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to load situation"));
     }
   }
 
@@ -211,8 +238,8 @@ export default function SessionParticipantPage() {
       setActionsError(null);
       const rows = await getSessionActions(sessionId, 50);
       setActions(rows);
-    } catch (e: any) {
-      setActionsError(e?.message ?? "Failed to load actions");
+    } catch (e: unknown) {
+      setActionsError(errMessage(e, "Failed to load actions"));
     } finally {
       setActionsLoading(false);
     }
@@ -229,15 +256,11 @@ export default function SessionParticipantPage() {
 
       if (sessErr) throw sessErr;
 
+      const sessRow = (sess ?? null) as SessionMetaRow | null;
       const scenarioId =
-        (sess as any)?.scenario_id ??
-        (sess as any)?.scenario ??
-        (sess as any)?.scenarioId ??
-        null;
-
-      const ownerId = (sess as any)?.created_by ?? null;
-
-      const sa = (sess as any)?.started_at ?? null;
+        sessRow?.scenario_id ?? sessRow?.scenario ?? sessRow?.scenarioId ?? null;
+      const ownerId = sessRow?.created_by ?? null;
+      const sa = sessRow?.started_at ?? null;
       setStartedAt(typeof sa === "string" && sa ? sa : null);
       setSessionOwnerId(
         typeof ownerId === "string" && ownerId ? ownerId : null
@@ -256,13 +279,13 @@ export default function SessionParticipantPage() {
 
       if (scErr) throw scErr;
 
-      setScenario((sc as any) ?? null);
-    } catch (e: any) {
+      setScenario((sc as Scenario | null) ?? null);
+    } catch (e: unknown) {
       setScenario(null);
       setError(
         (prev) =>
           prev ??
-          (e?.message
+          (e instanceof Error
             ? `Scenario/meta load: ${e.message}`
             : "Scenario/meta load failed")
       );
@@ -418,7 +441,7 @@ export default function SessionParticipantPage() {
 
         if (error) throw error;
 
-        const rows = (data ?? []) as any[];
+        const rows = (data ?? []) as SessionRoleRow[];
         const match = rows.find((r) => {
           const roleKey = r?.role_key ?? r?.role ?? r?.role_id ?? null;
           const uid =
@@ -461,7 +484,7 @@ export default function SessionParticipantPage() {
     });
 
     const unsubM = subscribeSessionMetaPayload(sessionId, (row) => {
-      const sa = (row as any)?.started_at ?? null;
+      const sa = (row as SessionMetaPayloadRow | null)?.started_at ?? null;
       setStartedAt((prev) => {
         const next = typeof sa === "string" && sa ? sa : null;
         return prev === next ? prev : next;
@@ -517,8 +540,8 @@ export default function SessionParticipantPage() {
       }
 
       setComment("");
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to save action");
+    } catch (e: unknown) {
+      alert(errMessage(e, "Failed to save action"));
     }
   }
 
@@ -556,8 +579,8 @@ export default function SessionParticipantPage() {
 
       await sendInjectToSession(sessionId, title, body);
       setComment("");
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to process Pulse decision");
+    } catch (e: unknown) {
+      alert(errMessage(e, "Failed to process Pulse decision"));
     }
   }
 
@@ -677,7 +700,10 @@ export default function SessionParticipantPage() {
                       </div>
 
                       <div className="p-4">
-                        <FacilitatorToolsPanel sessionId={sessionId} />
+                        <FacilitatorToolsPanel
+                          sessionId={sessionId}
+                          scenarioId={scenario?.id ?? null}
+                        />
                       </div>
                     </div>
                   ) : null}
@@ -704,8 +730,9 @@ export default function SessionParticipantPage() {
               </div>
 
               <SituationCard
+                scenario={scenario}
                 situation={situation}
-                onSave={async (p) => {
+                onUpdateCasualties={async (p) => {
                   if (!validSessionId) return;
                   const s = await updateCasualties({
                     sessionId,
@@ -959,6 +986,7 @@ export default function SessionParticipantPage() {
               {streamTab === "inbox" ? (
                 <Inbox
                   sessionId={sessionId}
+                  selectedId={selectedItem?.id ?? null}
                   onSelect={(item) => {
                     setSelectedItem(item);
                     setSelectedSource("inbox");
@@ -970,6 +998,7 @@ export default function SessionParticipantPage() {
               ) : (
                 <PulseFeed
                   sessionId={sessionId}
+                  selectedId={selectedItem?.id ?? null}
                   onSelect={(item) => {
                     setSelectedItem(item);
                     setSelectedSource("pulse");
