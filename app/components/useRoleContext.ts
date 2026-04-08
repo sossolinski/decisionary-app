@@ -12,12 +12,11 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { logClientError } from "@/lib/errors";
 import {
-  ensureAdminBootstrap,
-  getActiveOrgId,
-  listOrganizationsForUser,
-  setActiveOrgId as persistActiveOrgId,
+  getMyActiveOrgId,
+  listOrganizationsForCurrentUser,
+  setMyActiveOrgId,
   type Organization,
-} from "@/lib/organizationsMvp";
+} from "@/lib/organizations";
 
 export type Role = "admin" | "facilitator" | "participant";
 
@@ -38,6 +37,7 @@ export type RoleContext = {
   activeOrg: Organization | null;
   setActiveOrgId: (orgId: string | null) => void;
   reloadOrganizations: () => void;
+  refresh: () => Promise<void>;
 };
 
 function useRoleContextValue(): RoleContext {
@@ -51,88 +51,96 @@ function useRoleContextValue(): RoleContext {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgIdState] = useState<string | null>(null);
 
-  function syncOrganizations(uid: string | null, em: string | null, r: Role | null) {
+  async function syncOrganizations(uid: string | null) {
     if (!uid) {
       setOrganizations([]);
       setActiveOrgIdState(null);
       return;
     }
 
-    if (r === "admin") {
-      ensureAdminBootstrap({ userId: uid, email: em });
+    let orgs: Organization[] = [];
+
+    try {
+      orgs = await listOrganizationsForCurrentUser();
+      setOrganizations(orgs);
+    } catch (err: unknown) {
+      logClientError("useRoleContext.syncOrganizations.list", err);
+      setOrganizations([]);
+      setActiveOrgIdState(null);
+      return;
     }
 
-    const orgs = listOrganizationsForUser({ userId: uid, email: em, role: r });
-    setOrganizations(orgs);
-
-    const saved = getActiveOrgId({ userId: uid, email: em });
-    const validSaved = saved && orgs.some((org) => org.id === saved) ? saved : null;
-    const next = validSaved ?? (orgs[0]?.id ?? null);
-
-    setActiveOrgIdState(next);
-
-    if (next) {
-      persistActiveOrgId({ userId: uid, email: em, orgId: next });
-    } else {
-      persistActiveOrgId({ userId: uid, email: em, orgId: null });
+    try {
+      const saved = await getMyActiveOrgId(uid);
+      const validSaved = saved && orgs.some((org) => org.id === saved) ? saved : null;
+      setActiveOrgIdState(validSaved ?? (orgs[0]?.id ?? null));
+    } catch (err: unknown) {
+      logClientError("useRoleContext.syncOrganizations.activeOrg", err);
+      setActiveOrgIdState(orgs[0]?.id ?? null);
     }
   }
 
   const load = useCallback(async (markLoading = true) => {
     if (markLoading) setLoading(true);
 
-    const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr) logClientError("useRoleContext.auth", authErr);
+    try {
+      const { data: auth, error: authErr } = await supabase.auth.getUser();
+      if (authErr) logClientError("useRoleContext.auth", authErr);
 
-    const u = auth.user ?? null;
-    setUserId(u?.id ?? null);
-    setEmail(u?.email ?? null);
+      const u = auth.user ?? null;
+      setUserId(u?.id ?? null);
+      setEmail(u?.email ?? null);
 
-    if (!u) {
-      setRole(null);
-      setActiveRole(null);
-      setIsDisabled(false);
+      if (!u) {
+        setRole(null);
+        setActiveRole(null);
+        setIsDisabled(false);
+        setOrganizations([]);
+        setActiveOrgIdState(null);
+        setLoading(false);
+        return;
+      }
+
+      // preferred: RPC (security definer)
+      const { data: rpcData, error: rpcErr } = await supabase.rpc("get_my_profile");
+      if (!rpcErr && rpcData) {
+        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+
+        const r = (row?.role ?? null) as Role | null;
+        const ar = ((row?.active_role ?? row?.role) ?? null) as Role | null;
+
+        setRole(r);
+        setActiveRole(ar);
+        setIsDisabled(!!row?.is_disabled);
+        await syncOrganizations(u.id);
+
+        setLoading(false);
+        return;
+      }
+
+      // fallback: direct select (in case RPC not deployed yet)
+      const { data: prof, error: profErr } = await supabase
+        .from("profiles")
+        .select("role, active_role, is_disabled")
+        .eq("user_id", u.id)
+        .maybeSingle();
+
+      if (profErr) logClientError("useRoleContext.profiles", profErr);
+
+      const r2 = (prof?.role ?? null) as Role | null;
+      const ar2 = ((prof?.active_role ?? prof?.role) ?? null) as Role | null;
+
+      setRole(r2);
+      setActiveRole(ar2);
+      setIsDisabled(!!prof?.is_disabled);
+      await syncOrganizations(u.id);
+    } catch (err: unknown) {
+      logClientError("useRoleContext.load", err);
       setOrganizations([]);
       setActiveOrgIdState(null);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    // ✅ preferred: RPC (security definer)
-    const { data: rpcData, error: rpcErr } = await supabase.rpc("get_my_profile");
-    if (!rpcErr && rpcData) {
-      const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-
-      const r = (row?.role ?? null) as Role | null;
-      const ar = ((row?.active_role ?? row?.role) ?? null) as Role | null;
-
-      setRole(r);
-      setActiveRole(ar);
-      setIsDisabled(!!row?.is_disabled);
-      syncOrganizations(u.id, u.email ?? null, r);
-
-      setLoading(false);
-      return;
-    }
-
-    // fallback: direct select (in case RPC not deployed yet)
-    const { data: prof, error: profErr } = await supabase
-      .from("profiles")
-      .select("role, active_role, is_disabled")
-      .eq("user_id", u.id)
-      .maybeSingle();
-
-    if (profErr) logClientError("useRoleContext.profiles", profErr);
-
-    const r2 = (prof?.role ?? null) as Role | null;
-    const ar2 = ((prof?.active_role ?? prof?.role) ?? null) as Role | null;
-
-    setRole(r2);
-    setActiveRole(ar2);
-    setIsDisabled(!!prof?.is_disabled);
-    syncOrganizations(u.id, u.email ?? null, r2);
-
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -157,11 +165,16 @@ function useRoleContextValue(): RoleContext {
 
   function setActiveOrgId(orgId: string | null) {
     setActiveOrgIdState(orgId);
-    persistActiveOrgId({ userId, email, orgId });
+    void setMyActiveOrgId(orgId).catch((err) => {
+      logClientError("useRoleContext.setActiveOrgId", err);
+      void load(false);
+    });
   }
 
   function reloadOrganizations() {
-    syncOrganizations(userId, email, role);
+    void syncOrganizations(userId).catch((err) => {
+      logClientError("useRoleContext.reloadOrganizations", err);
+    });
   }
 
   return {
@@ -178,6 +191,7 @@ function useRoleContextValue(): RoleContext {
     activeOrg,
     setActiveOrgId,
     reloadOrganizations,
+    refresh: () => load(false),
   };
 }
 

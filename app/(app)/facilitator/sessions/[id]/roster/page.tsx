@@ -9,7 +9,7 @@ import { listSessionRoster, kickFromSession, type SessionRosterRow } from "@/lib
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
-import { Users, RefreshCw, UserMinus, ArrowLeft, Shield, User } from "lucide-react";
+import { Users, RefreshCw, UserMinus, ArrowLeft, Shield, User, Sparkles } from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -122,39 +122,48 @@ export default function FacilitatorRosterPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+    return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div className="mx-auto w-full max-w-[var(--studio-max)] p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[var(--studio-max)] space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1 min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <Users className="h-5 w-5 opacity-80" />
-            Roster
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Participants currently registered in this session.
-          </p>
-        </div>
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="relative px-5 py-5 md:px-6 md:py-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative flex flex-wrap items-end justify-between gap-4">
+            <div className="space-y-2 min-w-0">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Session roster
+              </div>
+              <h1 className="text-[28px] font-semibold tracking-tight flex items-center gap-2">
+                <Users className="h-5 w-5 opacity-80" />
+                Participants
+              </h1>
+              <p className="text-sm leading-7 text-[color:var(--studio-muted)]">
+                Review who has joined the exercise and remove participants when needed.
+              </p>
+            </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to session
-          </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back to session
+              </Button>
 
-          <Button variant="outline" onClick={load} disabled={!!busyId || !valid} className="gap-2">
-            <RefreshCw className={["h-4 w-4", busyId ? "animate-spin" : ""].join(" ")} />
-            Refresh
-          </Button>
+              <Button variant="outline" onClick={load} disabled={!!busyId || !valid} className="gap-2">
+                <RefreshCw className={["h-4 w-4", busyId ? "animate-spin" : ""].join(" ")} />
+                Refresh
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Error */}
       {error ? (
-        <div className="rounded-[var(--radius)] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
+        <div className="notice notice-error">
           {error}
         </div>
       ) : null}

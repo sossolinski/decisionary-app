@@ -39,7 +39,7 @@ function fmtIso(iso: string | null | undefined) {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-[var(--radius)] border border-border bg-card px-2 py-1 text-xs font-semibold">
+    <span className="inline-flex items-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1 text-xs font-semibold text-[color:var(--studio-ink)]">
       {children}
     </span>
   );
@@ -68,9 +68,13 @@ function Select({
 export default function FacilitatorToolsPanel({
   sessionId,
   scenarioId,
+  compact = false,
+  onSessionMetaChange,
 }: {
   sessionId: string;
   scenarioId: string | null;
+  compact?: boolean;
+  onSessionMetaChange?: (meta: SessionMeta | null) => void;
 }) {
   const [meta, setMeta] = useState<SessionMeta | null>(null);
 
@@ -103,7 +107,11 @@ export default function FacilitatorToolsPanel({
       .eq("id", sessionId)
       .maybeSingle();
 
-    if (!error) setMeta((data ?? null) as SessionMeta | null);
+    if (!error) {
+      const nextMeta = (data ?? null) as SessionMeta | null;
+      setMeta(nextMeta);
+      onSessionMetaChange?.(nextMeta);
+    }
   }
 
   async function refreshInjectLibrary() {
@@ -352,17 +360,8 @@ export default function FacilitatorToolsPanel({
     }
   }
 
-  return (
-    <div className="space-y-3">
-      <Card className="surface-solid shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Facilitator tools</CardTitle>
-          <CardDescription className="text-sm">
-            Session control and runtime tools.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
+  const content = (
+    <div className="space-y-4">
           {/* Meta */}
           <div className="flex flex-wrap items-center gap-2">
             <Badge>Status: {normalizeSessionStatus(meta?.status ?? null)}</Badge>
@@ -373,7 +372,7 @@ export default function FacilitatorToolsPanel({
             {effectiveScenarioId ? (
               <Link
                 href={`/facilitator/scenarios/${effectiveScenarioId}`}
-                className="text-xs font-semibold underline underline-offset-2"
+                className="text-xs font-semibold text-[color:var(--studio-ink)] underline underline-offset-2"
               >
                 Open scenario editor
               </Link>
@@ -381,14 +380,22 @@ export default function FacilitatorToolsPanel({
 
             <Link
               href={`/facilitator/sessions/${sessionId}/roster`}
-              className="text-xs font-semibold underline underline-offset-2"
+              className="text-xs font-semibold text-[color:var(--studio-ink)] underline underline-offset-2"
             >
               Open roster
             </Link>
           </div>
 
           {/* Exercise */}
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
+            <div className="mb-3">
+              <div className="text-sm font-semibold">Exercise lifecycle</div>
+              <div className="text-xs text-muted-foreground">
+                Control the current run without leaving the session screen.
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
             <Button variant="default" onClick={startExercise} disabled={loading}>
               {loading ? "..." : "Start (T=0)"}
             </Button>
@@ -403,9 +410,10 @@ export default function FacilitatorToolsPanel({
               {loading ? "..." : "Restart"}
             </Button>
           </div>
+          </div>
 
           {/* Inject release (collapsed) */}
-          <div className="rounded-[var(--radius)] border border-border bg-card">
+          <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
             <button
               onClick={() => setInjectReleaseOpen((v) => !v)}
               className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
@@ -433,7 +441,7 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {injectReleaseOpen ? (
-              <div className="border-t border-border p-3">
+              <div className="border-t border-[var(--studio-border)] bg-white/55 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Button
                     variant="secondary"
@@ -475,7 +483,7 @@ export default function FacilitatorToolsPanel({
                 </div>
 
                 {selectedSI ? (
-                  <div className="mt-3 rounded-[var(--radius)] border border-border bg-background p-3">
+                  <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-white/70 p-3">
                     <div className="text-xs font-semibold text-muted-foreground">
                       Preview
                     </div>
@@ -502,7 +510,7 @@ export default function FacilitatorToolsPanel({
           </div>
 
           {/* Quick message (collapsed) */}
-          <div className="rounded-[var(--radius)] border border-border bg-card">
+          <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
             <button
               onClick={() => setQuickMsgOpen((v) => !v)}
               className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
@@ -530,7 +538,7 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {quickMsgOpen ? (
-              <div className="border-t border-border p-3">
+              <div className="border-t border-[var(--studio-border)] bg-white/55 p-3">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="space-y-1">
                     <div className="text-sm font-semibold">Title</div>
@@ -603,11 +611,28 @@ export default function FacilitatorToolsPanel({
           </div>
 
           {msg ? (
-            <div className="rounded-[var(--radius)] border border-border bg-card px-3 py-2 text-sm font-semibold">
+            <div className="notice px-3 py-2 text-sm font-semibold">
               {msg}
             </div>
           ) : null}
-        </CardContent>
+    </div>
+  );
+
+  if (compact) {
+    return <div className="space-y-4">{content}</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      <Card className="surface-solid border border-[var(--studio-border)] shadow-none">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Facilitator tools</CardTitle>
+          <CardDescription className="text-sm">
+            Session control, inject release, and live intervention tools.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4">{content}</CardContent>
       </Card>
     </div>
   );

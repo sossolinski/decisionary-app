@@ -10,23 +10,30 @@ export default function RoleBadge() {
   const view = activeRole ?? "—";
 
   return (
-    <div className="hidden md:flex items-center gap-2 text-xs">
-      <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1">
-        perm: <b>{perm}</b>
-      </span>
-      <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1">
-        view: <b>{view}</b>
-      </span>
-      {isDisabled ? (
-        <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1 text-red-400">
-          disabled
+    <div className="hidden xl:flex items-center">
+      <div className="flex min-w-0 items-center gap-3 rounded-[14px] border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2 text-xs text-[color:var(--studio-muted2)]">
+        <span>
+          Role <b className="text-foreground">{view}</b>
         </span>
-      ) : null}
-      {activeOrg ? (
-        <span className="rounded-[999px] border border-[color:var(--studio-border)] bg-[var(--studio-surface)] px-2 py-1 max-w-[220px] truncate">
-          org: <b>{activeOrg.name}</b>
+        <span className="h-3 w-px bg-[color:var(--studio-border)]" />
+        <span>
+          Access <b className="text-foreground">{perm}</b>
         </span>
-      ) : null}
+        {activeOrg ? (
+          <>
+            <span className="h-3 w-px bg-[color:var(--studio-border)]" />
+            <span className="max-w-[180px] truncate">
+              Org <b className="text-foreground">{activeOrg.name}</b>
+            </span>
+          </>
+        ) : null}
+        {isDisabled ? (
+          <>
+            <span className="h-3 w-px bg-[color:var(--studio-border)]" />
+            <span className="text-red-500">Disabled</span>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

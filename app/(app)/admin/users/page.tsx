@@ -6,6 +6,7 @@ import { getErrorMessage, logClientError } from "@/lib/errors";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import { Shield, Sparkles, Search, Users } from "lucide-react";
 
 type ProfileRow = {
   user_id: string;
@@ -103,15 +104,43 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Admin · Users</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage facilitators/participants. (Auth user creation is done via Invite/Edge Function; here you manage DB roles & access.)
-          </p>
+    <div className="space-y-5">
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="relative px-5 py-5 md:px-6 md:py-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Admin workspace
+              </div>
+
+              <div className="space-y-2">
+                <h1 className="text-[28px] font-semibold tracking-tight">Manage account access without losing the people context.</h1>
+                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
+                  Review platform users, update permanent access levels, and disable accounts when needed.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => void load()} disabled={loading} variant="outline">
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">Accounts</div>
+                <div className="mt-2 text-3xl font-semibold">{rows.length}</div>
+              </div>
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">Visible</div>
+                <div className="mt-2 text-3xl font-semibold">{filtered.length}</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <Button onClick={() => void load()} disabled={loading}>Refresh</Button>
       </div>
 
       {!meAdmin && (
@@ -124,24 +153,31 @@ export default function AdminUsersPage() {
       )}
 
       {error ? (
-        <Card className="border-destructive/40">
-          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <div className="notice notice-error">{error}</div>
       ) : null}
 
       {meAdmin && (
         <>
-          <div className="flex items-center gap-3">
-            <Input
-              placeholder="Search email, name, role, uuid…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
+          <Card>
+            <CardContent className="pt-5">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search email, name, role, uuid…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Accounts</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 opacity-80" />
+                Accounts
+              </CardTitle>
               <CardDescription>{loading ? "Loading…" : `${filtered.length} users`}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -150,20 +186,28 @@ export default function AdminUsersPage() {
                 return (
                   <div
                     key={r.user_id}
-                    className="flex flex-col gap-2 rounded-md border p-3"
+                    className="flex flex-col gap-3 rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface)] p-4"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="font-medium truncate">
+                        <div className="text-base font-semibold tracking-tight truncate">
                           {r.full_name ?? r.email ?? r.user_id}
                         </div>
                         <div className="text-xs text-muted-foreground truncate">
                           {r.email ?? "—"} · {r.user_id}
                         </div>
-                        <div className="text-xs mt-1">
-                          <span className="mr-2">role: <b>{r.role}</b></span>
-                          <span>active: <b>{r.active_role ?? "—"}</b></span>
-                          {disabled && <span className="ml-2 text-destructive">disabled</span>}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
+                            role: <b>{r.role}</b>
+                          </span>
+                          <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
+                            active: <b>{r.active_role ?? "—"}</b>
+                          </span>
+                          {disabled ? (
+                            <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-1 text-destructive">
+                              disabled
+                            </span>
+                          ) : null}
                         </div>
                       </div>
 
@@ -186,6 +230,7 @@ export default function AdminUsersPage() {
                           disabled={busy === r.user_id}
                           onClick={() => setRole(r.user_id, roleOpt)}
                         >
+                          <Shield className="h-4 w-4" />
                           Set {roleOpt}
                         </Button>
                       ))}

@@ -42,6 +42,8 @@ import {
   Copy,
   Check,
   ChevronDown,
+  Sparkles,
+  ClipboardList,
 } from "lucide-react";
 
 type StatusFilter = "all" | "live" | "ended";
@@ -213,6 +215,10 @@ export default function FacilitatorSessionsPage() {
     return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "ended").length;
   }, [sessions]);
 
+  const draftCount = useMemo(() => {
+    return sessions.filter((s) => normalizeSessionStatus(s.status) === "draft").length;
+  }, [sessions]);
+
   const filteredSessions = useMemo(() => {
     const qq = q.trim().toLowerCase();
 
@@ -303,125 +309,135 @@ export default function FacilitatorSessionsPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+    return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight">Sessions</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create sessions from scenarios and manage exercise lifecycle.
-          </p>
+    <div className="space-y-5">
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="relative px-5 py-5 md:px-6 md:py-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Session control
+              </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">
-              Total: <span className="text-foreground">{sessions.length}</span>
-            </span>
-            <span className="text-xs text-muted-foreground">•</span>
-            <span className="text-xs font-semibold text-muted-foreground">
-              Live: <span className="text-foreground">{activeCount}</span>
-            </span>
-            <span className="text-xs text-muted-foreground">•</span>
-            <span className="text-xs font-semibold text-muted-foreground">
-              Ended: <span className="text-foreground">{endedCount}</span>
-            </span>
+              <div className="space-y-2">
+                <h1 className="text-[28px] font-semibold tracking-tight">Move cleanly from planning into live exercise runs.</h1>
+                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
+                  Create sessions from scenarios, distribute join codes, and manage the exercise lifecycle without leaving the operations surface.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={load} className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                  Total
+                </div>
+                <div className="mt-2 text-3xl font-semibold">{sessions.length}</div>
+              </div>
+
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                  Draft
+                </div>
+                <div className="mt-2 text-3xl font-semibold">{draftCount}</div>
+              </div>
+
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                  Live
+                </div>
+                <div className="mt-2 text-3xl font-semibold">{activeCount}</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={load} className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+        <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+              Create session
+            </div>
+            <div className="grid gap-3 md:grid-cols-12">
+              <div className="md:col-span-7">
+                <Select value={scenarioId} onChange={setScenarioId}>
+                  <option value="">Select scenario…</option>
+                  {scenarios.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title ?? "Untitled scenario"}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="md:col-span-5">
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="New session"
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2">
+                <Play className="h-4 w-4" />
+                {busyId === "create" ? "…" : "Create & open"}
+              </Button>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                Create a run, then invite participants with the join code.
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Error */}
       {error ? (
-        <Card className="border-destructive/40">
-          <CardContent className="pt-6 text-sm text-destructive">{error}</CardContent>
-        </Card>
+        <div className="notice notice-error">{error}</div>
       ) : null}
 
-      {/* Create session */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CalendarPlus className="h-5 w-5 opacity-80" />
-            Create session
-          </CardTitle>
-          <CardDescription>Choose scenario and start a new run.</CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-12">
-            <div className="md:col-span-7 space-y-2">
-              <div className="text-sm font-medium">Scenario</div>
-              <Select value={scenarioId} onChange={setScenarioId}>
-                <option value="">Select scenario…</option>
-                {scenarios.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title ?? "Untitled scenario"}
-                  </option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="md:col-span-5 space-y-2">
-              <div className="text-sm font-medium">Title</div>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="New session"
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2">
-              <Play className="h-4 w-4" />
-              {busyId === "create" ? "…" : "Create & open"}
-            </Button>
-            <div className="text-xs text-muted-foreground">
-              Tip: you can invite participants with the join code after creating.
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Sessions list */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)]">
-        <CardHeader className="flex-row items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2">
-              <Play className="h-5 w-5 opacity-80" />
-              Sessions{" "}
-              <span className="text-muted-foreground font-normal">
-                {filteredSessions.length} shown
-              </span>
-            </CardTitle>
-            <CardDescription>Search and manage runs (open, roster, end, restart, delete).</CardDescription>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 justify-end">
-            <div className="relative w-[260px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search sessions…"
-                className="pl-9"
-              />
+      <Card className="surface shadow-soft border border-[var(--studio-border)] overflow-visible">
+        <CardHeader className="pb-4">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="h-5 w-5 opacity-80" />
+                Session library
+              </CardTitle>
+              <CardDescription>Search, open, and manage exercise runs.</CardDescription>
             </div>
 
-            <Select value={statusFilter} onChange={(v) => setStatusFilter(toStatusFilter(v))}>
-              <option value="all">Status: All</option>
-              <option value="live">Status: Live</option>
-              <option value="ended">Status: Ended</option>
-            </Select>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:w-[300px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search sessions…"
+                  className="pl-9"
+                />
+              </div>
+
+              <div className="w-full sm:w-[180px]">
+                <Select value={statusFilter} onChange={(v) => setStatusFilter(toStatusFilter(v))}>
+                  <option value="all">Status: All</option>
+                  <option value="live">Status: Live</option>
+                  <option value="ended">Status: Ended</option>
+                </Select>
+              </div>
+            </div>
           </div>
         </CardHeader>
 
@@ -456,18 +472,18 @@ export default function FacilitatorSessionsPage() {
               return (
                 <div
                   key={s.id}
-                  className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-4 py-4"
+                  className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-4 py-4 transition-transform duration-150 hover:-translate-y-[1px] md:px-5"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-base font-semibold truncate">
+                        <div className="text-lg font-semibold tracking-tight truncate">
                           {s.title ?? "Untitled session"}
                         </div>
                         <StatusPill status={status} />
                       </div>
 
-                      <div className="mt-1 text-sm text-muted-foreground">
+                      <div className="mt-2 text-sm leading-6 text-muted-foreground">
                         <span className="font-medium text-foreground">Scenario:</span>{" "}
                         {scenarioTitle}
                         <span className="mx-2 text-muted-foreground/70">•</span>
@@ -475,7 +491,7 @@ export default function FacilitatorSessionsPage() {
                         <span className="font-mono">{joinCode}</span>
                       </div>
 
-                      <div className="mt-2 text-xs text-muted-foreground">
+                      <div className="mt-3 text-xs text-muted-foreground">
                         Created: {fmt(s.created_at)} <span className="mx-2">•</span>
                         Started: {fmt(s.started_at)} <span className="mx-2">•</span>
                         Ended: {fmt(s.ended_at)}
@@ -506,7 +522,7 @@ export default function FacilitatorSessionsPage() {
                       <CopyButton value={joinCode} label="Join code" />
 
                       {/* More (minimize button spam) */}
-                      <div className="relative">
+                      <div className={openMenuId === s.id ? "relative z-20" : "relative"}>
                         <Button
                           variant="outline"
                           onClick={() => setOpenMenuId((v) => (v === s.id ? null : s.id))}

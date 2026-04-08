@@ -69,7 +69,7 @@ export default function FacilitatorSessionPage() {
   }, [router, id, valid]);
 
   return (
-    <div className="mx-auto w-full max-w-[var(--studio-max)] p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[var(--studio-max)] space-y-6">
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -90,7 +90,7 @@ export default function FacilitatorSessionPage() {
 
         <CardContent className="space-y-3">
           {err ? (
-            <div className="rounded-[14px] border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <div className="notice notice-error">
               {err}
             </div>
           ) : null}

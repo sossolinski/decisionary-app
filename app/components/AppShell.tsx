@@ -26,12 +26,7 @@ function useMediaQuery(query: string) {
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 1024px)");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    const v = window.localStorage.getItem(SIDEBAR_LS_KEY);
-    if (v === "0") return false;
-    return true;
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(true);
 
   // Hide shell on login / landing routes
   const hideShell =
@@ -40,6 +35,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
     pathname?.startsWith("/join");
 
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    const v = window.localStorage.getItem(SIDEBAR_LS_KEY);
+    setSidebarCollapsed(v === "0" ? false : true);
+  }, []);
 
   function toggleDesktopSidebar() {
     setSidebarCollapsed((v) => {
@@ -82,12 +82,20 @@ export default function AppShell({ children }: { children: ReactNode }) {
       {/* Main content */}
       <main
         className={[
-          "pt-14", // ✅ matches topbar height (h-14 = 56px)
+          isMobile ? "pt-14" : "pt-[64px]",
           isMobile ? "" : sidebarCollapsed ? "pl-[84px]" : "pl-[260px]",
           "transition-[padding] duration-200",
         ].join(" ")}
       >
-        <div className="mx-auto w-full max-w-[1400px] px-5 py-6">{children}</div>
+        <div className={["mx-auto w-full max-w-[1400px]", isMobile ? "px-5 py-6" : "px-3 pb-4"].join(" ")}>
+          {isMobile ? (
+            children
+          ) : (
+            <div className="min-h-[calc(100vh-92px)] rounded-[18px] border border-[var(--studio-border)] bg-[var(--studio-surface)]/78 shadow-soft px-5 py-5 md:px-6 md:py-6">
+              {children}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

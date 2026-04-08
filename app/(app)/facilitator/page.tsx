@@ -16,6 +16,7 @@ import {
   CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import { ArrowRight, BookOpen, ClipboardList, PlayCircle, Sparkles } from "lucide-react";
 
 export default function FacilitatorHomePage() {
   const router = useRouter();
@@ -54,78 +55,105 @@ export default function FacilitatorHomePage() {
 
   return (
     <div className="space-y-6">
-      <Card className="shadow-soft">
-        <CardHeader>
-          <CardTitle>Facilitator workspace</CardTitle>
-          <CardDescription>
-            Build scenarios, run sessions, and coordinate the exercise flow — all
-            in one place.
-          </CardDescription>
-          <CardDescription>
-            Active organization: <b>{activeOrg?.name ?? "not selected"}</b>
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button asChild variant="secondary">
-              <Link href="/facilitator/sessions">Go to Sessions</Link>
-            </Button>
-
-            <Button asChild variant="secondary">
-              <Link href="/facilitator/scenarios">Manage Scenarios</Link>
-            </Button>
-
-            <Button
-              variant="secondary"
-              onClick={async () => {
-                setLoading(true);
-                await loadCounts();
-                setLoading(false);
-              }}
-            >
-              Refresh
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="surface2 rounded-[var(--radius)] px-4 py-3 text-center shadow-soft">
-              <div className="text-xs text-[hsl(var(--muted-foreground))]">
-                Scenarios
+      <Card className="overflow-hidden bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--card)/0.94))]">
+        <CardContent className="relative pt-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-32 w-56 rounded-bl-[32px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative grid gap-5 lg:grid-cols-[1.35fr_0.85fr] lg:items-start">
+            <div className="space-y-5">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Facilitator workspace
               </div>
-              <div className="text-2xl font-semibold">
-                {loading ? "—" : scenarioCount}
-              </div>
-            </div>
 
-            <div className="surface2 rounded-[var(--radius)] px-4 py-3 text-center shadow-soft">
-              <div className="text-xs text-[hsl(var(--muted-foreground))]">
-                Sessions
+              <div className="space-y-2">
+                <h1 className="text-[28px] font-semibold tracking-tight">Run realistic exercises with less friction.</h1>
+                <p className="max-w-[60ch] text-sm leading-7 text-[color:var(--studio-muted)]">
+                  Build scenarios, launch sessions, and coordinate the exercise flow from one calm control surface.
+                </p>
+                <div className="text-sm text-[color:var(--studio-muted)]">
+                  Active organization: <b className="text-foreground">{activeOrg?.name ?? "not selected"}</b>
+                </div>
               </div>
-              <div className="text-2xl font-semibold">
-                {loading ? "—" : sessionCount}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button asChild>
+                  <Link href="/facilitator/sessions">
+                    Go to Sessions
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+
+                <Button asChild variant="secondary">
+                  <Link href="/facilitator/scenarios">Manage Scenarios</Link>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    setLoading(true);
+                    await loadCounts();
+                    setLoading(false);
+                  }}
+                >
+                  Refresh
+                </Button>
               </div>
             </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      Scenarios
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">{loading ? "—" : scenarioCount}</div>
+                  </div>
+                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                    <BookOpen className="h-4 w-4 text-foreground/80" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      Sessions
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">{loading ? "—" : sessionCount}</div>
+                  </div>
+                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                    <PlayCircle className="h-4 w-4 text-foreground/80" />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
+
+          {error ? (
+            <div className="notice notice-error mt-5">
+              {error}
+            </div>
+          ) : null}
         </CardContent>
-
-        {error ? (
-          <div className="px-6 pb-6 text-sm text-[hsl(var(--destructive))]">
-            {error}
-          </div>
-        ) : null}
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="shadow-soft">
+        <Card>
           <CardHeader>
-            <CardTitle>1. Prepare</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>1. Prepare</CardTitle>
+              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                <BookOpen className="h-4 w-4 text-foreground/80" />
+              </div>
+            </div>
             <CardDescription>
               Build scenarios and inject libraries for realistic runs.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-sm text-[hsl(var(--muted-foreground))]">
+          <CardContent className="flex items-center justify-between gap-4">
+            <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               Create and iterate on content.
             </span>
             <Button asChild variant="secondary" size="sm">
@@ -134,15 +162,20 @@ export default function FacilitatorHomePage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-soft">
+        <Card>
           <CardHeader>
-            <CardTitle>2. Run</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>2. Run</CardTitle>
+              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                <PlayCircle className="h-4 w-4 text-foreground/80" />
+              </div>
+            </div>
             <CardDescription>
               Start a session, invite participants, deliver injects.
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-sm text-[hsl(var(--muted-foreground))]">
+          <CardContent className="flex items-center justify-between gap-4">
+            <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               Lifecycle control & tools.
             </span>
             <Button asChild variant="secondary" size="sm">
@@ -151,14 +184,19 @@ export default function FacilitatorHomePage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-soft">
+        <Card>
           <CardHeader>
-            <CardTitle>3. Review</CardTitle>
+            <div className="flex items-center justify-between gap-3">
+              <CardTitle>3. Review</CardTitle>
+              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                <ClipboardList className="h-4 w-4 text-foreground/80" />
+              </div>
+            </div>
             <CardDescription>
               Capture actions, decisions, and key timeline points.
             </CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-[hsl(var(--muted-foreground))]">
+          <CardContent className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
             (Next) Add After-Action Report & exports.
           </CardContent>
         </Card>

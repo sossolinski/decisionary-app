@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { acceptFacilitatorInvite, findInviteByToken, listAllOrganizations } from "@/lib/organizationsMvp";
+import { acceptFacilitatorInvite, getFacilitatorInviteByToken } from "@/lib/organizations";
 import { Button } from "@/app/components/ui/button";
 import { Card } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -19,17 +19,29 @@ function FacilitatorRegistrationInner() {
 
   const token = (search.get("token") ?? "").trim();
 
-  const invite = useMemo(() => findInviteByToken(token), [token]);
-  const org = useMemo(() => {
-    if (!invite) return null;
-    return listAllOrganizations().find((x) => x.id === invite.org_id) ?? null;
-  }, [invite]);
+  const [invite, setInvite] = useState<Awaited<ReturnType<typeof getFacilitatorInviteByToken>>>(null);
 
-  const [email, setEmail] = useState(invite?.email ?? "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setInvite(null);
+      return;
+    }
+
+    void getFacilitatorInviteByToken(token)
+      .then((row) => {
+        setInvite(row);
+        setEmail(row?.email ?? "");
+      })
+      .catch((e: unknown) => {
+        setErr(toMessage(e, "Failed to load invite."));
+      });
+  }, [token]);
 
   async function onAccept() {
     if (!invite) {
@@ -44,7 +56,6 @@ function FacilitatorRegistrationInner() {
     try {
       const { data: auth } = await supabase.auth.getUser();
       let userId = auth.user?.id ?? null;
-      let signedEmail = auth.user?.email ?? null;
 
       if (!userId) {
         if (!email.trim() || !password.trim()) {
@@ -59,14 +70,9 @@ function FacilitatorRegistrationInner() {
         if (signUpErr) throw signUpErr;
 
         userId = signUpData.user?.id ?? null;
-        signedEmail = signUpData.user?.email ?? email.trim();
       }
 
-      acceptFacilitatorInvite({
-        token,
-        userId,
-        email: signedEmail ?? email.trim() ?? null,
-      });
+      await acceptFacilitatorInvite(token);
 
       setMsg(
         "Invite accepted. If your profile role is not facilitator yet, admin should set it in Admin -> Users."
@@ -88,7 +94,7 @@ function FacilitatorRegistrationInner() {
         <div className="text-center space-y-1">
           <div className="text-2xl font-bold tracking-tight">Facilitator registration</div>
           <div className="text-sm text-muted-foreground">
-            {org ? `Organization: ${org.name}` : "Invitation required"}
+            {invite ? `Organization: ${invite.org_name}` : "Invitation required"}
           </div>
         </div>
 

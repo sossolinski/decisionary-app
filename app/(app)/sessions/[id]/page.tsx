@@ -133,6 +133,32 @@ function Badge({ n }: { n: number }) {
   );
 }
 
+function RuntimeMetric({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-3 shadow-[0_10px_30px_hsl(220_20%_20%/0.04)]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+            {label}
+          </div>
+          <div className="mt-1 text-xl font-semibold tracking-tight">{value}</div>
+        </div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--studio-border)] bg-white/80 text-[color:var(--studio-ink)]">
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function lsKey(sessionId: string, kind: "inbox" | "pulse") {
   return `decisionary.seen.${kind}.${sessionId}`;
 }
@@ -158,6 +184,8 @@ type SessionRoleRow = {
 
 type SessionMetaPayloadRow = {
   started_at?: string | null;
+  status?: string | null;
+  ended_at?: string | null;
 };
 
 export default function SessionParticipantPage() {
@@ -217,6 +245,15 @@ export default function SessionParticipantPage() {
   const [unseenPulse, setUnseenPulse] = useState(0);
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
+
+  function applySessionMeta(row: SessionMetaPayloadRow | null | undefined) {
+    if (!row) return;
+    const sa = row.started_at ?? null;
+    setStartedAt((prev) => {
+      const next = typeof sa === "string" && sa ? sa : null;
+      return prev === next ? prev : next;
+    });
+  }
 
   async function refreshSituation() {
     if (!validSessionId) return;
@@ -481,11 +518,7 @@ export default function SessionParticipantPage() {
     });
 
     const unsubM = subscribeSessionMetaPayload(sessionId, (row) => {
-      const sa = (row as SessionMetaPayloadRow | null)?.started_at ?? null;
-      setStartedAt((prev) => {
-        const next = typeof sa === "string" && sa ? sa : null;
-        return prev === next ? prev : next;
-      });
+      applySessionMeta(row as SessionMetaPayloadRow | null);
     });
 
     // Unseen subscriptions
@@ -628,84 +661,127 @@ export default function SessionParticipantPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
-        <div className="px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-xs text-[color:var(--studio-muted2)]">
-              Session • {sessionId.slice(0, 8)} • {fmt(startedAt)}
-            </div>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">
-              {sessionTitle}
-            </h1>
-            <div className="mt-1 text-sm text-[color:var(--studio-muted2)]">
-              Exercise clock:{" "}
-              <span className="text-foreground font-medium">
-                {exerciseClock}
-              </span>
-            </div>
-          </div>
+      <div className="relative z-20 surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
+        <div className="relative overflow-visible rounded-[var(--studio-radius)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-[var(--studio-radius)] bg-[radial-gradient(circle_at_top_left,hsl(240_75%_92%/0.7),transparent_58%)]" />
+          <div className="pointer-events-none absolute right-0 top-0 h-40 w-56 rounded-tr-[var(--studio-radius)] bg-[radial-gradient(circle_at_top_right,hsl(205_90%_96%/0.95),transparent_68%)]" />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setCopOpen((v) => !v)}
-              className="gap-2"
-              title="Toggle COP"
-            >
-              <LayoutDashboard className="h-4 w-4 opacity-80" />
-              <span className="font-medium">COP</span>
-              <ChevronDown
-                className={[
-                  "h-4 w-4 opacity-70 transition-transform",
-                  copOpen ? "rotate-180" : "",
-                ].join(" ")}
-              />
-            </Button>
-
-            <div className="relative overflow-visible" ref={toolsWrapRef}>
-              {roleLoading ? (
-                <div className="text-xs text-[color:var(--studio-muted2)] px-2">
-                  Loading role…
+          <div className="relative px-5 py-5 sm:px-6 sm:py-6">
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_360px] xl:items-start">
+              <div className="min-w-0">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                  <Radio className="h-3.5 w-3.5" />
+                  Live session control
                 </div>
-              ) : isFacilitator ? (
-                <>
+
+                <div className="mt-4 text-xs text-[color:var(--studio-muted2)]">
+                  Session {sessionId.slice(0, 8)} • Started {fmt(startedAt)}
+                </div>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[2rem]">
+                  {sessionTitle}
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--studio-muted)]">
+                  Run the live exercise, track incoming signals, record decisions,
+                  and keep the common operating picture current from one place.
+                </p>
+
+                <div className="mt-5 flex flex-wrap items-center gap-2.5">
                   <Button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setToolsOpen((v) => !v);
-                    }}
+                    variant={copOpen ? "secondary" : "outline"}
+                    onClick={() => setCopOpen((v) => !v)}
                     className="gap-2"
+                    title="Toggle COP"
                   >
-                    <Wrench className="h-4 w-4" />
-                    Facilitator tools
+                    <LayoutDashboard className="h-4 w-4 opacity-80" />
+                    {copOpen ? "Hide COP" : "Open COP"}
+                    <ChevronDown
+                      className={[
+                        "h-4 w-4 opacity-70 transition-transform",
+                        copOpen ? "rotate-180" : "",
+                      ].join(" ")}
+                    />
                   </Button>
 
-                  {toolsOpen ? (
-                    <div className="absolute right-0 mt-2 w-[460px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
-                      <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-                        <div className="text-sm font-semibold">
-                          Facilitator panel
-                        </div>
+                  <div className="relative overflow-visible" ref={toolsWrapRef}>
+                    {roleLoading ? (
+                      <div className="px-2 text-xs text-[color:var(--studio-muted2)]">
+                        Loading role…
+                      </div>
+                    ) : isFacilitator ? (
+                      <>
                         <Button
-                          variant="outline"
-                          onClick={() => setToolsOpen(false)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setToolsOpen((v) => !v);
+                          }}
+                          className="gap-2"
                         >
-                          Close
+                          <Wrench className="h-4 w-4" />
+                          Facilitator tools
                         </Button>
-                      </div>
 
-                      <div className="p-4">
-                        <FacilitatorToolsPanel
-                          sessionId={sessionId}
-                          scenarioId={scenario?.id ?? null}
-                        />
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
+                        {toolsOpen ? (
+                          <div className="absolute left-0 top-full z-50 mt-3 w-[420px] max-w-[92vw] overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface)] shadow-soft">
+                            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+                              <div>
+                                <div className="text-sm font-semibold">
+                                  Facilitator panel
+                                </div>
+                                <div className="text-xs text-[color:var(--studio-muted2)]">
+                                  Release injects and steer the live run.
+                                </div>
+                              </div>
+                              <Button
+                                variant="outline"
+                                onClick={() => setToolsOpen(false)}
+                              >
+                                Close
+                              </Button>
+                            </div>
+
+                            <div className="max-h-[70vh] overflow-auto p-4">
+                              <FacilitatorToolsPanel
+                                sessionId={sessionId}
+                                scenarioId={scenario?.id ?? null}
+                                compact
+                                onSessionMetaChange={(meta) =>
+                                  applySessionMeta(meta as SessionMetaPayloadRow | null)
+                                }
+                              />
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+                <RuntimeMetric
+                  label="Exercise clock"
+                  value={exerciseClock}
+                  icon={<Radio className="h-4 w-4" />}
+                />
+                <RuntimeMetric
+                  label="Selected stream"
+                  value={streamTab === "inbox" ? "Inbox" : "Pulse"}
+                  icon={
+                    streamTab === "inbox" ? (
+                      <MessagesSquare className="h-4 w-4" />
+                    ) : (
+                      <Radio className="h-4 w-4" />
+                    )
+                  }
+                />
+                <RuntimeMetric
+                  label="Action log"
+                  value={String(actions.length)}
+                  icon={<ListChecks className="h-4 w-4" />}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -748,19 +824,23 @@ export default function SessionParticipantPage() {
 
       {/* Streams + Detail */}
       <div
-        className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}
+        className={
+          isMobile
+            ? "relative z-0 grid grid-cols-1 gap-4"
+            : "relative z-0 grid grid-cols-12 gap-4"
+        }
       >
         {/* STREAMS */}
         <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
-            <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between gap-3">
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--studio-border)] px-4 py-3">
               <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <MessagesSquare className="h-4 w-4 opacity-80" />
                   Streams
                 </div>
-                <div className="text-xs text-[color:var(--studio-muted2)]">
-                  Inbox + Pulse. Badges show unseen messages.
+                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                  Monitor incoming messages and switch between operational feeds.
                 </div>
               </div>
 
@@ -1010,11 +1090,16 @@ export default function SessionParticipantPage() {
 
         {/* DETAIL */}
         <div className={isMobile ? "" : "col-span-8"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-            <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <FileText className="h-4 w-4 opacity-80" />
-                Message detail
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                  <FileText className="h-4 w-4 opacity-80" />
+                  Message detail
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                  Review the selected item and record the operational response.
+                </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
                 {selectedItem
@@ -1023,7 +1108,7 @@ export default function SessionParticipantPage() {
               </div>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5">
               <MessageDetail
                 item={selectedItem}
                 activeTab={selectedSource}
@@ -1041,11 +1126,16 @@ export default function SessionParticipantPage() {
       </div>
 
       {/* ACTION LOG – bottom */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <ListChecks className="h-4 w-4 opacity-80" />
-            Action log
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+              <ListChecks className="h-4 w-4 opacity-80" />
+              Action log
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+              Capture facilitator decisions and visible operator responses.
+            </div>
           </div>
           <div className="text-xs text-[color:var(--studio-muted2)]">
             {actionsLoading
@@ -1057,20 +1147,20 @@ export default function SessionParticipantPage() {
         </div>
 
         <div className="p-5">
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {actionsLoading ? (
               <div className="text-sm text-[color:var(--studio-muted2)]">
                 Loading…
               </div>
             ) : actions.length === 0 ? (
-              <div className="text-sm text-[color:var(--studio-muted2)]">
+              <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
                 No actions yet.
               </div>
             ) : (
               actions.slice(0, 30).map((a) => (
                 <div
                   key={a.id}
-                  className="rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-3 py-2"
+                  className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-[color:var(--studio-muted2)]">

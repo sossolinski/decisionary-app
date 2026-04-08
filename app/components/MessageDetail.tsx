@@ -5,6 +5,7 @@ import React, { useMemo } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { Card, CardContent } from "@/app/components/ui/card";
+import { FileText, Radio, Send, ShieldCheck, ShieldX } from "lucide-react";
 
 type Mode = "inbox" | "pulse";
 
@@ -61,6 +62,21 @@ function fmtWhen(iso?: string) {
   }
 }
 
+function MetaPill({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
+      <span className="mr-1 uppercase tracking-[0.12em]">{label}</span>
+      <span className="text-[color:var(--studio-ink)]">{value}</span>
+    </div>
+  );
+}
+
 export default function MessageDetail({
   item,
   activeTab,
@@ -102,17 +118,33 @@ export default function MessageDetail({
   return (
     <div className="space-y-4">
       {!item ? (
-        <Card className="bg-secondary/30">
-          <CardContent className="p-4 text-sm text-muted-foreground">
-            Select a message from the left to see details and record decisions.
+        <Card className="border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
+          <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--studio-border)] bg-white/70">
+              {activeTab === "pulse" ? (
+                <Radio className="h-4 w-4" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+            </div>
+            <div>
+              <div className="font-semibold text-[color:var(--studio-ink)]">
+                Nothing selected yet
+              </div>
+              <div className="mt-1">
+                Select a message from the left to inspect details and record a response.
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-base font-semibold leading-snug">{title}</div>
+                <div className="text-lg font-semibold leading-snug text-[color:var(--studio-ink)]">
+                  {title}
+                </div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   {senderLine ? senderLine : "—"}
                   {item.delivered_at ? (
@@ -138,23 +170,40 @@ export default function MessageDetail({
               </div>
             </div>
 
+            <div className="flex flex-wrap gap-2">
+              <MetaPill
+                label="Mode"
+                value={activeTab === "pulse" ? "Pulse" : "Inbox"}
+              />
+              <MetaPill
+                label="Delivered"
+                value={fmtWhen(item.delivered_at) ?? "—"}
+              />
+            </div>
+
             {body ? (
-              <div className="whitespace-pre-wrap rounded-[var(--radius)] border border-border bg-card p-3 text-sm leading-relaxed">
+              <div className="whitespace-pre-wrap rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 text-sm leading-7 text-[color:var(--studio-ink)]">
                 {body}
               </div>
             ) : (
-              <div className="rounded-[var(--radius)] border border-border bg-card p-3 text-sm text-muted-foreground">
+              <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 text-sm text-muted-foreground">
                 No message body.
               </div>
             )}
           </div>
 
           {/* Comment */}
-          <div className="space-y-2">
-            <div className="text-xs font-semibold text-muted-foreground">Comment</div>
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              Response note
+            </div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Capture rationale, next steps, or wording guidance before you record the response.
+            </div>
             <Input
               value={comment}
               onChange={(e) => setComment(e.target.value)}
+              className="mt-3"
               placeholder={
                 activeTab === "pulse"
                   ? "Optional: rationale, wording guidance, source confirmation…"
@@ -164,13 +213,19 @@ export default function MessageDetail({
           </div>
 
           {/* Primary actions */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-white/55 p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              Response actions
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
             {activeTab === "pulse" ? (
               <>
-                <Button variant="default" onClick={onConfirm}>
+                <Button variant="default" onClick={onConfirm} className="gap-2">
+                  <ShieldCheck className="h-4 w-4" />
                   Confirm
                 </Button>
-                <Button variant="destructive" onClick={onDeny}>
+                <Button variant="destructive" onClick={onDeny} className="gap-2">
+                  <ShieldX className="h-4 w-4" />
                   Deny
                 </Button>
               </>
@@ -182,16 +237,17 @@ export default function MessageDetail({
                 <Button variant="secondary" onClick={onEscalate}>
                   Escalate
                 </Button>
-                <Button variant="default" onClick={onAct}>
+                <Button variant="default" onClick={onAct} className="gap-2">
+                  <Send className="h-4 w-4" />
                   Act
                 </Button>
               </>
             )}
-          </div>
-
-          <div className="text-[11px] text-muted-foreground">
-            Tip: use “Act” to record a decision and optionally send an update inject to the
-            session.
+            </div>
+            <div className="mt-3 text-[11px] text-muted-foreground">
+              Tip: use “Act” to record a decision and optionally send an update inject to the
+              session.
+            </div>
           </div>
         </>
       )}

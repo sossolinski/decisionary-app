@@ -334,6 +334,33 @@ export function createOrganization(args: {
   });
 }
 
+export function deleteOrganization(orgId: string) {
+  const cleanOrgId = (orgId ?? "").trim();
+  if (!cleanOrgId) throw new Error("Organization id is required.");
+
+  return withStore((store) => {
+    const org = store.organizations.find((x) => x.id === cleanOrgId);
+    if (!org || org.archived) {
+      throw new Error("Organization not found.");
+    }
+
+    const activeOrganizations = store.organizations.filter((x) => !x.archived);
+    if (activeOrganizations.length <= 1) {
+      throw new Error("You must keep at least one organization.");
+    }
+
+    org.archived = true;
+
+    store.memberships = store.memberships.filter((m) => m.org_id !== cleanOrgId);
+    store.facilitator_invites = store.facilitator_invites.filter(
+      (invite) => invite.org_id !== cleanOrgId
+    );
+    store.participants = store.participants.filter((p) => p.org_id !== cleanOrgId);
+
+    return org;
+  });
+}
+
 export function addMembership(args: {
   orgId: string;
   role: OrgRole;

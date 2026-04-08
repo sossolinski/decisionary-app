@@ -36,6 +36,7 @@
     --ring: 221 83% 53%;
 
     --radius: 1rem; /* 16px */
+    --studio-radius: 1.125rem; /* 18px */
 
     /* STUDIO ALIASES */
     --studio-max: 1120px;
@@ -166,6 +167,8 @@
       var(--studio-glow-2),
       var(--studio-glow-3),
       hsl(var(--background));
+    background-repeat: no-repeat;
+    background-attachment: fixed;
   }
 
   * {
@@ -274,11 +277,13 @@
   .surface {
     background: var(--studio-surface);
     border: 1px solid var(--studio-border);
+    backdrop-filter: blur(10px);
   }
 
   .surface2 {
     background: var(--studio-surface2);
     border: 1px solid var(--studio-border);
+    backdrop-filter: blur(8px);
   }
 
   .surface-solid {
@@ -289,6 +294,34 @@
   .popover-solid {
     background: hsl(var(--popover) / 0.98);
     border: 1px solid var(--studio-border-strong);
+  }
+
+  .notice {
+    border-radius: 14px;
+    border: 1px solid var(--studio-border);
+    padding: 0.875rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    box-shadow: var(--studio-shadow);
+  }
+
+  .notice-error {
+    border-color: hsl(var(--destructive) / 0.22);
+    background: hsl(var(--destructive) / 0.08);
+    color: hsl(var(--destructive));
+  }
+
+  .notice-success {
+    border-color: hsl(152 55% 42% / 0.24);
+    background: hsl(152 55% 42% / 0.09);
+    color: hsl(152 55% 28%);
+  }
+
+  .panel-subtle {
+    border-radius: var(--radius);
+    border: 1px solid var(--studio-border);
+    background: var(--studio-surface2);
+    padding: 0.875rem;
   }
 
   .studio-container {

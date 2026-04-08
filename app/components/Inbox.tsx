@@ -305,22 +305,18 @@ export default function Inbox({
 
   return (
     <div className="space-y-2">
-      {err ? (
-        <div className="rounded-[var(--radius)] border border-border bg-destructive/5 p-3 text-xs font-semibold text-destructive">
-          {err}
-        </div>
-      ) : null}
+      {err ? <div className="notice notice-error p-3 text-xs font-semibold">{err}</div> : null}
 
-      <div className="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
-        <div className="max-h-[65vh] overflow-auto p-2">
+      <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-white/70 shadow-sm">
+        <div className="max-h-[65vh] overflow-auto p-2.5">
           {loading ? (
-            <div className="rounded-[var(--radius)] border border-border bg-secondary/20 p-3 text-xs font-semibold text-muted-foreground">
+            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3 text-xs font-semibold text-muted-foreground">
               Loading…
             </div>
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="rounded-[var(--radius)] border border-border bg-secondary/20 p-3 text-xs font-semibold text-muted-foreground">
+            <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3 text-xs font-semibold text-muted-foreground">
               No messages matching filters.
             </div>
           ) : null}
@@ -356,10 +352,12 @@ export default function Inbox({
                     onSelect(item);
                   }}
                   className={[
-                    "w-full text-left rounded-[var(--radius)] border px-3 py-3 transition-colors",
+                    "w-full text-left rounded-[16px] border px-3.5 py-3.5 transition-all",
                     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-                    active ? "border-foreground/25 bg-secondary/70" : "border-border bg-card hover:bg-secondary/40",
-                    flash ? "shadow-soft ring-2 ring-foreground/10" : "",
+                    active
+                      ? "border-primary/20 bg-primary/5 shadow-[0_12px_28px_hsl(220_20%_20%/0.05)]"
+                      : "border-[var(--studio-border)] bg-white/80 hover:bg-[color:var(--studio-surface2)]",
+                    flash ? "ring-2 ring-foreground/10" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -369,7 +367,9 @@ export default function Inbox({
                       </div>
 
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{title}</div>
+                        <div className="truncate text-sm font-semibold text-[color:var(--studio-ink)]">
+                          {title}
+                        </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2">
                           {unread ? (
@@ -408,9 +408,13 @@ export default function Inbox({
                     </div>
                   </div>
 
-                  <div className="mt-2 text-xs text-muted-foreground">{preview ? preview : "(no content)"}</div>
+                  <div className="mt-2 text-xs leading-6 text-muted-foreground">
+                    {preview ? preview : "(no content)"}
+                  </div>
 
-                  <div className="mt-2 text-[11px] font-semibold text-muted-foreground">{metaLeft}</div>
+                  <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                    {metaLeft}
+                  </div>
                 </button>
               );
             })}

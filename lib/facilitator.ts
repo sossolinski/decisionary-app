@@ -44,7 +44,7 @@ async function requireUserId(): Promise<string> {
 ========================= */
 
 export async function listScenarios(): Promise<Scenario[]> {
-  const uid = await requireUserId();
+  await requireUserId();
 
   const { data, error } = await supabase
     .from("scenarios")
@@ -60,7 +60,7 @@ export async function listScenarios(): Promise<Scenario[]> {
       updated_by
     `
     )
-    .eq("owner_id", uid)
+    .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) throw error;
@@ -137,7 +137,7 @@ export async function transferScenarioOwnership(
 export async function listFacilitators(): Promise<FacilitatorProfile[]> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email")
+    .select("id:user_id, email")
     .eq("role", "facilitator")
     .order("email", { ascending: true });
 

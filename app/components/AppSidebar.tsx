@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
+import RoleSwitcher from "@/app/components/RoleSwitcher";
 
 function itemActive(pathname: string, href: string) {
   if (href === "/facilitator") return pathname === "/facilitator";
@@ -32,6 +33,24 @@ type NavItemProps = {
   itemCollapsed: string;
   itemExpanded: string;
 };
+
+function SectionLabel({
+  children,
+  collapsed,
+}: {
+  children: ReactNode;
+  collapsed: boolean;
+}) {
+  if (collapsed) {
+    return <div className="h-px w-full bg-[var(--studio-border)]/80" />;
+  }
+
+  return (
+    <div className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+      {children}
+    </div>
+  );
+}
 
 function NavItem({
   href,
@@ -57,7 +76,7 @@ function NavItem({
       <span className={["text-foreground/80", active ? "text-foreground" : ""].join(" ")}>
         {icon}
       </span>
-      {!collapsed ? <span className="text-sm font-medium">{label}</span> : null}
+      {!collapsed ? <span className="min-w-0 truncate text-sm font-medium">{label}</span> : null}
     </Link>
   );
 }
@@ -111,7 +130,7 @@ export default function AppSidebar({
   );
 
   const itemBase =
-    "group relative flex items-center gap-3 rounded-[16px] border transition " +
+    "group relative flex w-full min-w-0 items-center gap-3 rounded-[16px] border transition " +
     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
 
   const itemCollapsed =
@@ -119,7 +138,7 @@ export default function AppSidebar({
     "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
 
   const itemExpanded =
-    "h-11 px-3 border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
+    "h-11 justify-start px-3 border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
     "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
 
   if (loading) {
@@ -136,7 +155,7 @@ export default function AppSidebar({
   return (
     <aside className={asidePosition}>
       <div className="h-full px-3 pb-4">
-        <div className="h-full surface shadow-soft rounded-[18px] flex flex-col">
+        <div className="h-full overflow-hidden surface shadow-soft rounded-[18px] flex flex-col">
           {/* Top spacer / tiny brand */}
           <div className="px-3 pt-3 pb-2">
             <div
@@ -158,10 +177,12 @@ export default function AppSidebar({
           </div>
 
           {/* NAV */}
-          <nav className="flex-1 px-2 py-2 space-y-2">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-2 space-y-3">
             {/* Facilitator nav visible only in facilitator/admin view */}
-            {canFacilitate
-              ? facilitatorNav.map((n) => (
+            {canFacilitate ? (
+              <div className="space-y-2">
+                <SectionLabel collapsed={collapsed}>Facilitator</SectionLabel>
+                {facilitatorNav.map((n) => (
                   <NavItem
                     key={n.href}
                     href={n.href}
@@ -173,12 +194,14 @@ export default function AppSidebar({
                     itemCollapsed={itemCollapsed}
                     itemExpanded={itemExpanded}
                   />
-                ))
-              : null}
+                ))}
+              </div>
+            ) : null}
 
             {/* Admin nav visible only when VIEW AS admin */}
             {isAdminView ? (
-              <>
+              <div className="space-y-2">
+                <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
                 <NavItem
                   href="/admin/organizations"
                   label="Admin · Orgs"
@@ -199,12 +222,12 @@ export default function AppSidebar({
                   itemCollapsed={itemCollapsed}
                   itemExpanded={itemExpanded}
                 />
-              </>
+              </div>
             ) : null}
           </nav>
 
           {/* Bottom */}
-          <div className="px-2 pb-3 space-y-2">
+          <div className="border-t border-[var(--studio-border)] px-2 pb-3 pt-3 space-y-2">
             {/* Participant shortcut visible only in participant view (full simulation) */}
             {isParticipantView ? (
               <NavItem
@@ -233,6 +256,18 @@ export default function AppSidebar({
               />
             ) : null}
 
+            {!collapsed ? (
+              <div className="space-y-2 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                  View Mode
+                </div>
+                <div className="text-xs leading-5 text-[color:var(--studio-muted)]">
+                  Preview the workspace as a different role without signing out.
+                </div>
+                <RoleSwitcher />
+              </div>
+            ) : null}
+
             {/* Collapse */}
             {!mobile ? (
               <button
@@ -257,9 +292,11 @@ export default function AppSidebar({
 
             {/* Mini role indicator in sidebar (only expanded) */}
             {!collapsed ? (
-              <div className="px-1 pt-1 text-xs text-[color:var(--studio-muted2)]">
-                View as: <b className="text-foreground">{activeRole ?? "—"}</b>
-                {isDisabled ? <span className="ml-2 text-red-400">disabled</span> : null}
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2 text-xs text-[color:var(--studio-muted2)]">
+                <div>
+                  View as: <b className="text-foreground">{activeRole ?? "—"}</b>
+                </div>
+                {isDisabled ? <div className="mt-1 text-red-400">Account disabled</div> : null}
               </div>
             ) : null}
           </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   addManagedParticipant,
   deactivateManagedParticipant,
   listParticipantsForOrg,
-} from "@/lib/organizationsMvp";
+  type ManagedParticipant,
+} from "@/lib/organizations";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -20,12 +21,10 @@ export default function FacilitatorSettingsPage() {
   const {
     loading,
     canFacilitate,
-    userId,
     organizations,
     activeOrg,
     activeOrgId,
     setActiveOrgId,
-    reloadOrganizations,
   } = useRoleContext();
 
   const [participantName, setParticipantName] = useState("");
@@ -33,16 +32,30 @@ export default function FacilitatorSettingsPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [participants, setParticipants] = useState<ManagedParticipant[]>([]);
 
-  const participants = activeOrgId ? listParticipantsForOrg(activeOrgId) : [];
+  async function refreshParticipants(orgId: string | null) {
+    if (!orgId) {
+      setParticipants([]);
+      return;
+    }
+    const rows = await listParticipantsForOrg(orgId);
+    setParticipants(rows);
+  }
+
+  useEffect(() => {
+    void refreshParticipants(activeOrgId).catch((e: unknown) => {
+      setErr(toMessage(e, "Failed to load participants."));
+    });
+  }, [activeOrgId]);
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+    return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
 
   if (!canFacilitate) {
     return (
-      <div className="p-6">
+      <div>
         <Card>
           <CardHeader>
             <CardTitle>Access denied</CardTitle>
@@ -54,7 +67,7 @@ export default function FacilitatorSettingsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">Facilitator · Settings</h1>
         <p className="text-sm text-muted-foreground">
@@ -63,13 +76,13 @@ export default function FacilitatorSettingsPage() {
       </div>
 
       {msg ? (
-        <div className="rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+        <div className="notice notice-success">
           {msg}
         </div>
       ) : null}
 
       {err ? (
-        <div className="rounded-[var(--radius)] border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="notice notice-error">
           {err}
         </div>
       ) : null}
@@ -132,23 +145,24 @@ export default function FacilitatorSettingsPage() {
                   onClick={() => {
                     setErr(null);
                     setMsg(null);
-                    try {
-                      setBusyKey("participant:add");
-                      const p = addManagedParticipant({
-                        orgId: activeOrgId,
-                        displayName: participantName,
-                        email: participantEmail,
-                        createdBy: userId,
-                      });
-                      setParticipantName("");
-                      setParticipantEmail("");
-                      reloadOrganizations();
-                      setMsg(`Participant created. Join code: ${p.join_code}`);
-                    } catch (e: unknown) {
-                      setErr(toMessage(e, "Failed to create participant."));
-                    } finally {
-                      setBusyKey(null);
-                    }
+                    void (async () => {
+                      try {
+                        setBusyKey("participant:add");
+                        const p = await addManagedParticipant({
+                          orgId: activeOrgId,
+                          displayName: participantName,
+                          email: participantEmail,
+                        });
+                        setParticipantName("");
+                        setParticipantEmail("");
+                        await refreshParticipants(activeOrgId);
+                        setMsg(`Participant created. Join code: ${p.join_code}`);
+                      } catch (e: unknown) {
+                        setErr(toMessage(e, "Failed to create participant."));
+                      } finally {
+                        setBusyKey(null);
+                      }
+                    })();
                   }}
                 >
                   {busyKey === "participant:add" ? "Adding…" : "Add participant"}
@@ -158,9 +172,15 @@ export default function FacilitatorSettingsPage() {
                   variant="secondary"
                   disabled={busyKey !== null}
                   onClick={() => {
-                    reloadOrganizations();
-                    setMsg("Participants refreshed.");
-                    setErr(null);
+                    void (async () => {
+                      try {
+                        await refreshParticipants(activeOrgId);
+                        setMsg("Participants refreshed.");
+                        setErr(null);
+                      } catch (e: unknown) {
+                        setErr(toMessage(e, "Failed to refresh participants."));
+                      }
+                    })();
                   }}
                 >
                   Refresh
@@ -204,10 +224,16 @@ export default function FacilitatorSettingsPage() {
                           variant="outline"
                           onClick={() => {
                             if (!confirm("Deactivate this participant account?")) return;
-                            deactivateManagedParticipant(p.id);
-                            reloadOrganizations();
-                            setMsg("Participant deactivated.");
-                            setErr(null);
+                            void (async () => {
+                              try {
+                                await deactivateManagedParticipant(p.id);
+                                await refreshParticipants(activeOrgId);
+                                setMsg("Participant deactivated.");
+                                setErr(null);
+                              } catch (e: unknown) {
+                                setErr(toMessage(e, "Failed to deactivate participant."));
+                              }
+                            })();
                           }}
                           disabled={busyKey !== null}
                         >

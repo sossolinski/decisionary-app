@@ -41,6 +41,7 @@ import {
   Link2Off,
   MoveUp,
   MoveDown,
+  Sparkles,
 } from "lucide-react";
 
 function asInt(v: string) {
@@ -390,12 +391,12 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   if (loading) {
-    return <div className="p-6 text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
+    return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
   }
 
   if (!scenario) {
     return (
-      <div className="p-6 space-y-3">
+      <div className="space-y-3">
         <div className="text-sm text-[color:var(--studio-muted2)]">Scenario not found.</div>
         <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
@@ -406,43 +407,50 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
-        <div className="px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="text-xs text-[color:var(--studio-muted2)]">
-              Scenario • {id.slice(0, 8)} • Updated {fmt(scenario.updated_at)}
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="relative px-5 py-5 md:px-6 md:py-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-3">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Scenario editor
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                Scenario • {id.slice(0, 8)} • Updated {fmt(scenario.updated_at)}
+              </div>
+              <h1 className="text-[28px] font-semibold tracking-tight truncate">
+                {scenario.title ?? "Scenario"}
+              </h1>
+              <div className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
+                Edit the scenario brief, shape the starting situation, and build the inject sequence that will drive the session.
+              </div>
             </div>
-            <h1 className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight truncate">
-              {scenario.title ?? "Scenario"}
-            </h1>
-            <div className="mt-1 text-sm text-[color:var(--studio-muted2)]">
-              Edit scenario details and manage injects.
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </Button>
+
+              <Button variant="outline" onClick={load} disabled={saving} className="gap-2">
+                <RefreshCw className="h-4 w-4 opacity-80" />
+                Refresh
+              </Button>
+
+              <Button onClick={onSaveScenario} disabled={!hasChanges || saving} className="gap-2">
+                <Save className="h-4 w-4" />
+                {saving ? "…" : "Save changes"}
+              </Button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Button>
-
-            <Button variant="outline" onClick={load} disabled={saving} className="gap-2">
-              <RefreshCw className="h-4 w-4 opacity-80" />
-              Refresh
-            </Button>
-
-            <Button onClick={onSaveScenario} disabled={!hasChanges || saving} className="gap-2">
-              <Save className="h-4 w-4" />
-              {saving ? "…" : "Save changes"}
-            </Button>
           </div>
         </div>
 
         {error ? (
           <div className="border-t border-[var(--studio-border)] px-5 py-3">
-            <div className="rounded-[14px] border border-[hsl(var(--destructive)/0.35)] bg-[hsl(var(--destructive)/0.06)] px-4 py-3 text-sm font-semibold text-[hsl(var(--destructive))]">
+            <div className="notice notice-error">
               {error}
             </div>
           </div>

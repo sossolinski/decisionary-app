@@ -24,9 +24,9 @@ const buttonVariants = cva(
         default:
           "bg-primary text-primary-foreground border border-primary/20 hover:bg-primary/92",
         secondary:
-          "bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80",
+          "bg-secondary/88 text-secondary-foreground border border-border hover:bg-secondary/72",
         outline:
-          "bg-background text-foreground border border-border hover:bg-secondary/60",
+          "bg-background/88 text-foreground border border-border hover:bg-secondary/60",
         ghost:
           "bg-transparent text-foreground border border-transparent shadow-none hover:shadow-none hover:bg-secondary/60 active:translate-y-0",
         destructive:

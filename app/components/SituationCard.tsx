@@ -148,12 +148,12 @@ function SmallStat({
   value: number | null | undefined;
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
         <span className="opacity-80">{icon}</span>
         <span className="font-semibold">{label}</span>
       </div>
-      <div className="mt-1 text-lg font-semibold leading-none">
+      <div className="mt-2 text-xl font-semibold leading-none text-[color:var(--studio-ink)]">
         {typeof value === "number" ? value : "—"}
       </div>
     </div>
@@ -170,12 +170,12 @@ function FieldRow({
   value: string;
 }) {
   return (
-    <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
-      <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
         <span className="opacity-80">{icon}</span>
         <span className="font-semibold">{label}</span>
       </div>
-      <div className="mt-1 text-sm font-semibold">{value}</div>
+      <div className="mt-2 text-sm font-semibold leading-6 text-[color:var(--studio-ink)]">{value}</div>
     </div>
   );
 }
@@ -305,7 +305,7 @@ export default function SituationCard({
     <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
       {/* LEFT */}
       <div className={isMobile ? "" : "col-span-7"}>
-        <Card className="shadow-soft">
+        <Card className="border border-[var(--studio-border)] shadow-soft">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 opacity-80" />
@@ -345,12 +345,12 @@ export default function SituationCard({
               />
             </div>
 
-            <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2">
-              <div className="flex items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+            <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
                 <FileText className="h-4 w-4 opacity-80" />
                 <span className="font-semibold">Short description</span>
               </div>
-              <div className="mt-1 text-sm whitespace-pre-wrap">{shortDescription}</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[color:var(--studio-ink)]">{shortDescription}</div>
             </div>
           </CardContent>
         </Card>
@@ -358,7 +358,7 @@ export default function SituationCard({
 
       {/* RIGHT */}
       <div className={isMobile ? "" : "col-span-5"}>
-        <Card className="shadow-soft">
+        <Card className="border border-[var(--studio-border)] shadow-soft">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Users className="h-4 w-4 opacity-80" />
@@ -414,7 +414,7 @@ export default function SituationCard({
             ) : null}
 
             {editOpen ? (
-              <div className="space-y-3 rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-3">
+              <div className="space-y-3 rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3.5">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs font-semibold text-[color:var(--studio-muted2)] mb-1">
@@ -462,7 +462,7 @@ export default function SituationCard({
                 </div>
 
                 {err ? (
-                  <div className="rounded-[var(--radius)] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-semibold text-destructive">
+                  <div className="notice notice-error px-3 py-2 text-xs font-semibold">
                     {err}
                   </div>
                 ) : null}

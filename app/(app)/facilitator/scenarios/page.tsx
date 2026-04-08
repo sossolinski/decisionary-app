@@ -37,6 +37,9 @@ import {
   RefreshCw,
   Check,
   X,
+  Sparkles,
+  Library,
+  UserCog,
 } from "lucide-react";
 
 function fmt(dt?: string | null) {
@@ -169,12 +172,25 @@ export default function FacilitatorScenariosPage() {
   async function load() {
     setError(null);
     setNotice(null);
-    try {
-      const [scs, facs] = await Promise.all([listScenarios(), listFacilitators()]);
-      setScenarios(scs ?? []);
-      setFacilitators((facs ?? []) as FacilitatorProfile[]);
-    } catch (e: unknown) {
-      setError(getErrorMessage(e, "Load failed"));
+    const [scenariosRes, facilitatorsRes] = await Promise.allSettled([
+      listScenarios(),
+      listFacilitators(),
+    ]);
+
+    if (scenariosRes.status === "fulfilled") {
+      setScenarios(scenariosRes.value ?? []);
+    } else {
+      setScenarios([]);
+      setError(getErrorMessage(scenariosRes.reason, "Failed to load scenarios."));
+    }
+
+    if (facilitatorsRes.status === "fulfilled") {
+      setFacilitators((facilitatorsRes.value ?? []) as FacilitatorProfile[]);
+    } else {
+      setFacilitators([]);
+      if (scenariosRes.status === "fulfilled") {
+        setNotice("Scenarios loaded, but facilitator sharing options are temporarily unavailable.");
+      }
     }
   }
 
@@ -323,84 +339,137 @@ export default function FacilitatorScenariosPage() {
     return arr;
   }, [filtered]);
 
+  const describedCount = useMemo(
+    () => scenarios.filter((s) => Boolean(s.description?.trim())).length,
+    [scenarios]
+  );
+
   /* ================= UI ================= */
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
-        <div className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <BookOpen className="h-4 w-4 opacity-80" />
-              Scenarios
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Manage scenario library, ownership, and sharing.
-            </div>
-          </div>
+    <div className="space-y-5">
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="relative px-5 py-5 md:px-6 md:py-6">
+          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
+          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+                <Sparkles className="h-3.5 w-3.5" />
+                Scenario library
+              </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={load} className="gap-2" title="Reload scenarios">
-              <RefreshCw className="h-4 w-4 opacity-80" />
-              Refresh
-            </Button>
+              <div className="space-y-2">
+                <h1 className="text-[28px] font-semibold tracking-tight">Design exercises that feel structured before they feel stressful.</h1>
+                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
+                  Build, search, and refine your scenario library in one place, then hand off clean exercises into live sessions.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={load} className="gap-2" title="Reload scenarios">
+                  <RefreshCw className="h-4 w-4 opacity-80" />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      Total
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">{scenarios.length}</div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
+                    <Library className="h-4 w-4 text-foreground/80" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      Detailed
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">{describedCount}</div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
+                    <BookOpen className="h-4 w-4 text-foreground/80" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      Facilitators
+                    </div>
+                    <div className="mt-2 text-3xl font-semibold">{facilitators.length}</div>
+                  </div>
+                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
+                    <UserCog className="h-4 w-4 text-foreground/80" />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="border-t border-[var(--studio-border)] px-5 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          {/* Search */}
-          <div className="relative w-full md:max-w-[520px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search scenarios…" className="pl-9" />
-          </div>
+        <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
+          <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                Search
+              </div>
+              <div className="relative w-full">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
+                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search scenarios by title, description, or id…" className="pl-9" />
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                {sorted.length} of {scenarios.length} scenarios visible
+              </div>
+            </div>
 
-          <div className="text-xs text-[color:var(--studio-muted2)]">
-            {sorted.length} / {scenarios.length} shown
+            <div className="space-y-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                Create
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="w-full">
+                  <Input
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="New scenario title"
+                  />
+                </div>
+                <Button onClick={onCreate} disabled={loading || !newTitle.trim()} className="gap-2 sm:min-w-[120px]">
+                  <Check className="h-4 w-4" />
+                  {loading ? "…" : "Create"}
+                </Button>
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                Start a new draft and flesh it out in the editor.
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Error */}
       {error ? (
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
+        <div className="notice notice-error">
           {error}
         </div>
       ) : null}
 
       {notice ? (
-        <div className="rounded-[14px] border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-300">
+        <div className="notice notice-success">
           {notice}
         </div>
       ) : null}
-
-      {/* Create */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Plus className="h-4 w-4 opacity-80" />
-              Create scenario
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Start a new scenario draft.
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center w-full md:w-auto">
-            <div className="w-full md:w-[420px]">
-              <Input
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                placeholder="New scenario title"
-              />
-            </div>
-            <Button onClick={onCreate} disabled={loading || !newTitle.trim()} className="gap-2">
-              <Check className="h-4 w-4" />
-              {loading ? "…" : "Create"}
-            </Button>
-          </div>
-        </div>
-      </div>
 
       {/* List */}
       {sorted.length === 0 ? (
@@ -420,17 +489,17 @@ export default function FacilitatorScenariosPage() {
             const updatedBy = who(s.updated_by);
 
             return (
-              <div key={s.id} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible">
-                <div className="px-5 py-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div key={s.id} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible transition-transform duration-150 hover:-translate-y-[1px]">
+                <div className="px-5 py-5 md:px-6 md:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-2">
+                      <div className="mt-0.5 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-2.5 shadow-soft">
                         <BookOpen className="h-5 w-5 opacity-80" />
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <div className="text-base font-semibold truncate">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-lg font-semibold tracking-tight truncate">
                             {s.title ?? "Untitled scenario"}
                           </div>
                           {isUuid(s.id) ? (
@@ -440,7 +509,7 @@ export default function FacilitatorScenariosPage() {
                           ) : null}
                         </div>
 
-                        <div className="mt-2 grid gap-1">
+                        <div className="mt-3 grid gap-1.5">
                           <MetaRow
                             icon={<UserRound className="h-3.5 w-3.5" />}
                             label="Created"
@@ -461,16 +530,16 @@ export default function FacilitatorScenariosPage() {
                           />
                         </div>
 
-                        <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">
-                          {s.description ? s.description : "No description"}
+                        <div className="mt-4 text-sm leading-7 text-[color:var(--studio-muted)]">
+                          {s.description ? s.description : "No description yet. Open the editor to add context, structure, and exercise detail."}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 justify-end">
+                  <div className="flex items-center gap-2 justify-end md:pt-0.5">
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => router.push(`/facilitator/scenarios/${s.id}`)}
                       className="gap-2"
                     >
@@ -478,7 +547,10 @@ export default function FacilitatorScenariosPage() {
                       Open
                     </Button>
 
-                    <div className="relative" ref={open ? manageWrapRef : undefined}>
+                    <div
+                      className={open ? "relative z-20" : "relative"}
+                      ref={open ? manageWrapRef : undefined}
+                    >
                       <Button
                         variant="outline"
                         size="icon"
