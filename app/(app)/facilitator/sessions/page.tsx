@@ -24,10 +24,10 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   CalendarPlus,
@@ -394,9 +394,7 @@ export default function FacilitatorSessionsPage() {
                 <Play className="h-4 w-4" />
                 {busyId === "create" ? "…" : "Create & open"}
               </Button>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                Create a run, then invite participants with the join code.
-              </div>
+              <HintTooltip text="Create a run here, then share the join code with participants." />
             </div>
           </div>
         </div>
@@ -415,8 +413,8 @@ export default function FacilitatorSessionsPage() {
               <CardTitle className="flex items-center gap-2">
                 <ClipboardList className="h-5 w-5 opacity-80" />
                 Session library
+                <HintTooltip text="Search, open, and manage exercise runs from one place." />
               </CardTitle>
-              <CardDescription>Search, open, and manage exercise runs.</CardDescription>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

@@ -15,9 +15,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import HintTooltip from "@/app/components/HintTooltip";
 
 function fmt(dt?: string | null) {
   if (!dt) return "—";
@@ -83,10 +83,10 @@ export default function ParticipantPage() {
     <div className="space-y-6">
       <Card className="shadow-soft">
         <CardHeader>
-          <CardTitle>Participant</CardTitle>
-          <CardDescription>
-            You are signed in and ready to join a live session.
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <span>Participant</span>
+            <HintTooltip text="This view shows your current participant identity and gives you a quick path into live sessions." />
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -112,10 +112,10 @@ export default function ParticipantPage() {
 
       <Card className="shadow-soft">
         <CardHeader>
-          <CardTitle>My sessions</CardTitle>
-          <CardDescription>
-            Sessions you have joined (via join code / roster).
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <span>My sessions</span>
+            <HintTooltip text="These are sessions you joined with a session code or were added to through the roster." />
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {err ? (

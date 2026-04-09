@@ -15,6 +15,7 @@ import {
   Shield,
 } from "lucide-react";
 
+import HintTooltip from "@/app/components/HintTooltip";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import RoleSwitcher from "@/app/components/RoleSwitcher";
 
@@ -258,11 +259,9 @@ export default function AppSidebar({
 
             {!collapsed ? (
               <div className="space-y-2 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                  View Mode
-                </div>
-                <div className="text-xs leading-5 text-[color:var(--studio-muted)]">
-                  Preview the workspace as a different role without signing out.
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                  <span>View Mode</span>
+                  <HintTooltip text="Preview the workspace as a different role without signing out." />
                 </div>
                 <RoleSwitcher />
               </div>

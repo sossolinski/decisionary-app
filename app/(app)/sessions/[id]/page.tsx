@@ -29,6 +29,7 @@ import MessageDetail from "@/app/components/MessageDetail";
 import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
 import Inbox from "@/app/components/Inbox";
 import PulseFeed from "@/app/components/PulseFeed";
+import HintTooltip from "@/app/components/HintTooltip";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -838,9 +839,7 @@ export default function SessionParticipantPage() {
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <MessagesSquare className="h-4 w-4 opacity-80" />
                   Streams
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                  Monitor incoming messages and switch between operational feeds.
+                  <HintTooltip text="Monitor incoming messages here and switch between Inbox and Pulse depending on the feed you need." />
                 </div>
               </div>
 
@@ -1096,9 +1095,7 @@ export default function SessionParticipantPage() {
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <FileText className="h-4 w-4 opacity-80" />
                   Message detail
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                  Review the selected item and record the operational response.
+                  <HintTooltip text="Review the selected item here and record the operational response you want to take." />
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -1132,9 +1129,7 @@ export default function SessionParticipantPage() {
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <ListChecks className="h-4 w-4 opacity-80" />
               Action log
-            </div>
-            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Capture facilitator decisions and visible operator responses.
+              <HintTooltip text="This log captures facilitator decisions and visible operator responses during the run." />
             </div>
           </div>
           <div className="text-xs text-[color:var(--studio-muted2)]">

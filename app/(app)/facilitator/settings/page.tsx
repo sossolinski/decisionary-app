@@ -11,6 +11,7 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 import { copyTextToClipboard } from "@/lib/clientClipboard";
 
 function toMessage(err: unknown, fallback: string) {
@@ -89,8 +90,10 @@ export default function FacilitatorSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Organization context</CardTitle>
-          <CardDescription>Select organization for scenario/session work.</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <span>Organization context</span>
+            <HintTooltip text="Choose which organization your scenario, session, and participant work should apply to." />
+          </CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -115,10 +118,12 @@ export default function FacilitatorSettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Participants</CardTitle>
-          <CardDescription>
-            Create or deactivate participants in current organization ({activeOrg?.name ?? "no org"}).
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <span>Participants</span>
+            <HintTooltip
+              text={`Create, copy join codes for, or deactivate participants in ${activeOrg?.name ?? "the selected organization"}.`}
+            />
+          </CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-4">

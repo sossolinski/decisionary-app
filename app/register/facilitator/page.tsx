@@ -6,7 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { acceptFacilitatorInvite, getFacilitatorInviteByToken } from "@/lib/organizations";
 import { Button } from "@/app/components/ui/button";
-import { Card } from "@/app/components/ui/card";
+import HintTooltip from "@/app/components/HintTooltip";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 
 function toMessage(err: unknown, fallback: string) {
@@ -89,67 +95,105 @@ function FacilitatorRegistrationInner() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-md space-y-4">
-        <div className="text-center space-y-1">
-          <div className="text-2xl font-bold tracking-tight">Facilitator registration</div>
-          <div className="text-sm text-muted-foreground">
-            {invite ? `Organization: ${invite.org_name}` : "Invitation required"}
+    <main className="min-h-screen px-6 py-10 sm:py-16">
+      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+        <div className="w-full max-w-3xl">
+          <div className="space-y-8 text-center">
+            <div className="space-y-4">
+              <div className="inline-flex items-center rounded-full border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)] shadow-soft">
+                Facilitator invite
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+                  Activate your facilitator access.
+                </h1>
+                <p className="mx-auto max-w-[54ch] text-sm leading-7 text-[color:var(--studio-muted)] sm:text-base">
+                  Accept the invitation from your organization, set a password if needed, and continue into Decisionary.
+                </p>
+              </div>
+            </div>
+
+            <Card className="mx-auto w-full max-w-xl text-left">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span>{invite ? invite.org_name : "Invitation required"}</span>
+                  <HintTooltip
+                    text={
+                      invite
+                        ? "This invite links your account to the organization below and grants facilitator access after acceptance."
+                        : "Open this page from a valid invitation link to continue."
+                    }
+                  />
+                </CardTitle>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                {!token ? (
+                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    Missing invite token in the URL.
+                  </div>
+                ) : null}
+
+                {invite ? (
+                  <div className="rounded-[14px] border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 text-sm">
+                    <div>
+                      Invited email: <b>{invite.email}</b>
+                    </div>
+                    <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                      Status: {invite.status} · Expires {new Date(invite.expires_at).toLocaleString()}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    Invite not found.
+                  </div>
+                )}
+
+                {msg ? (
+                  <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+                    {msg}
+                  </div>
+                ) : null}
+
+                {err ? (
+                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {err}
+                  </div>
+                ) : null}
+
+                <div className="space-y-3">
+                  <Input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Work email"
+                    autoComplete="email"
+                  />
+                  <Input
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Create your password"
+                    autoComplete="new-password"
+                    type="password"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Button onClick={onAccept} disabled={loading || !invite} className="w-full">
+                    {loading ? "Accepting invite..." : "Accept invite"}
+                  </Button>
+
+                  <Button asChild variant="secondary" className="w-full">
+                    <Link href="/">Back to sign in</Link>
+                  </Button>
+                </div>
+
+                <p className="text-sm leading-6 text-[color:var(--studio-muted2)]">
+                  If you already have a Decisionary account, sign in with the invited email first, then return to this invitation link.
+                </p>
+              </CardContent>
+            </Card>
           </div>
         </div>
-
-        <Card className="p-4 space-y-3">
-          {!token ? (
-            <div className="text-sm text-destructive">Missing invite token in URL.</div>
-          ) : null}
-
-          {invite ? (
-            <div className="text-sm">
-              <div>
-                Invited email: <b>{invite.email}</b>
-              </div>
-              <div className="text-xs text-muted-foreground">
-                status: {invite.status} · expires {new Date(invite.expires_at).toLocaleString()}
-              </div>
-            </div>
-          ) : (
-            <div className="text-sm text-destructive">Invite not found.</div>
-          )}
-
-          {msg ? (
-            <div className="rounded-[var(--radius)] border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-              {msg}
-            </div>
-          ) : null}
-
-          {err ? (
-            <div className="rounded-[var(--radius)] border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {err}
-            </div>
-          ) : null}
-
-          <Input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@company.com"
-            autoComplete="email"
-          />
-          <Input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Set password"
-            autoComplete="new-password"
-            type="password"
-          />
-
-          <Button onClick={onAccept} disabled={loading || !invite} className="w-full">
-            {loading ? "…" : "Accept invite"}
-          </Button>
-
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/login">Back to login</Link>
-          </Button>
-        </Card>
       </div>
     </main>
   );
@@ -160,7 +204,7 @@ export default function FacilitatorRegistrationPage() {
     <Suspense
       fallback={
         <main className="min-h-screen grid place-items-center p-6">
-          <div className="text-sm text-muted-foreground">Loading invite…</div>
+          <div className="text-sm text-muted-foreground">Loading invitation…</div>
         </main>
       }
     >

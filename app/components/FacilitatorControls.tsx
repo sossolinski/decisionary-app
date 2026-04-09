@@ -6,13 +6,13 @@ import { supabase } from "@/lib/supabaseClient";
 import { deliverDueInjects } from "@/lib/sessions";
 import { setSessionStatus } from "@/lib/sessionsRuntime";
 
+import HintTooltip from "@/app/components/HintTooltip";
 import { Button } from "@/app/components/ui/button";
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 
 function errMessage(e: unknown, fallback: string) {
@@ -101,11 +101,10 @@ export default function FacilitatorControls({
     <div className="hidden lg:block">
       <Card className="w-[360px]">
         <CardHeader>
-          <CardTitle>Facilitator tools</CardTitle>
-          <CardDescription>
-            Quick controls for running the exercise and releasing scheduled
-            injects.
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <span>Facilitator tools</span>
+            <HintTooltip text="Use these quick controls to start the exercise and release any injects scheduled for delivery." />
+          </CardTitle>
         </CardHeader>
         <CardContent className="flex items-center gap-2">
           <Button onClick={startExercise} disabled={starting}>

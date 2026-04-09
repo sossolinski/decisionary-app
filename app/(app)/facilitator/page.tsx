@@ -13,9 +13,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import HintTooltip from "@/app/components/HintTooltip";
 import { ArrowRight, BookOpen, ClipboardList, PlayCircle, Sparkles } from "lucide-react";
 
 export default function FacilitatorHomePage() {
@@ -143,14 +143,14 @@ export default function FacilitatorHomePage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>1. Prepare</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>1. Prepare</CardTitle>
+                <HintTooltip text="Create or refine scenarios and inject libraries before you start a run." />
+              </div>
               <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
                 <BookOpen className="h-4 w-4 text-foreground/80" />
               </div>
             </div>
-            <CardDescription>
-              Build scenarios and inject libraries for realistic runs.
-            </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
@@ -165,14 +165,14 @@ export default function FacilitatorHomePage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>2. Run</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>2. Run</CardTitle>
+                <HintTooltip text="Launch a session, bring in participants, and coordinate exercise flow in real time." />
+              </div>
               <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
                 <PlayCircle className="h-4 w-4 text-foreground/80" />
               </div>
             </div>
-            <CardDescription>
-              Start a session, invite participants, deliver injects.
-            </CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
@@ -187,14 +187,14 @@ export default function FacilitatorHomePage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>3. Review</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>3. Review</CardTitle>
+                <HintTooltip text="Track decisions and timeline points, then turn them into a clearer after-action review." />
+              </div>
               <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
                 <ClipboardList className="h-4 w-4 text-foreground/80" />
               </div>
             </div>
-            <CardDescription>
-              Capture actions, decisions, and key timeline points.
-            </CardDescription>
           </CardHeader>
           <CardContent className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
             (Next) Add After-Action Report & exports.

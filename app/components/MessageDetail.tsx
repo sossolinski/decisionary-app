@@ -4,6 +4,7 @@
 import React, { useMemo } from "react";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 import { Card, CardContent } from "@/app/components/ui/card";
 import { FileText, Radio, Send, ShieldCheck, ShieldX } from "lucide-react";
 
@@ -194,11 +195,9 @@ export default function MessageDetail({
 
           {/* Comment */}
           <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
-            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              Response note
-            </div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              Capture rationale, next steps, or wording guidance before you record the response.
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              <span>Response note</span>
+              <HintTooltip text="Use this note to capture rationale, next steps, or wording guidance before you record the response." />
             </div>
             <Input
               value={comment}
@@ -214,8 +213,9 @@ export default function MessageDetail({
 
           {/* Primary actions */}
           <div className="rounded-[16px] border border-[var(--studio-border)] bg-white/55 p-4">
-            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              Response actions
+            <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              <span>Response actions</span>
+              <HintTooltip text="Choose the action that best fits the message. 'Act' records the decision and can send an update into the session." />
             </div>
             <div className="flex flex-wrap items-center gap-2">
             {activeTab === "pulse" ? (
@@ -243,10 +243,6 @@ export default function MessageDetail({
                 </Button>
               </>
             )}
-            </div>
-            <div className="mt-3 text-[11px] text-muted-foreground">
-              Tip: use “Act” to record a decision and optionally send an update inject to the
-              session.
             </div>
           </div>
         </>

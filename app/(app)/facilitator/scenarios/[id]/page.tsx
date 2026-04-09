@@ -20,9 +20,10 @@ import {
   type Inject,
 } from "@/lib/scenarios";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   ArrowLeft,
@@ -464,8 +465,8 @@ export default function FacilitatorScenarioEditorPage() {
             <CardTitle className="text-base flex items-center gap-2">
               <FileText className="h-4 w-4 opacity-80" />
               Basics
+              <HintTooltip text="Set the scenario title and a short description that helps facilitators recognize it later." />
             </CardTitle>
-            <CardDescription className="text-sm">Title and description.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
@@ -489,8 +490,8 @@ export default function FacilitatorScenarioEditorPage() {
             <CardTitle className="text-base flex items-center gap-2">
               <Calendar className="h-4 w-4 opacity-80" />
               Event
+              <HintTooltip text="Capture when and where the scenario takes place so the setup stays grounded in context." />
             </CardTitle>
-            <CardDescription className="text-sm">When and where.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
@@ -520,8 +521,8 @@ export default function FacilitatorScenarioEditorPage() {
             <CardTitle className="text-base flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 opacity-80" />
               Situation
+              <HintTooltip text="Describe the type of incident and summarize the operating picture at the start of the exercise." />
             </CardTitle>
-            <CardDescription className="text-sm">Classification and summary.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
@@ -549,8 +550,8 @@ export default function FacilitatorScenarioEditorPage() {
             <CardTitle className="text-base flex items-center gap-2">
               <Users className="h-4 w-4 opacity-80" />
               Initial casualties
+              <HintTooltip text="Use these starting numbers to frame the first operational picture for the scenario." />
             </CardTitle>
-            <CardDescription className="text-sm">Starting numbers.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
@@ -576,15 +577,13 @@ export default function FacilitatorScenarioEditorPage() {
       {/* Injects */}
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
         <div className="px-5 py-4 flex items-start justify-between gap-3 border-b border-[var(--studio-border)]">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Settings2 className="h-4 w-4 opacity-80" />
-              Injects
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Settings2 className="h-4 w-4 opacity-80" />
+                Injects
+                <HintTooltip text="Create, edit, reorder, and schedule injects that drive the session forward." />
+              </div>
             </div>
-            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Create, edit, reorder and schedule injects.
-            </div>
-          </div>
 
           <Button variant="outline" onClick={() => setNewInjectOpen((v) => !v)} className="gap-2">
             <Plus className="h-4 w-4" />
@@ -669,8 +668,8 @@ export default function FacilitatorScenarioEditorPage() {
                 </Button>
               </div>
 
-              <div className="text-[11px] text-[color:var(--studio-muted2)]">
-                Tip: you can schedule injects in local time using the datetime picker.
+              <div className="flex justify-end">
+                <HintTooltip text="The datetime picker uses your local time, so you can schedule injects without converting timestamps manually." />
               </div>
             </div>
           ) : null}
@@ -840,8 +839,8 @@ export default function FacilitatorScenarioEditorPage() {
                           ) : null}
                         </div>
 
-                        <div className="md:col-span-2 text-[11px] text-[color:var(--studio-muted2)]">
-                          Tip: changes are saved on field blur (click outside the field).
+                        <div className="md:col-span-2 flex justify-end">
+                          <HintTooltip text="Changes are saved when the field loses focus, so click outside the field after editing." />
                         </div>
                       </div>
                     ) : (

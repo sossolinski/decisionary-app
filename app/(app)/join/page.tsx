@@ -13,10 +13,10 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 
 export default function JoinPage() {
   const router = useRouter();
@@ -50,10 +50,10 @@ export default function JoinPage() {
       <div className="w-full max-w-md">
         <Card>
           <CardHeader>
-            <CardTitle>Join session</CardTitle>
-            <CardDescription>
-              Enter the join code provided by the facilitator.
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <span>Join session</span>
+              <HintTooltip text="Enter the session code provided by your facilitator to open the exercise." />
+            </CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-4">
