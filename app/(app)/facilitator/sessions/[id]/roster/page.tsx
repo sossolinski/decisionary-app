@@ -4,8 +4,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { getMyRole } from "@/lib/users";
 import { listSessionRoster, kickFromSession, type SessionRosterRow } from "@/lib/sessionsRuntime";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -48,6 +48,7 @@ function RolePill({ role }: { role?: string | null }) {
 export default function FacilitatorRosterPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const { loading: roleLoading, canFacilitate } = useRoleContext();
   const sessionId = params?.id ?? "";
   const valid = useMemo(() => isUuid(sessionId), [sessionId]);
 
@@ -80,11 +81,8 @@ export default function FacilitatorRosterPage() {
 
     (async () => {
       try {
-        const role = await getMyRole();
+        if (roleLoading || !canFacilitate) return;
         if (cancelled) return;
-
-        if (!role) return router.replace("/login");
-        if (role !== "facilitator" && role !== "admin") return router.replace("/participant");
 
         await load();
       } catch (e: unknown) {
@@ -97,7 +95,7 @@ export default function FacilitatorRosterPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, sessionId, valid, load]);
+  }, [roleLoading, canFacilitate, sessionId, valid, load]);
 
   async function onKick(participantId: string, displayName?: string | null) {
     if (!valid) return;

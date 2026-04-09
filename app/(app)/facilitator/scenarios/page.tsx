@@ -17,8 +17,8 @@ import {
   type FacilitatorProfile,
 } from "@/lib/facilitator";
 
-import { getMyRole } from "@/lib/users";
 import { getErrorMessage } from "@/lib/errors";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -131,6 +131,7 @@ function MetaRow({
 
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
+  const { loading: roleLoading, canFacilitate } = useRoleContext();
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [facilitators, setFacilitators] = useState<FacilitatorProfile[]>([]);
@@ -155,19 +156,9 @@ export default function FacilitatorScenariosPage() {
 
   /* ================= AUTH GUARD ================= */
   useEffect(() => {
-    (async () => {
-      const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator" && role !== "admin") {
-        router.replace("/participant");
-        return;
-      }
-      await load();
-    })().catch((e: unknown) => setError(getErrorMessage(e, "Failed to load")));
-  }, [router]);
+    if (roleLoading || !canFacilitate) return;
+    void load().catch((e: unknown) => setError(getErrorMessage(e, "Failed to load")));
+  }, [roleLoading, canFacilitate]);
 
   async function load() {
     setError(null);

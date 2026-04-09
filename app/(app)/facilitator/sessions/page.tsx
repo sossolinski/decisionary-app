@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getMyRole } from "@/lib/users";
 import {
   listSessions,
   listScenarios,
@@ -18,6 +17,7 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { normalizeSessionStatus, type SessionStatus } from "@/lib/sessionStatus";
 import { validateSessionTitle } from "@/lib/validators";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import {
   Card,
@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Play,
   Users,
+  ClipboardList,
   Square,
   RotateCcw,
   Trash2,
@@ -43,7 +44,6 @@ import {
   Check,
   ChevronDown,
   Sparkles,
-  ClipboardList,
 } from "lucide-react";
 
 type StatusFilter = "all" | "live" | "ended";
@@ -160,6 +160,7 @@ function CopyButton({
 
 export default function FacilitatorSessionsPage() {
   const router = useRouter();
+  const { loading: roleLoading, canFacilitate } = useRoleContext();
 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -193,13 +194,9 @@ export default function FacilitatorSessionsPage() {
   }
 
   useEffect(() => {
-    (async () => {
-      const role = await getMyRole();
-      if (!role) return router.replace("/login");
-      if (role !== "facilitator" && role !== "admin") return router.replace("/participant");
-      await load();
-    })();
-  }, [router]);
+    if (roleLoading || !canFacilitate) return;
+    void load();
+  }, [roleLoading, canFacilitate]);
 
   const scenarioTitleById = useMemo(() => {
     const m = new Map<string, string | null>();
@@ -515,6 +512,16 @@ export default function FacilitatorSessionsPage() {
                       >
                         <Users className="h-4 w-4" />
                         Roster
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push(`/facilitator/sessions/${s.id}/review`)}
+                        disabled={isBusy}
+                        className="gap-2"
+                      >
+                        <ClipboardList className="h-4 w-4" />
+                        Review
                       </Button>
 
                       <CopyButton value={joinCode} label="Join code" />

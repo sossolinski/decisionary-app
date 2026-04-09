@@ -35,6 +35,13 @@ export type Inject = {
   severity: string | null;
   sender_name: string | null;
   sender_org: string | null;
+  inject_kind?: "operational" | "media" | "social" | "intel" | "internal" | "system" | null;
+  source_type?: "scheduled" | "manual" | "conditional" | "consequence" | null;
+  entity_scope?: string | null;
+  requires_decision?: boolean;
+  decision_template_key?: string | null;
+  visibility_scope?: string | null;
+  branch_key?: string | null;
   created_at?: string;
 };
 
@@ -57,6 +64,23 @@ export type ScenarioRole = {
   sort_order: number;
   is_required: boolean;
   created_at: string;
+};
+
+export type ScenarioRuleTemplate = {
+  id: string;
+  scenario_id: string;
+  rule_key: string;
+  rule_name: string;
+  description: string | null;
+  trigger_type: string;
+  trigger_config: Record<string, unknown>;
+  condition_config: Record<string, unknown>;
+  effect_config: Record<string, unknown>;
+  enabled: boolean;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
 };
 
 /* =========================
@@ -135,7 +159,14 @@ export async function listScenarioInjects(
           channel,
           severity,
           sender_name,
-          sender_org
+          sender_org,
+          inject_kind,
+          source_type,
+          entity_scope,
+          requires_decision,
+          decision_template_key,
+          visibility_scope,
+          branch_key
         )
       `
     )
@@ -156,6 +187,13 @@ export async function createInject(params: {
   severity?: string | null;
   sender_name?: string | null;
   sender_org?: string | null;
+  inject_kind?: Inject["inject_kind"];
+  source_type?: Inject["source_type"];
+  entity_scope?: string | null;
+  requires_decision?: boolean;
+  decision_template_key?: string | null;
+  visibility_scope?: string | null;
+  branch_key?: string | null;
 }): Promise<Inject> {
   const { data, error } = await supabase
     .from("injects")
@@ -166,8 +204,15 @@ export async function createInject(params: {
       severity: params.severity ?? null,
       sender_name: params.sender_name ?? "Facilitator",
       sender_org: params.sender_org ?? "Decisionary",
+      inject_kind: params.inject_kind ?? "operational",
+      source_type: params.source_type ?? "manual",
+      entity_scope: params.entity_scope ?? null,
+      requires_decision: params.requires_decision ?? false,
+      decision_template_key: params.decision_template_key ?? null,
+      visibility_scope: params.visibility_scope ?? "all",
+      branch_key: params.branch_key ?? null,
     })
-    .select("id, title, body, channel, severity, sender_name, sender_org, created_at")
+    .select("id, title, body, channel, severity, sender_name, sender_org, inject_kind, source_type, entity_scope, requires_decision, decision_template_key, visibility_scope, branch_key, created_at")
     .single();
 
   if (error) throw error;
@@ -209,7 +254,7 @@ export async function attachInjectToScenario(params: {
         order_index,
         created_at,
         injects:inject_id (
-          id, title, body, channel, severity, sender_name, sender_org
+          id, title, body, channel, severity, sender_name, sender_org, inject_kind, source_type, entity_scope, requires_decision, decision_template_key, visibility_scope, branch_key
         )
       `
     )
@@ -243,6 +288,97 @@ export async function updateScenarioInject(params: {
     .from("scenario_injects")
     .update(patch)
     .eq("id", params.id);
+
+  if (error) throw error;
+}
+
+/* =========================
+   SCENARIO RULE TEMPLATES
+========================= */
+
+export async function listScenarioRuleTemplates(
+  scenarioId: string
+): Promise<ScenarioRuleTemplate[]> {
+  const { data, error } = await supabase
+    .from("scenario_rule_templates")
+    .select("*")
+    .eq("scenario_id", scenarioId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as ScenarioRuleTemplate[];
+}
+
+export async function createScenarioRuleTemplate(params: {
+  scenarioId: string;
+  ruleKey: string;
+  ruleName: string;
+  description?: string | null;
+  triggerType: string;
+  triggerConfig?: Record<string, unknown>;
+  conditionConfig?: Record<string, unknown>;
+  effectConfig?: Record<string, unknown>;
+  enabled?: boolean;
+}): Promise<ScenarioRuleTemplate> {
+  const { data, error } = await supabase
+    .from("scenario_rule_templates")
+    .insert({
+      scenario_id: params.scenarioId,
+      rule_key: params.ruleKey.trim(),
+      rule_name: params.ruleName.trim(),
+      description: params.description ?? null,
+      trigger_type: params.triggerType.trim(),
+      trigger_config: params.triggerConfig ?? {},
+      condition_config: params.conditionConfig ?? {},
+      effect_config: params.effectConfig ?? {},
+      enabled: params.enabled ?? true,
+    })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as ScenarioRuleTemplate;
+}
+
+export async function updateScenarioRuleTemplate(params: {
+  id: string;
+  ruleKey?: string;
+  ruleName?: string;
+  description?: string | null;
+  triggerType?: string;
+  triggerConfig?: Record<string, unknown>;
+  conditionConfig?: Record<string, unknown>;
+  effectConfig?: Record<string, unknown>;
+  enabled?: boolean;
+}): Promise<ScenarioRuleTemplate> {
+  const { id, ...patch } = params;
+  const update: Record<string, unknown> = {};
+
+  if (patch.ruleKey !== undefined) update.rule_key = patch.ruleKey.trim();
+  if (patch.ruleName !== undefined) update.rule_name = patch.ruleName.trim();
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.triggerType !== undefined) update.trigger_type = patch.triggerType.trim();
+  if (patch.triggerConfig !== undefined) update.trigger_config = patch.triggerConfig;
+  if (patch.conditionConfig !== undefined) update.condition_config = patch.conditionConfig;
+  if (patch.effectConfig !== undefined) update.effect_config = patch.effectConfig;
+  if (patch.enabled !== undefined) update.enabled = patch.enabled;
+
+  const { data, error } = await supabase
+    .from("scenario_rule_templates")
+    .update(update)
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data as ScenarioRuleTemplate;
+}
+
+export async function deleteScenarioRuleTemplate(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("scenario_rule_templates")
+    .delete()
+    .eq("id", id);
 
   if (error) throw error;
 }

@@ -55,26 +55,40 @@ export async function listOrganizationsForCurrentUser() {
   const { data, error } = await supabase.rpc("list_my_organizations");
 
   if (error) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw error;
+
     const fallback = await supabase
-      .from("organizations")
-      .select("*")
-      .eq("archived", false)
-      .order("created_at", { ascending: true });
+      .from("org_memberships")
+      .select("organizations(*)")
+      .eq("user_id", user.id)
+      .eq("is_active", true);
 
     if (fallback.error) throw error;
-    return (fallback.data ?? []) as Organization[];
+
+    return (fallback.data ?? [])
+      .flatMap((row) => {
+        const org = row.organizations;
+        if (!org) return [];
+        return Array.isArray(org) ? org : [org];
+      })
+      .filter((org): org is Organization => !org.archived)
+      .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
   }
 
   return (data ?? []) as Organization[];
 }
 
-export async function getMyActiveOrgId(_userId: string) {
+export async function getMyActiveOrgId(userId: string) {
   const { data, error } = await supabase.rpc("get_my_active_org_id");
 
   if (error) {
     const fallback = await supabase
       .from("user_org_settings")
       .select("active_org_id")
+      .eq("user_id", userId)
       .maybeSingle();
 
     if (fallback.error) throw error;

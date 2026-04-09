@@ -5,21 +5,26 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
-import { getMyRole } from "@/lib/users";
 
 import {
   getScenario,
   updateScenario,
   listScenarioInjects,
+  listScenarioRuleTemplates,
   createInject,
   attachInjectToScenario,
   detachScenarioInject,
   updateScenarioInject,
+  createScenarioRuleTemplate,
+  updateScenarioRuleTemplate,
+  deleteScenarioRuleTemplate,
   type Scenario,
   type ScenarioInject,
   type Inject,
+  type ScenarioRuleTemplate,
 } from "@/lib/scenarios";
 
+import { useRoleContext } from "@/app/components/useRoleContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -44,6 +49,186 @@ import {
   MoveDown,
   Sparkles,
 } from "lucide-react";
+
+const INJECT_KIND_OPTIONS: Array<NonNullable<Inject["inject_kind"]>> = [
+  "operational",
+  "media",
+  "social",
+  "intel",
+  "internal",
+  "system",
+];
+
+const SOURCE_TYPE_OPTIONS: Array<NonNullable<Inject["source_type"]>> = [
+  "manual",
+  "scheduled",
+  "conditional",
+  "consequence",
+];
+
+const VISIBILITY_SCOPE_OPTIONS = ["all", "facilitator_only", "role_specific"] as const;
+const RULE_TRIGGER_OPTIONS = ["inject_released", "decision_recorded", "task_overdue", "manual"] as const;
+const RULE_PRESETS = [
+  {
+    key: "ops-escalation-after-escalate",
+    name: "Operational escalation after ESCALATE",
+    description: "When an operational inject is escalated, create a high-priority consequence and follow-up task.",
+    triggerType: "decision_recorded",
+    triggerConfig: {
+      inject_kind: "operational",
+      decision_type: "escalate",
+    },
+    conditionConfig: {
+      decision_required: true,
+    },
+    effectConfig: {
+      consequence_type: "escalation_pressure",
+      severity: "high",
+      title: "Operational escalation triggered for {{inject_title}}",
+      description: "The issue {{inject_title}} has been escalated and needs coordinated cross-functional follow-up.",
+      create_task: {
+        title: "Coordinate escalation response for {{inject_title}}",
+        description: "Assign owners, confirm escalation path, and track external dependencies after {{decision_type}}.",
+        priority: "high",
+        assigned_role: "facilitator",
+        due_in_minutes: 10,
+      },
+    },
+  },
+  {
+    key: "media-pressure-after-confirm",
+    name: "Media pressure after CONFIRM",
+    description: "A confirmed public signal raises media pressure and emits a follow-up media inject.",
+    triggerType: "decision_recorded",
+    triggerConfig: {
+      source: "pulse",
+      decision_type: "confirm",
+    },
+    conditionConfig: {},
+    effectConfig: {
+      consequence_type: "media_pressure",
+      severity: "high",
+      title: "Media pressure intensifies around {{inject_title}}",
+      description: "Confirmation creates immediate external attention and press follow-up for {{inject_title}}.",
+      send_inject: {
+        title: "Media desk requests official line on {{inject_title}}",
+        body: "External media requests a confirmed statement, spokesperson availability, and timing for the next update after {{decision_type}}.",
+        channel: "media",
+        severity: "high",
+        inject_kind: "media",
+        entity_scope: "brand",
+        requires_decision: true,
+        decision_template_key: "media-holding-statement",
+      },
+    },
+  },
+  {
+    key: "social-ripple-on-release",
+    name: "Social ripple on release",
+    description: "A social inject automatically creates a monitoring consequence when it appears in the session.",
+    triggerType: "inject_released",
+    triggerConfig: {
+      inject_kind: "social",
+    },
+    conditionConfig: {},
+    effectConfig: {
+      consequence_type: "social_monitoring",
+      severity: "medium",
+      title: "Social chatter is building around {{inject_title}}",
+      description: "Social activity around {{inject_title}} needs monitoring and a quick decision on whether to respond.",
+      create_task: {
+        title: "Assess social response posture for {{inject_title}}",
+        description: "Review the signal, estimate spread risk, and decide if a response is required for {{channel}}.",
+        priority: "medium",
+        assigned_role: "facilitator",
+        due_in_minutes: 15,
+      },
+    },
+  },
+  {
+    key: "task-overdue-escalation",
+    name: "Task overdue escalation",
+    description: "When a live follow-up task passes its due time, create a consequence and a fresh escalation task.",
+    triggerType: "task_overdue",
+    triggerConfig: {
+      task_status: "open",
+    },
+    conditionConfig: {
+      task_title_includes: "",
+    },
+    effectConfig: {
+      consequence_type: "task_overdue",
+      severity: "high",
+      title: "Follow-up task overdue: {{task_title}}",
+      description: "The task {{task_title}} has passed its due time and needs active intervention.",
+      create_task: {
+        title: "Recover overdue task: {{task_title}}",
+        description: "Review why {{task_title}} is overdue, assign an owner, and push the next update.",
+        priority: "high",
+        assigned_role: "facilitator",
+        due_in_minutes: 10,
+      },
+      send_inject: {
+        title: "Operational pressure increases around {{task_title}}",
+        body: "The follow-up item {{task_title}} is overdue. Teams request direction and a revised timeline.",
+        channel: "ops",
+        severity: "high",
+        inject_kind: "operational",
+        requires_decision: true,
+        decision_template_key: "overdue-task-recovery",
+      },
+    },
+  },
+] as const;
+
+function Select({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={[
+        "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
+        "border border-[var(--studio-border)]",
+        "bg-background text-foreground",
+        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
+        "hover:border-[var(--studio-border-strong)]",
+        "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+        "transition-[box-shadow,border-color,background-color] duration-150",
+      ].join(" ")}
+    >
+      {children}
+    </select>
+  );
+}
+
+function MiniBadge({
+  tone = "neutral",
+  children,
+}: {
+  tone?: "neutral" | "accent" | "warm";
+  children: React.ReactNode;
+}) {
+  const toneClass =
+    tone === "accent"
+      ? "border-[hsl(var(--primary)/0.22)] bg-[hsl(var(--primary)/0.08)] text-[hsl(var(--primary))]"
+      : tone === "warm"
+        ? "border-amber-200 bg-amber-50 text-amber-800"
+        : "border-[var(--studio-border)] bg-[var(--studio-surface2)] text-[color:var(--studio-muted)]";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold ${toneClass}`}>
+      {children}
+    </span>
+  );
+}
 
 function asInt(v: string) {
   const n = parseInt(v, 10);
@@ -89,9 +274,35 @@ function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
 }
 
+function jsonText(value: Record<string, unknown> | null | undefined) {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
+function parseJsonConfig(raw: string, label: string) {
+  const source = raw.trim();
+  if (!source) return {};
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      throw new Error(`${label} must be a JSON object.`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("must be a JSON object")) {
+      throw error;
+    }
+    throw new Error(`${label} must be valid JSON.`);
+  }
+}
+
+function presetRuleKey(baseKey: string) {
+  return `${baseKey}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 export default function FacilitatorScenarioEditorPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const { loading: roleLoading, canFacilitate } = useRoleContext();
   const id = params?.id ?? "";
 
   const [loading, setLoading] = useState(true);
@@ -101,6 +312,7 @@ export default function FacilitatorScenarioEditorPage() {
 
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [injects, setInjects] = useState<ScenarioInject[]>([]);
+  const [rules, setRules] = useState<ScenarioRuleTemplate[]>([]);
 
   // drafts – scenario
   const [title, setTitle] = useState("");
@@ -127,18 +339,41 @@ export default function FacilitatorScenarioEditorPage() {
   const [niSenderName, setNiSenderName] = useState<string>("Facilitator");
   const [niSenderOrg, setNiSenderOrg] = useState<string>("Decisionary");
   const [niScheduledLocal, setNiScheduledLocal] = useState<string>("");
+  const [niInjectKind, setNiInjectKind] = useState<NonNullable<Inject["inject_kind"]>>("operational");
+  const [niSourceType, setNiSourceType] = useState<NonNullable<Inject["source_type"]>>("manual");
+  const [niEntityScope, setNiEntityScope] = useState("");
+  const [niRequiresDecision, setNiRequiresDecision] = useState(false);
+  const [niDecisionTemplateKey, setNiDecisionTemplateKey] = useState("");
+  const [niVisibilityScope, setNiVisibilityScope] = useState<(typeof VISIBILITY_SCOPE_OPTIONS)[number]>("all");
+  const [niBranchKey, setNiBranchKey] = useState("");
 
   // UI
   const [openSiId, setOpenSiId] = useState<string | null>(null);
   const [newInjectOpen, setNewInjectOpen] = useState(false);
+  const [openRuleId, setOpenRuleId] = useState<string | null>(null);
+  const [newRuleOpen, setNewRuleOpen] = useState(false);
+
+  const [nrRuleKey, setNrRuleKey] = useState("");
+  const [nrRuleName, setNrRuleName] = useState("");
+  const [nrDescription, setNrDescription] = useState("");
+  const [nrTriggerType, setNrTriggerType] = useState<(typeof RULE_TRIGGER_OPTIONS)[number]>("inject_released");
+  const [nrTriggerConfig, setNrTriggerConfig] = useState('{\n  "inject_kind": "operational"\n}');
+  const [nrConditionConfig, setNrConditionConfig] = useState("{}");
+  const [nrEffectConfig, setNrEffectConfig] = useState('{\n  "create_consequence": true,\n  "severity": "medium"\n}');
+  const [nrEnabled, setNrEnabled] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [s, si] = await Promise.all([getScenario(id), listScenarioInjects(id)]);
+      const [s, si, ruleRows] = await Promise.all([
+        getScenario(id),
+        listScenarioInjects(id),
+        listScenarioRuleTemplates(id),
+      ]);
       setScenario(s);
       setInjects(si ?? []);
+      setRules(ruleRows ?? []);
 
       // hydrate scenario drafts
       setTitle(s?.title ?? "");
@@ -164,13 +399,9 @@ export default function FacilitatorScenarioEditorPage() {
   }, [id]);
 
   useEffect(() => {
-    (async () => {
-      const role = await getMyRole();
-      if (!role) return router.replace("/login");
-      if (role !== "facilitator" && role !== "admin") return router.replace("/participant");
-      await load();
-    })();
-  }, [router, id, load]);
+    if (roleLoading || !canFacilitate) return;
+    void load();
+  }, [roleLoading, canFacilitate, load]);
 
   const sortedInjects = useMemo(() => {
     return [...injects].sort((a, b) => {
@@ -280,6 +511,13 @@ export default function FacilitatorScenarioEditorPage() {
         severity: niSeverity.trim() || null,
         sender_name: niSenderName.trim() || null,
         sender_org: niSenderOrg.trim() || null,
+        inject_kind: niInjectKind,
+        source_type: niSourceType,
+        entity_scope: niEntityScope.trim() || null,
+        requires_decision: niRequiresDecision,
+        decision_template_key: niDecisionTemplateKey.trim() || null,
+        visibility_scope: niVisibilityScope,
+        branch_key: niBranchKey.trim() || null,
       });
 
       const scheduled_at = fromDatetimeLocal(niScheduledLocal);
@@ -296,6 +534,13 @@ export default function FacilitatorScenarioEditorPage() {
       setNiSenderName("Facilitator");
       setNiSenderOrg("Decisionary");
       setNiScheduledLocal("");
+      setNiInjectKind("operational");
+      setNiSourceType("manual");
+      setNiEntityScope("");
+      setNiRequiresDecision(false);
+      setNiDecisionTemplateKey("");
+      setNiVisibilityScope("all");
+      setNiBranchKey("");
 
       setNewInjectOpen(false);
       await load();
@@ -389,6 +634,94 @@ export default function FacilitatorScenarioEditorPage() {
     } finally {
       setBusyKey(null);
     }
+  }
+
+  async function onCreateRuleTemplate() {
+    if (!nrRuleKey.trim() || !nrRuleName.trim()) {
+      setError("Rule key and rule name are required.");
+      return;
+    }
+
+    setBusyKey("create-rule");
+    setError(null);
+
+    try {
+      await createScenarioRuleTemplate({
+        scenarioId: id,
+        ruleKey: nrRuleKey.trim(),
+        ruleName: nrRuleName.trim(),
+        description: nrDescription.trim() || null,
+        triggerType: nrTriggerType,
+        triggerConfig: parseJsonConfig(nrTriggerConfig, "Trigger config"),
+        conditionConfig: parseJsonConfig(nrConditionConfig, "Condition config"),
+        effectConfig: parseJsonConfig(nrEffectConfig, "Effect config"),
+        enabled: nrEnabled,
+      });
+
+      setNrRuleKey("");
+      setNrRuleName("");
+      setNrDescription("");
+      setNrTriggerType("inject_released");
+      setNrTriggerConfig('{\n  "inject_kind": "operational"\n}');
+      setNrConditionConfig("{}");
+      setNrEffectConfig('{\n  "create_consequence": true,\n  "severity": "medium"\n}');
+      setNrEnabled(true);
+      setNewRuleOpen(false);
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to create rule template."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onUpdateRuleTemplate(ruleId: string, patch: Partial<ScenarioRuleTemplate>) {
+    setBusyKey(`rule:${ruleId}`);
+    setError(null);
+    try {
+      await updateScenarioRuleTemplate({
+        id: ruleId,
+        ruleKey: patch.rule_key,
+        ruleName: patch.rule_name,
+        description: patch.description,
+        triggerType: patch.trigger_type,
+        triggerConfig: patch.trigger_config,
+        conditionConfig: patch.condition_config,
+        effectConfig: patch.effect_config,
+        enabled: patch.enabled,
+      });
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to update rule template."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onDeleteRuleTemplate(ruleId: string) {
+    if (!confirm("Delete this rule template?")) return;
+    setBusyKey(`delrule:${ruleId}`);
+    setError(null);
+    try {
+      await deleteScenarioRuleTemplate(ruleId);
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to delete rule template."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function applyRulePreset(preset: (typeof RULE_PRESETS)[number]) {
+    setNrRuleKey(presetRuleKey(preset.key));
+    setNrRuleName(preset.name);
+    setNrDescription(preset.description);
+    setNrTriggerType(preset.triggerType as (typeof RULE_TRIGGER_OPTIONS)[number]);
+    setNrTriggerConfig(JSON.stringify(preset.triggerConfig, null, 2));
+    setNrConditionConfig(JSON.stringify(preset.conditionConfig, null, 2));
+    setNrEffectConfig(JSON.stringify(preset.effectConfig, null, 2));
+    setNrEnabled(true);
+    setNewRuleOpen(true);
   }
 
   if (loading) {
@@ -618,8 +951,30 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
+                  <div className="text-sm font-semibold">Kind</div>
+                  <Select value={niInjectKind} onChange={(v) => setNiInjectKind(v as NonNullable<Inject["inject_kind"]>)}>
+                    {INJECT_KIND_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
                   <div className="text-sm font-semibold">Severity</div>
                   <Input value={niSeverity} onChange={(e) => setNiSeverity(e.target.value)} placeholder="low / medium / high / critical…" />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Source type</div>
+                  <Select value={niSourceType} onChange={(v) => setNiSourceType(v as NonNullable<Inject["source_type"]>)}>
+                    {SOURCE_TYPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
@@ -630,6 +985,57 @@ export default function FacilitatorScenarioEditorPage() {
                 <div className="space-y-1">
                   <div className="text-sm font-semibold">Sender org</div>
                   <Input value={niSenderOrg} onChange={(e) => setNiSenderOrg(e.target.value)} />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Entity scope</div>
+                  <Input
+                    value={niEntityScope}
+                    onChange={(e) => setNiEntityScope(e.target.value)}
+                    placeholder="flight / airport / passengers / crew…"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Visibility</div>
+                  <Select value={niVisibilityScope} onChange={(v) => setNiVisibilityScope(v as (typeof VISIBILITY_SCOPE_OPTIONS)[number])}>
+                    {VISIBILITY_SCOPE_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Decision template key</div>
+                  <Input
+                    value={niDecisionTemplateKey}
+                    onChange={(e) => setNiDecisionTemplateKey(e.target.value)}
+                    placeholder="e.g., passenger-welfare-response"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Branch key</div>
+                  <Input value={niBranchKey} onChange={(e) => setNiBranchKey(e.target.value)} placeholder="Optional follow-up branch" />
+                </div>
+
+                <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={niRequiresDecision}
+                      onChange={(e) => setNiRequiresDecision(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border border-[var(--studio-border)]"
+                    />
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold">Requires decision</div>
+                      <div className="text-xs leading-5 text-[color:var(--studio-muted2)]">
+                        Turn this inject into a structured decision point so the live session can create follow-up work, not just log a message.
+                      </div>
+                    </div>
+                  </label>
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
@@ -658,6 +1064,13 @@ export default function FacilitatorScenarioEditorPage() {
                     setNiSenderName("Facilitator");
                     setNiSenderOrg("Decisionary");
                     setNiScheduledLocal("");
+                    setNiInjectKind("operational");
+                    setNiSourceType("manual");
+                    setNiEntityScope("");
+                    setNiRequiresDecision(false);
+                    setNiDecisionTemplateKey("");
+                    setNiVisibilityScope("all");
+                    setNiBranchKey("");
                   }}
                 >
                   Clear
@@ -707,6 +1120,13 @@ export default function FacilitatorScenarioEditorPage() {
                           Severity: <span className="text-foreground/80 font-semibold">{inj?.severity ?? "—"}</span>
                           <span className="mx-2">•</span>
                           Scheduled: <span className="text-foreground/80 font-semibold">{si.scheduled_at ? fmt(si.scheduled_at) : "immediate"}</span>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {inj?.inject_kind ? <MiniBadge>{inj.inject_kind}</MiniBadge> : null}
+                          {inj?.entity_scope ? <MiniBadge>{inj.entity_scope}</MiniBadge> : null}
+                          {inj?.requires_decision ? <MiniBadge tone="accent">Decision required</MiniBadge> : null}
+                          {inj?.source_type && inj.source_type !== "manual" ? <MiniBadge tone="warm">{inj.source_type}</MiniBadge> : null}
                         </div>
                       </div>
 
@@ -787,11 +1207,39 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
+                          <div className="text-sm font-semibold">Kind</div>
+                          <Select
+                            value={inj?.inject_kind ?? "operational"}
+                            onChange={(value) => inj?.id && onUpdateInject(inj.id, { inject_kind: value as Inject["inject_kind"] })}
+                          >
+                            {INJECT_KIND_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
                           <div className="text-sm font-semibold">Severity</div>
                           <Input
                             defaultValue={inj?.severity ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { severity: e.target.value || null })}
                           />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Source type</div>
+                          <Select
+                            value={inj?.source_type ?? "manual"}
+                            onChange={(value) => inj?.id && onUpdateInject(inj.id, { source_type: value as Inject["source_type"] })}
+                          >
+                            {SOURCE_TYPE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
                         </div>
 
                         <div className="space-y-1">
@@ -808,6 +1256,64 @@ export default function FacilitatorScenarioEditorPage() {
                             defaultValue={inj?.sender_org ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { sender_org: e.target.value || null })}
                           />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Entity scope</div>
+                          <Input
+                            defaultValue={inj?.entity_scope ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { entity_scope: e.target.value || null })}
+                            placeholder="flight / airport / passengers / crew…"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Visibility</div>
+                          <Select
+                            value={inj?.visibility_scope ?? "all"}
+                            onChange={(value) => inj?.id && onUpdateInject(inj.id, { visibility_scope: value })}
+                          >
+                            {VISIBILITY_SCOPE_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Decision template key</div>
+                          <Input
+                            defaultValue={inj?.decision_template_key ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { decision_template_key: e.target.value || null })}
+                            placeholder="Optional decision playbook key"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Branch key</div>
+                          <Input
+                            defaultValue={inj?.branch_key ?? ""}
+                            onBlur={(e) => inj?.id && onUpdateInject(inj.id, { branch_key: e.target.value || null })}
+                            placeholder="Optional consequence branch"
+                          />
+                        </div>
+
+                        <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={!!inj?.requires_decision}
+                              onChange={(e) => inj?.id && onUpdateInject(inj.id, { requires_decision: e.target.checked })}
+                              className="mt-1 h-4 w-4 rounded border border-[var(--studio-border)]"
+                            />
+                            <div className="space-y-1">
+                              <div className="text-sm font-semibold">Requires decision</div>
+                              <div className="text-xs leading-5 text-[color:var(--studio-muted2)]">
+                                Use this for injects that should trigger a structured response and follow-up task during the live exercise.
+                              </div>
+                            </div>
+                          </label>
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
@@ -846,6 +1352,369 @@ export default function FacilitatorScenarioEditorPage() {
                     ) : (
                       <div className="px-4 pb-4 text-sm text-[color:var(--studio-muted2)] whitespace-pre-wrap">
                         {inj?.body ?? ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+        <div className="px-5 py-4 flex items-start justify-between gap-3 border-b border-[var(--studio-border)]">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 opacity-80" />
+              Rules & consequences
+              <HintTooltip text="Define simple scenario rules that react to injects or decisions and describe the consequence payload you want the engine to use later." />
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+              This is the first building block for branching logic and automated follow-up effects.
+            </div>
+          </div>
+
+          <Button variant="outline" onClick={() => setNewRuleOpen((v) => !v)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New rule
+            {newRuleOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+          </Button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="space-y-3">
+            <div className="text-sm font-semibold">Quick presets</div>
+            <div className="grid gap-3 xl:grid-cols-3">
+              {RULE_PRESETS.map((preset) => (
+                <div
+                  key={preset.key}
+                  className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4"
+                >
+                  <div className="font-medium">{preset.name}</div>
+                  <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                    {preset.description}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <MiniBadge>{preset.triggerType}</MiniBadge>
+                    {"decision_type" in preset.triggerConfig ? (
+                      <MiniBadge tone="accent">{String(preset.triggerConfig.decision_type)}</MiniBadge>
+                    ) : null}
+                    {"inject_kind" in preset.triggerConfig ? (
+                      <MiniBadge tone="warm">{String(preset.triggerConfig.inject_kind)}</MiniBadge>
+                    ) : null}
+                  </div>
+                  <div className="mt-4">
+                    <Button variant="secondary" onClick={() => applyRulePreset(preset)} className="gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Use preset
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
+            <div className="text-sm font-semibold">Available placeholders</div>
+            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+              Use these inside effect titles, descriptions, task text, and generated inject text.
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {[
+                "{{scenario_title}}",
+                "{{inject_title}}",
+                "{{inject_kind}}",
+                "{{channel}}",
+                "{{severity}}",
+                "{{decision_type}}",
+                "{{action_comment}}",
+                "{{task_title}}",
+                "{{task_due_at}}",
+                "{{task_priority}}",
+              ].map((token) => (
+                <MiniBadge key={token} tone="warm">
+                  {token}
+                </MiniBadge>
+              ))}
+            </div>
+          </div>
+
+          {newRuleOpen ? (
+            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3">
+              <div className="text-sm font-semibold">Create rule template</div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Rule key</div>
+                  <Input value={nrRuleKey} onChange={(e) => setNrRuleKey(e.target.value)} placeholder="e.g., welfare-delay-escalation" />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Rule name</div>
+                  <Input value={nrRuleName} onChange={(e) => setNrRuleName(e.target.value)} placeholder="Passenger welfare escalates when unresolved" />
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <div className="text-sm font-semibold">Description</div>
+                  <textarea
+                    value={nrDescription}
+                    onChange={(e) => setNrDescription(e.target.value)}
+                    className="min-h-[80px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                    placeholder="What this rule is meant to model in the exercise."
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Trigger type</div>
+                  <Select value={nrTriggerType} onChange={(v) => setNrTriggerType(v as (typeof RULE_TRIGGER_OPTIONS)[number])}>
+                    {RULE_TRIGGER_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+
+                <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={nrEnabled}
+                      onChange={(e) => setNrEnabled(e.target.checked)}
+                      className="mt-1 h-4 w-4 rounded border border-[var(--studio-border)]"
+                    />
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold">Enabled</div>
+                      <div className="text-xs leading-5 text-[color:var(--studio-muted2)]">
+                        Keep the rule active when the engine starts evaluating scenario logic.
+                      </div>
+                    </div>
+                  </label>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Trigger config</div>
+                  <textarea
+                    value={nrTriggerConfig}
+                    onChange={(e) => setNrTriggerConfig(e.target.value)}
+                    className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold">Condition config</div>
+                  <textarea
+                    value={nrConditionConfig}
+                    onChange={(e) => setNrConditionConfig(e.target.value)}
+                    className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <div className="text-sm font-semibold">Effect config</div>
+                  <textarea
+                    value={nrEffectConfig}
+                    onChange={(e) => setNrEffectConfig(e.target.value)}
+                    className="min-h-[150px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={onCreateRuleTemplate} disabled={busyKey === "create-rule"} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  {busyKey === "create-rule" ? "…" : "Create rule"}
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setNrRuleKey("");
+                    setNrRuleName("");
+                    setNrDescription("");
+                    setNrTriggerType("inject_released");
+                    setNrTriggerConfig('{\n  "inject_kind": "operational"\n}');
+                    setNrConditionConfig("{}");
+                    setNrEffectConfig('{\n  "create_consequence": true,\n  "severity": "medium"\n}');
+                    setNrEnabled(true);
+                  }}
+                >
+                  Clear
+                </Button>
+
+                <Button variant="outline" onClick={() => setNewRuleOpen(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          {rules.length === 0 ? (
+            <div className="text-sm text-[color:var(--studio-muted2)]">No rule templates yet.</div>
+          ) : (
+            <div className="space-y-2">
+              {rules.map((rule) => {
+                const isOpen = openRuleId === rule.id;
+                const isBusy = busyKey === `rule:${rule.id}` || busyKey === `delrule:${rule.id}`;
+
+                return (
+                  <div key={rule.id} className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)] overflow-hidden">
+                    <div className="px-4 py-3 flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{rule.rule_name}</div>
+                        <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                          Key: <span className="font-semibold text-foreground/80">{rule.rule_key}</span>
+                          <span className="mx-2">•</span>
+                          Trigger: <span className="font-semibold text-foreground/80">{rule.trigger_type}</span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <MiniBadge>{rule.trigger_type}</MiniBadge>
+                          <MiniBadge tone={rule.enabled ? "accent" : "neutral"}>
+                            {rule.enabled ? "Enabled" : "Disabled"}
+                          </MiniBadge>
+                          <MiniBadge tone="warm">
+                            {Object.keys(rule.effect_config ?? {}).length} effect field{Object.keys(rule.effect_config ?? {}).length === 1 ? "" : "s"}
+                          </MiniBadge>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setOpenRuleId(isOpen ? null : rule.id)}
+                          className="gap-2"
+                        >
+                          <Settings2 className="h-4 w-4" />
+                          {isOpen ? "Close" : "Edit"}
+                        </Button>
+
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => onDeleteRuleTemplate(rule.id)}
+                          disabled={!!isBusy}
+                          className="gap-2"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isOpen ? (
+                      <div className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Rule key</div>
+                          <Input
+                            defaultValue={rule.rule_key}
+                            onBlur={(e) => onUpdateRuleTemplate(rule.id, { rule_key: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Rule name</div>
+                          <Input
+                            defaultValue={rule.rule_name}
+                            onBlur={(e) => onUpdateRuleTemplate(rule.id, { rule_name: e.target.value })}
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <div className="text-sm font-semibold">Description</div>
+                          <textarea
+                            defaultValue={rule.description ?? ""}
+                            onBlur={(e) => onUpdateRuleTemplate(rule.id, { description: e.target.value || null })}
+                            className="min-h-[80px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Trigger type</div>
+                          <Select value={rule.trigger_type} onChange={(value) => onUpdateRuleTemplate(rule.id, { trigger_type: value })}>
+                            {RULE_TRIGGER_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3">
+                          <label className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={rule.enabled}
+                              onChange={(e) => onUpdateRuleTemplate(rule.id, { enabled: e.target.checked })}
+                              className="mt-1 h-4 w-4 rounded border border-[var(--studio-border)]"
+                            />
+                            <div className="space-y-1">
+                              <div className="text-sm font-semibold">Enabled</div>
+                              <div className="text-xs leading-5 text-[color:var(--studio-muted2)]">
+                                Disable the rule without losing its configs.
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Trigger config</div>
+                          <textarea
+                            defaultValue={jsonText(rule.trigger_config)}
+                            onBlur={(e) => {
+                              try {
+                                const value = parseJsonConfig(e.target.value, "Trigger config");
+                                void onUpdateRuleTemplate(rule.id, { trigger_config: value });
+                              } catch (error) {
+                                setError(errMessage(error, "Trigger config must be valid JSON."));
+                              }
+                            }}
+                            className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="text-sm font-semibold">Condition config</div>
+                          <textarea
+                            defaultValue={jsonText(rule.condition_config)}
+                            onBlur={(e) => {
+                              try {
+                                const value = parseJsonConfig(e.target.value, "Condition config");
+                                void onUpdateRuleTemplate(rule.id, { condition_config: value });
+                              } catch (error) {
+                                setError(errMessage(error, "Condition config must be valid JSON."));
+                              }
+                            }}
+                            className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <div className="text-sm font-semibold">Effect config</div>
+                          <textarea
+                            defaultValue={jsonText(rule.effect_config)}
+                            onBlur={(e) => {
+                              try {
+                                const value = parseJsonConfig(e.target.value, "Effect config");
+                                void onUpdateRuleTemplate(rule.id, { effect_config: value });
+                              } catch (error) {
+                                setError(errMessage(error, "Effect config must be valid JSON."));
+                              }
+                            }}
+                            className="min-h-[150px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2 flex flex-wrap items-center gap-2">
+                          <Button variant="secondary" size="sm" onClick={() => setOpenRuleId(null)}>
+                            Done
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-4 pb-4 text-sm text-[color:var(--studio-muted2)]">
+                        {rule.description?.trim() || "No description yet."}
                       </div>
                     )}
                   </div>

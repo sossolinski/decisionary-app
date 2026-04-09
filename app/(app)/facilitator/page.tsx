@@ -2,9 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
-import { getMyRole } from "@/lib/users";
 import { listScenarios, listSessions } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
 
@@ -19,8 +17,7 @@ import HintTooltip from "@/app/components/HintTooltip";
 import { ArrowRight, BookOpen, ClipboardList, PlayCircle, Sparkles } from "lucide-react";
 
 export default function FacilitatorHomePage() {
-  const router = useRouter();
-  const { activeOrg } = useRoleContext();
+  const { activeOrg, loading: roleLoading, canFacilitate } = useRoleContext();
   const [loading, setLoading] = useState(true);
   const [scenarioCount, setScenarioCount] = useState(0);
   const [sessionCount, setSessionCount] = useState(0);
@@ -38,20 +35,12 @@ export default function FacilitatorHomePage() {
   }
 
   useEffect(() => {
-    (async () => {
-      const role = await getMyRole();
-      if (!role) {
-        router.replace("/login");
-        return;
-      }
-      if (role !== "facilitator" && role !== "admin") {
-        router.replace("/participant");
-        return;
-      }
+    if (roleLoading || !canFacilitate) return;
+    void (async () => {
       await loadCounts();
       setLoading(false);
     })();
-  }, [router]);
+  }, [roleLoading, canFacilitate]);
 
   return (
     <div className="space-y-6">

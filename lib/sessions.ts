@@ -33,6 +33,13 @@ export type Inject = {
   severity: string | null;
   sender_name: string | null;
   sender_org: string | null;
+  inject_kind?: "operational" | "media" | "social" | "intel" | "internal" | "system" | null;
+  source_type?: "scheduled" | "manual" | "conditional" | "consequence" | null;
+  entity_scope?: string | null;
+  requires_decision?: boolean;
+  decision_template_key?: string | null;
+  visibility_scope?: string | null;
+  branch_key?: string | null;
   created_at?: string;
 };
 
@@ -81,6 +88,40 @@ function normalizeSessionInjectRow(
     ...row,
     injects: normalizeInject(row.injects),
   };
+}
+
+async function getSessionInjectById(id: string): Promise<SessionInject | null> {
+  const { data, error } = await supabase
+    .from("session_injects")
+    .select(
+      `
+        id,
+        session_id,
+        delivered_at,
+        inject_id,
+        injects:inject_id (
+          id,
+          title,
+          body,
+          channel,
+          severity,
+          sender_name,
+          sender_org,
+          inject_kind,
+          source_type,
+          entity_scope,
+          requires_decision,
+          decision_template_key,
+          visibility_scope,
+          branch_key
+        )
+      `
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? normalizeSessionInjectRow(data as Omit<SessionInject, "injects"> & { injects: unknown }) : null;
 }
 
 function safeRemoveChannel(ch: unknown) {
@@ -195,7 +236,14 @@ function selectSessionInjects() {
           channel,
           severity,
           sender_name,
-          sender_org
+          sender_org,
+          inject_kind,
+          source_type,
+          entity_scope,
+          requires_decision,
+          decision_template_key,
+          visibility_scope,
+          branch_key
         )
       `,
       { count: "exact" }
@@ -301,6 +349,36 @@ export function subscribePulse(sessionId: string, cb: () => void, debounceMs = 2
   };
 }
 
+export function subscribeSessionInjectsPayload(
+  sessionId: string,
+  onInsert: (row: SessionInject) => void
+) {
+  const ch = supabase
+    .channel(`session_injects:payload:${sessionId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "session_injects",
+        filter: `session_id=eq.${sessionId}`,
+      },
+      async (payload) => {
+        try {
+          const row = await getSessionInjectById((payload.new as { id: string }).id);
+          if (row) onInsert(row);
+        } catch {
+          // ignore handler errors
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    safeRemoveChannel(ch);
+  };
+}
+
 /* =========================
    ACTIONS LOG
 ========================= */
@@ -355,6 +433,13 @@ export async function sendInjectToSession(
     severity?: string | null;
     sender_name?: string | null;
     sender_org?: string | null;
+    inject_kind?: Inject["inject_kind"];
+    source_type?: Inject["source_type"];
+    entity_scope?: string | null;
+    requires_decision?: boolean;
+    decision_template_key?: string | null;
+    visibility_scope?: string | null;
+    branch_key?: string | null;
   }
 ) {
   const channel = opts?.channel ?? "ops";
@@ -369,6 +454,13 @@ export async function sendInjectToSession(
       severity: opts?.severity ?? null,
       sender_name: opts?.sender_name ?? "System",
       sender_org: opts?.sender_org ?? "Decisionary",
+      inject_kind: opts?.inject_kind ?? "system",
+      source_type: opts?.source_type ?? "consequence",
+      entity_scope: opts?.entity_scope ?? null,
+      requires_decision: opts?.requires_decision ?? false,
+      decision_template_key: opts?.decision_template_key ?? null,
+      visibility_scope: opts?.visibility_scope ?? "all",
+      branch_key: opts?.branch_key ?? null,
     })
     .select("id")
     .single();

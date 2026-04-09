@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Product Architecture
+
+- Session engine direction: [docs/session-engine-architecture.md](docs/session-engine-architecture.md)
+
 ## Getting Started
 
 First, run the development server:

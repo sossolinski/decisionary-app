@@ -270,7 +270,7 @@ export default function AdminOrganizationsPage() {
                       if (!activeOrgId || !activeOrg) return;
                       if (
                         !confirm(
-                          `Delete organization "${activeOrg.name}"? This will remove its memberships, invites, and managed participants from the local MVP store.`
+                          `Delete organization "${activeOrg.name}"? This will remove its memberships, invites, and managed participants from Decisionary.`
                         )
                       ) {
                         return;

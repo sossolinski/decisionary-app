@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useActiveRole } from "@/lib/useActiveRole";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 export default function FacilitatorLayout({
   children,
@@ -10,20 +10,20 @@ export default function FacilitatorLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const { loading, signedIn, activeRole } = useActiveRole();
+  const { loading, userId, activeRole, canFacilitate } = useRoleContext();
 
   useEffect(() => {
     if (loading) return;
 
-    if (!signedIn) {
-      router.replace("/login");
+    if (!userId) {
+      router.replace("/");
       return;
     }
 
-    if (activeRole !== "facilitator" && activeRole !== "admin") {
-      router.replace("/participant");
+    if (!canFacilitate) {
+      router.replace(activeRole === "participant" ? "/participant" : "/");
     }
-  }, [loading, signedIn, activeRole, router]);
+  }, [loading, userId, activeRole, canFacilitate, router]);
 
   if (loading) return null;
 

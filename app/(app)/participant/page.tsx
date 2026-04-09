@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { useRequireAuth } from "@/lib/useRequireAuth";
 import {
   listMyParticipantSessions,
   type ParticipantSession,
 } from "@/lib/sessionsRuntime";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import {
   Card,
@@ -34,7 +34,7 @@ function errMessage(e: unknown) {
 
 export default function ParticipantPage() {
   const router = useRouter();
-  const { loading, userId, email } = useRequireAuth();
+  const { loading, userId, email, activeRole } = useRoleContext();
 
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<ParticipantSession[]>([]);
@@ -61,7 +61,7 @@ export default function ParticipantPage() {
     return <div className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</div>;
   }
 
-  if (!userId) {
+  if (!userId || (activeRole !== "participant" && activeRole !== "admin")) {
     return (
       <div className="space-y-4">
         <div className="text-sm">Not authenticated. Please sign in to continue.</div>

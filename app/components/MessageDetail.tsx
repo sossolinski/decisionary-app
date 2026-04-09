@@ -18,6 +18,11 @@ type Inject = {
   severity: string | null;
   sender_name: string | null;
   sender_org: string | null;
+  inject_kind?: "operational" | "media" | "social" | "intel" | "internal" | "system" | null;
+  source_type?: "scheduled" | "manual" | "conditional" | "consequence" | null;
+  entity_scope?: string | null;
+  requires_decision?: boolean;
+  decision_template_key?: string | null;
   created_at?: string;
 };
 
@@ -116,6 +121,8 @@ export default function MessageDetail({
     return name || org || null;
   }, [inject?.sender_name, inject?.sender_org]);
 
+  const requiresDecision = Boolean(inject?.requires_decision);
+
   return (
     <div className="space-y-4">
       {!item ? (
@@ -180,6 +187,15 @@ export default function MessageDetail({
                 label="Delivered"
                 value={fmtWhen(item.delivered_at) ?? "—"}
               />
+              {inject?.inject_kind ? (
+                <MetaPill label="Kind" value={inject.inject_kind} />
+              ) : null}
+              {inject?.entity_scope ? (
+                <MetaPill label="Scope" value={inject.entity_scope} />
+              ) : null}
+              {requiresDecision ? (
+                <MetaPill label="Decision" value="Required" />
+              ) : null}
             </div>
 
             {body ? (
@@ -217,6 +233,11 @@ export default function MessageDetail({
               <span>Response actions</span>
               <HintTooltip text="Choose the action that best fits the message. 'Act' records the decision and can send an update into the session." />
             </div>
+            {requiresDecision ? (
+              <div className="mb-3 rounded-[14px] border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
+                This inject is marked as decision-relevant. Recording an action should create a structured follow-up item for the team.
+              </div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
             {activeTab === "pulse" ? (
               <>

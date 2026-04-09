@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { getMyRole } from "@/lib/users";
+import { useRoleContext } from "@/app/components/useRoleContext";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -21,6 +21,7 @@ function errMessage(e: unknown, fallback: string) {
 export default function FacilitatorSessionPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const { loading, canFacilitate } = useRoleContext();
   const id = params?.id ?? "";
   const valid = useMemo(() => isUuid(id), [id]);
 
@@ -41,16 +42,8 @@ export default function FacilitatorSessionPage() {
           return;
         }
 
-        const role = await getMyRole();
         if (cancelled) return;
-
-        if (!role) {
-          router.replace("/login");
-          return;
-        }
-
-        if (role !== "facilitator" && role !== "admin") {
-          router.replace("/participant");
+        if (loading || !canFacilitate) {
           return;
         }
 
@@ -66,7 +59,7 @@ export default function FacilitatorSessionPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, id, valid]);
+  }, [router, id, valid, loading, canFacilitate]);
 
   return (
     <div className="mx-auto w-full max-w-[var(--studio-max)] space-y-6">
