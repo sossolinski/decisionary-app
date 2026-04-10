@@ -70,10 +70,18 @@ alter table public.scenario_rule_templates enable row level security;
 alter table public.session_consequences enable row level security;
 
 drop policy if exists scenario_rule_templates_all on public.scenario_rule_templates;
-create policy scenario_rule_templates_all on public.scenario_rule_templates
+drop policy if exists scenario_rule_templates_read on public.scenario_rule_templates;
+drop policy if exists scenario_rule_templates_write on public.scenario_rule_templates;
+
+create policy scenario_rule_templates_read on public.scenario_rule_templates
+for select
+to authenticated
+using (public.can_read_scenario(scenario_id, auth.uid()));
+
+create policy scenario_rule_templates_write on public.scenario_rule_templates
 for all
 to authenticated
-using (public.can_read_scenario(scenario_id, auth.uid()))
+using (public.can_edit_scenario(scenario_id, auth.uid()))
 with check (public.can_edit_scenario(scenario_id, auth.uid()));
 
 drop policy if exists session_consequences_all on public.session_consequences;

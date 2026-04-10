@@ -122,6 +122,10 @@ export default function MessageDetail({
   }, [inject?.sender_name, inject?.sender_org]);
 
   const requiresDecision = Boolean(inject?.requires_decision);
+  const contextualMeta = [
+    inject?.inject_kind ? { label: "Type", value: inject.inject_kind } : null,
+    inject?.entity_scope ? { label: "Focus", value: inject.entity_scope } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
 
   return (
     <div className="space-y-4">
@@ -137,10 +141,10 @@ export default function MessageDetail({
             </div>
             <div>
               <div className="font-semibold text-[color:var(--studio-ink)]">
-                Nothing selected yet
+                Choose an update to review
               </div>
               <div className="mt-1">
-                Select a message from the left to inspect details and record a response.
+                Pick a message from the list to read it and decide what should happen next.
               </div>
             </div>
           </CardContent>
@@ -178,25 +182,13 @@ export default function MessageDetail({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <MetaPill
-                label="Mode"
-                value={activeTab === "pulse" ? "Pulse" : "Inbox"}
-              />
-              <MetaPill
-                label="Delivered"
-                value={fmtWhen(item.delivered_at) ?? "—"}
-              />
-              {inject?.inject_kind ? (
-                <MetaPill label="Kind" value={inject.inject_kind} />
-              ) : null}
-              {inject?.entity_scope ? (
-                <MetaPill label="Scope" value={inject.entity_scope} />
-              ) : null}
-              {requiresDecision ? (
-                <MetaPill label="Decision" value="Required" />
-              ) : null}
-            </div>
+            {contextualMeta.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {contextualMeta.map((item) => (
+                  <MetaPill key={`${item.label}:${item.value}`} label={item.label} value={item.value} />
+                ))}
+              </div>
+            ) : null}
 
             {body ? (
               <div className="whitespace-pre-wrap rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 text-sm leading-7 text-[color:var(--studio-ink)]">
@@ -212,8 +204,8 @@ export default function MessageDetail({
           {/* Comment */}
           <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              <span>Response note</span>
-              <HintTooltip text="Use this note to capture rationale, next steps, or wording guidance before you record the response." />
+              <span>Working note</span>
+              <HintTooltip text="Capture your reasoning, next step, or draft wording before you record a response." />
             </div>
             <Input
               value={comment}
@@ -221,8 +213,8 @@ export default function MessageDetail({
               className="mt-3"
               placeholder={
                 activeTab === "pulse"
-                  ? "Optional: rationale, wording guidance, source confirmation…"
-                  : "Optional: what you did / who you informed / next step…"
+                  ? "Optional: why you trust it, what needs checking, suggested wording..."
+                  : "Optional: what you will do, who should know, what happens next..."
               }
             />
           </div>
@@ -230,12 +222,12 @@ export default function MessageDetail({
           {/* Primary actions */}
           <div className="rounded-[16px] border border-[var(--studio-border)] bg-white/55 p-4">
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              <span>Response actions</span>
-              <HintTooltip text="Choose the action that best fits the message. 'Act' records the decision and can send an update into the session." />
+              <span>What do you want to do?</span>
+              <HintTooltip text="Pick the response that best matches the situation. Keep it simple and choose the next step the team should take." />
             </div>
             {requiresDecision ? (
               <div className="mb-3 rounded-[14px] border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
-                This inject is marked as decision-relevant. Recording an action should create a structured follow-up item for the team.
+                This update likely needs an explicit team decision and a clear follow-up owner.
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
@@ -243,24 +235,24 @@ export default function MessageDetail({
               <>
                 <Button variant="default" onClick={onConfirm} className="gap-2">
                   <ShieldCheck className="h-4 w-4" />
-                  Confirm
+                  Confirm it
                 </Button>
                 <Button variant="destructive" onClick={onDeny} className="gap-2">
                   <ShieldX className="h-4 w-4" />
-                  Deny
+                  Dismiss it
                 </Button>
               </>
             ) : (
               <>
                 <Button variant="outline" onClick={onIgnore}>
-                  Ignore
+                  Monitor only
                 </Button>
                 <Button variant="secondary" onClick={onEscalate}>
                   Escalate
                 </Button>
                 <Button variant="default" onClick={onAct} className="gap-2">
                   <Send className="h-4 w-4" />
-                  Act
+                  Take action
                 </Button>
               </>
             )}

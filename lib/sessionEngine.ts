@@ -72,6 +72,26 @@ export type SessionConsequence = {
   created_by: string | null;
 };
 
+export type RuntimeEvaluationResult = {
+  created_consequences: number;
+  created_tasks: number;
+  created_injects: number;
+};
+
+function normalizeRuntimeEvaluationResult(value: unknown): RuntimeEvaluationResult {
+  const row =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+
+  return {
+    created_consequences:
+      typeof row.created_consequences === "number" ? row.created_consequences : 0,
+    created_tasks: typeof row.created_tasks === "number" ? row.created_tasks : 0,
+    created_injects: typeof row.created_injects === "number" ? row.created_injects : 0,
+  };
+}
+
 export async function listSessionDecisions(sessionId: string, limit = 100) {
   const { data, error } = await supabase
     .from("session_decisions")
@@ -259,6 +279,38 @@ export async function createSessionConsequenceIfMissing(params: {
 
   if (error) throw error;
   return { consequence: data as SessionConsequence, created: true };
+}
+
+export async function evaluateSessionRules(params: {
+  sessionId: string;
+  eventType: "inject_released" | "decision_recorded" | "task_overdue";
+  sessionInjectId?: string | null;
+  decisionId?: string | null;
+  actionId?: string | null;
+  source?: "inbox" | "pulse" | null;
+  taskId?: string | null;
+}) {
+  const { data, error } = await supabase.rpc("evaluate_session_rules", {
+    p_session_id: params.sessionId,
+    p_event_type: params.eventType,
+    p_session_inject_id: params.sessionInjectId ?? null,
+    p_decision_id: params.decisionId ?? null,
+    p_action_id: params.actionId ?? null,
+    p_source: params.source ?? null,
+    p_task_id: params.taskId ?? null,
+  });
+
+  if (error) throw error;
+  return normalizeRuntimeEvaluationResult(data);
+}
+
+export async function processOverdueSessionTasks(sessionId: string) {
+  const { data, error } = await supabase.rpc("process_overdue_session_tasks", {
+    p_session_id: sessionId,
+  });
+
+  if (error) throw error;
+  return normalizeRuntimeEvaluationResult(data);
 }
 
 export function subscribeSessionConsequencesPayload(

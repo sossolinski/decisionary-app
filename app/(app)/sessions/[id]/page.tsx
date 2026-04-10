@@ -6,9 +6,7 @@ import { useParams } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
 import {
-  listScenarioRuleTemplates,
   type Scenario,
-  type ScenarioRuleTemplate,
 } from "@/lib/scenarios";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -29,12 +27,13 @@ import {
   subscribeSessionInjectsPayload,
 } from "@/lib/sessions";
 import {
-  createSessionConsequenceIfMissing,
   createSessionDecision,
   createSessionTask,
+  evaluateSessionRules,
   listSessionDecisions,
   listSessionConsequences,
   listSessionTasks,
+  processOverdueSessionTasks,
   subscribeSessionConsequencesPayload,
   updateSessionTaskStatus,
   type SessionConsequence,
@@ -54,6 +53,8 @@ import { Input } from "@/app/components/ui/input";
 import {
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   SlidersHorizontal,
   LayoutDashboard,
   MessagesSquare,
@@ -73,6 +74,19 @@ function isUuid(v: string) {
 
 type SelectedSource = "inbox" | "pulse";
 type StreamTab = "inbox" | "pulse";
+type TimelineKind = "inject" | "action" | "decision" | "task" | "consequence";
+type TimelineWindow = "15m" | "60m" | "all";
+type TimelineRelation = {
+  label: string;
+  emphasis?: "primary" | "secondary";
+};
+type TimelineRefs = {
+  injectId?: string | null;
+  actionId?: string | null;
+  decisionId?: string | null;
+  taskId?: string | null;
+  sourceActionId?: string | null;
+};
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false);
@@ -223,98 +237,81 @@ function consequenceSeverityTone(severity: SessionConsequence["severity"]) {
   return "text-sky-700 bg-sky-500/10 border-sky-500/20";
 }
 
-type RuntimeRuleEvent =
-  | {
-      type: "inject_released";
-      sessionInject: SessionInject;
-    }
-  | {
-      type: "decision_recorded";
-      sessionInject: SessionInject | null;
-      decision: SessionDecision;
-      action: SessionAction;
-      source: SelectedSource;
-    }
-  | {
-      type: "task_overdue";
-      sessionInject: SessionInject | null;
-      task: SessionTask;
-    };
-
-function asObject(value: unknown) {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+function taskStatusTone(status: SessionTask["status"]) {
+  if (status === "done") return "text-emerald-700 bg-emerald-500/10 border-emerald-500/20";
+  if (status === "in_progress") return "text-sky-700 bg-sky-500/10 border-sky-500/20";
+  if (status === "blocked") return "text-red-600 bg-red-500/10 border-red-500/20";
+  if (status === "cancelled") return "text-slate-600 bg-slate-500/10 border-slate-500/20";
+  return "text-yellow-700 bg-yellow-500/10 border-yellow-500/20";
 }
 
-function asString(value: unknown) {
-  return typeof value === "string" ? value : "";
+function consequenceTypeLabel(item: SessionConsequence) {
+  if (item.consequence_type === "decision_recorded") return "Decision rule";
+  if (item.consequence_type === "inject_released") return "Inject rule";
+  if (item.consequence_type === "task_overdue") return "Overdue rule";
+  return item.consequence_type;
 }
 
-function interpolateTemplate(
-  template: string,
-  context: Record<string, string | null | undefined>
+function eventTone(kind: "inject" | "action" | "decision" | "task" | "consequence") {
+  if (kind === "inject") return "border-sky-500/20 bg-sky-500/10 text-sky-800";
+  if (kind === "action") return "border-slate-500/20 bg-slate-500/10 text-slate-800";
+  if (kind === "decision") return "border-indigo-500/20 bg-indigo-500/10 text-indigo-800";
+  if (kind === "task") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-800";
+  return "border-orange-500/20 bg-orange-500/10 text-orange-800";
+}
+
+function timelineWindowMinutes(window: TimelineWindow) {
+  if (window === "15m") return 15;
+  if (window === "60m") return 60;
+  return null;
+}
+
+function timelineBucketLabel(at: string | null) {
+  const ts = new Date(at ?? 0).getTime();
+  if (!Number.isFinite(ts)) return "Older";
+  const diffMin = Math.max(0, Math.floor((Date.now() - ts) / 60000));
+  if (diffMin <= 15) return "Last 15 minutes";
+  if (diffMin <= 60) return "Last hour";
+  return "Earlier";
+}
+
+function compactLabel(value: string | null | undefined, fallback: string) {
+  const normalized = value?.trim();
+  if (!normalized) return fallback;
+  return normalized.length > 44 ? `${normalized.slice(0, 41)}...` : normalized;
+}
+
+function compactId(value: string | null | undefined, prefix: string) {
+  if (!value) return prefix;
+  return `${prefix} ${value.slice(0, 8)}`;
+}
+
+function timelineConnectorLabel(
+  current: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs },
+  next: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs; sourceId: string } | null
 ) {
-  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_, key: string) => {
-    const value = context[key];
-    return value == null ? "" : value;
-  });
-}
+  if (!next) return null;
 
-function includesText(haystack: string | null | undefined, needle: unknown) {
-  if (typeof needle !== "string" || !needle.trim()) return true;
-  return (haystack ?? "").toLowerCase().includes(needle.trim().toLowerCase());
-}
-
-function matchesRule(rule: ScenarioRuleTemplate, event: RuntimeRuleEvent) {
-  if (!rule.enabled || rule.trigger_type !== event.type) return false;
-
-  const trigger = asObject(rule.trigger_config);
-  const condition = asObject(rule.condition_config);
-  const inject = event.type === "inject_released" ? event.sessionInject.injects : event.sessionInject?.injects ?? null;
-  const action = event.type === "decision_recorded" ? event.action : null;
-  const task = event.type === "task_overdue" ? event.task : null;
-
-  const checks: Array<[unknown, unknown]> = [];
-
-  if ("inject_kind" in trigger) checks.push([inject?.inject_kind ?? null, trigger.inject_kind]);
-  if ("channel" in trigger) checks.push([inject?.channel ?? null, trigger.channel]);
-  if ("severity" in trigger) checks.push([inject?.severity ?? null, trigger.severity]);
-  if ("source_type" in trigger) checks.push([inject?.source_type ?? null, trigger.source_type]);
-  if ("entity_scope" in trigger) checks.push([inject?.entity_scope ?? null, trigger.entity_scope]);
-  if ("branch_key" in trigger) checks.push([inject?.branch_key ?? null, trigger.branch_key]);
-  if ("decision_template_key" in trigger) checks.push([inject?.decision_template_key ?? null, trigger.decision_template_key]);
-  if ("visibility_scope" in trigger) checks.push([inject?.visibility_scope ?? null, trigger.visibility_scope]);
-  if ("requires_decision" in trigger) checks.push([Boolean(inject?.requires_decision), Boolean(trigger.requires_decision)]);
-
-  if (event.type === "decision_recorded") {
-    if ("decision_type" in trigger) checks.push([event.decision.decision_type, trigger.decision_type]);
-    if ("source" in trigger) checks.push([event.source, trigger.source]);
-    if ("action_type" in trigger) checks.push([action?.action_type ?? null, trigger.action_type]);
+  if (current.kind === "task" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
+    return "created by decision";
+  }
+  if (current.kind === "task" && current.refs.sourceActionId && current.refs.sourceActionId === next.sourceId) {
+    return "spawned by action";
+  }
+  if (current.kind === "consequence" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
+    return "triggered by decision";
+  }
+  if (current.kind === "consequence" && current.refs.taskId && current.refs.taskId === next.sourceId) {
+    return "touches task";
+  }
+  if (current.kind === "decision" && current.refs.actionId && current.refs.actionId === next.sourceId) {
+    return "derived from action";
+  }
+  if (current.kind === "action" && current.refs.injectId && current.refs.injectId === next.sourceId) {
+    return "responds to inject";
   }
 
-  if (event.type === "task_overdue") {
-    if ("task_priority" in trigger) checks.push([task?.priority ?? null, trigger.task_priority]);
-    if ("task_status" in trigger) checks.push([task?.status ?? null, trigger.task_status]);
-    if ("assigned_role" in trigger) checks.push([task?.assigned_role ?? null, trigger.assigned_role]);
-  }
-
-  if ("severity" in condition) checks.push([inject?.severity ?? null, condition.severity]);
-  if ("decision_required" in condition) checks.push([Boolean(inject?.requires_decision), Boolean(condition.decision_required)]);
-  if ("decision_type" in condition && event.type === "decision_recorded") {
-    checks.push([event.decision.decision_type, condition.decision_type]);
-  }
-  if ("source" in condition && event.type === "decision_recorded") {
-    checks.push([event.source, condition.source]);
-  }
-
-  return (
-    checks.every(([actual, expected]) => expected == null || actual === expected) &&
-    includesText(inject?.title ?? null, condition.title_includes) &&
-    includesText(inject?.body ?? null, condition.body_includes) &&
-    includesText(action?.comment ?? null, condition.comment_includes) &&
-    includesText(task?.title ?? null, condition.task_title_includes)
-  );
+  return null;
 }
 
 export default function SessionParticipantPage() {
@@ -328,7 +325,6 @@ export default function SessionParticipantPage() {
 
   // meta
   const [scenario, setScenario] = useState<Scenario | null>(null);
-  const [scenarioRules, setScenarioRules] = useState<ScenarioRuleTemplate[]>([]);
   const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
   const [exerciseClock, setExerciseClock] = useState("T=—");
@@ -344,6 +340,7 @@ export default function SessionParticipantPage() {
   // Selection
   const [selectedItem, setSelectedItem] = useState<SessionInject | null>(null);
   const [selectedSource, setSelectedSource] = useState<SelectedSource>("inbox");
+  const [focusedThreadId, setFocusedThreadId] = useState<string | null>(null);
 
   // Streams tabs + filters popover
   const [streamTab, setStreamTab] = useState<StreamTab>("inbox");
@@ -368,11 +365,24 @@ export default function SessionParticipantPage() {
   const [consequences, setConsequences] = useState<SessionConsequence[]>([]);
   const [taskBusyId, setTaskBusyId] = useState<string | null>(null);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
+  const [selectedThreadOnly, setSelectedThreadOnly] = useState(false);
+  const [runtimeTasksOnly, setRuntimeTasksOnly] = useState(false);
+  const [timelineWindow, setTimelineWindow] = useState<TimelineWindow>("60m");
+  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
+  const [selectedTimelineEventId, setSelectedTimelineEventId] = useState<string | null>(null);
+  const [timelineFilter, setTimelineFilter] = useState<Record<TimelineKind, boolean>>({
+    inject: true,
+    action: true,
+    decision: true,
+    task: true,
+    consequence: true,
+  });
 
   const [comment, setComment] = useState("");
 
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [advancedInsightsOpen, setAdvancedInsightsOpen] = useState(false);
   const toolsWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Unseen badges
@@ -380,6 +390,34 @@ export default function SessionParticipantPage() {
   const [unseenPulse, setUnseenPulse] = useState(0);
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
+
+  function setRuntimeNoticeFromResult(
+    result: { created_consequences: number; created_tasks: number; created_injects: number } | null
+  ) {
+    if (!result) return;
+    const totalCreated =
+      result.created_consequences + result.created_tasks + result.created_injects;
+    if (totalCreated === 0) return;
+
+    const parts: string[] = [];
+    if (result.created_consequences > 0) {
+      parts.push(
+        result.created_consequences === 1
+          ? "1 consequence"
+          : `${result.created_consequences} consequences`
+      );
+    }
+    if (result.created_tasks > 0) {
+      parts.push(result.created_tasks === 1 ? "1 task" : `${result.created_tasks} tasks`);
+    }
+    if (result.created_injects > 0) {
+      parts.push(
+        result.created_injects === 1 ? "1 follow-up inject" : `${result.created_injects} follow-up injects`
+      );
+    }
+
+    setRuntimeNotice(`Runtime applied: ${parts.join(", ")}.`);
+  }
 
   function applySessionMeta(row: SessionMetaPayloadRow | null | undefined) {
     if (!row) return;
@@ -456,18 +494,17 @@ export default function SessionParticipantPage() {
         return;
       }
 
-      const [{ data: sc, error: scErr }, ruleRows] = await Promise.all([
-        supabase.from("scenarios").select("*").eq("id", scenarioId).maybeSingle(),
-        listScenarioRuleTemplates(scenarioId),
-      ]);
+      const { data: sc, error: scErr } = await supabase
+        .from("scenarios")
+        .select("*")
+        .eq("id", scenarioId)
+        .maybeSingle();
 
       if (scErr) throw scErr;
 
       setScenario((sc as Scenario | null) ?? null);
-      setScenarioRules(ruleRows ?? []);
     } catch (e: unknown) {
       setScenario(null);
-      setScenarioRules([]);
       setError(
         (prev) =>
           prev ??
@@ -675,10 +712,18 @@ export default function SessionParticipantPage() {
     });
 
     const unsubInjected = subscribeSessionInjectsPayload(sessionId, (row) => {
-      void evaluateRuntimeRules({
-        type: "inject_released",
-        sessionInject: row,
-      });
+      void (async () => {
+        try {
+          const result = await evaluateSessionRules({
+            sessionId,
+            eventType: "inject_released",
+            sessionInjectId: row.id,
+          });
+          setRuntimeNoticeFromResult(result);
+        } catch {
+          // ignore runtime evaluation errors in realtime callback
+        }
+      })();
     });
 
     const unsubConsequences = subscribeSessionConsequencesPayload(sessionId, (row) => {
@@ -699,7 +744,7 @@ export default function SessionParticipantPage() {
       unsubPulse?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, validSessionId, scenarioRules]);
+  }, [sessionId, validSessionId]);
 
   const selectedActions = useMemo(() => {
     if (!selectedItem) return [];
@@ -710,236 +755,409 @@ export default function SessionParticipantPage() {
     return tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
   }, [tasks]);
 
+  const overdueTaskCount = useMemo(() => {
+    const now = Date.now();
+    return openTasks.filter((task) => {
+      if (!task.due_at) return false;
+      const dueAt = new Date(task.due_at).getTime();
+      return Number.isFinite(dueAt) && dueAt <= now;
+    }).length;
+  }, [openTasks]);
+
+  const latestConsequence = consequences[0] ?? null;
+
+  const runtimeGeneratedTaskIds = useMemo(() => {
+    return new Set(
+      tasks
+        .filter((task) => task.source_action_id == null && (task.decision_id != null || task.session_inject_id != null))
+        .map((task) => task.id)
+    );
+  }, [tasks]);
+
+  const activeThreadId = selectedThreadOnly ? focusedThreadId ?? selectedItem?.id ?? null : null;
+
+  const visibleTasks = useMemo(() => {
+    return openTasks.filter((task) => {
+      if (runtimeTasksOnly && !runtimeGeneratedTaskIds.has(task.id)) return false;
+      if (activeThreadId && task.session_inject_id !== activeThreadId) return false;
+      return true;
+    });
+  }, [openTasks, runtimeTasksOnly, runtimeGeneratedTaskIds, activeThreadId]);
+
+  const visibleConsequences = useMemo(() => {
+    return consequences.filter((item) => {
+      if (activeThreadId && item.session_inject_id !== activeThreadId) return false;
+      return true;
+    });
+  }, [consequences, activeThreadId]);
+
+  const visibleActions = useMemo(() => {
+    return actions.filter((item) => {
+      if (activeThreadId && item.session_inject_id !== activeThreadId) return false;
+      return true;
+    });
+  }, [actions, activeThreadId]);
+
+  const visibleDecisions = useMemo(() => {
+    return decisions.filter((item) => {
+      if (activeThreadId && item.session_inject_id !== activeThreadId) return false;
+      return true;
+    });
+  }, [decisions, activeThreadId]);
+
+  const actionsById = useMemo(
+    () => new Map(actions.map((action) => [action.id, action])),
+    [actions]
+  );
+
+  const decisionsById = useMemo(
+    () => new Map(decisions.map((decision) => [decision.id, decision])),
+    [decisions]
+  );
+
+  const tasksById = useMemo(
+    () => new Map(tasks.map((task) => [task.id, task])),
+    [tasks]
+  );
+
+  const chainEvents = useMemo(() => {
+    const items: Array<{
+      id: string;
+      at: string | null;
+      kind: TimelineKind;
+      title: string;
+      detail: string;
+      meta: string[];
+      relations: TimelineRelation[];
+      refs: TimelineRefs;
+      sessionInjectId: string | null;
+      sourceId: string;
+    }> = [];
+
+    if (activeThreadId && selectedItem?.id === activeThreadId) {
+      items.push({
+        id: `inject:${selectedItem.id}`,
+        at: selectedItem.delivered_at ?? null,
+        kind: "inject",
+        title: selectedItem.injects?.title ?? "Inject released",
+        detail: selectedItem.injects?.body ?? "Selected inject entered the session.",
+        meta: [
+          selectedItem.injects?.channel ? `Channel ${selectedItem.injects.channel}` : "Inject",
+          selectedItem.injects?.severity ? `Severity ${selectedItem.injects.severity}` : "No severity",
+        ],
+        relations: [
+          {
+            label: selectedItem.injects?.source_type
+              ? `Entered from ${selectedItem.injects.source_type}`
+              : "Session entrypoint",
+            emphasis: "primary",
+          },
+          ...(selectedItem.injects?.decision_template_key
+            ? [
+                {
+                  label: `Decision template ${selectedItem.injects.decision_template_key}`,
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+          ...(selectedItem.injects?.requires_decision
+            ? [{ label: "Requires facilitator decision", emphasis: "secondary" as const }]
+            : []),
+        ],
+        refs: {
+          injectId: selectedItem.id,
+        },
+        sessionInjectId: selectedItem.id,
+        sourceId: selectedItem.id,
+      });
+    }
+
+    const describeInject = (sessionInjectId: string | null) => {
+      if (sessionInjectId && selectedItem?.id === sessionInjectId) {
+        return compactLabel(selectedItem.injects?.title, compactId(sessionInjectId, "inject"));
+      }
+      return compactId(sessionInjectId, "inject");
+    };
+
+    for (const action of visibleActions) {
+      items.push({
+        id: `action:${action.id}`,
+        at: action.created_at,
+        kind: "action",
+        title: `${action.action_type.toUpperCase()} action`,
+        detail: action.comment ?? "Operator response recorded.",
+        meta: [action.source.toUpperCase()],
+        relations: [
+          action.session_inject_id
+            ? {
+                label: `Responds to ${describeInject(action.session_inject_id)}`,
+                emphasis: "primary",
+              }
+            : {
+                label: "Standalone action",
+                emphasis: "secondary",
+              },
+        ],
+        refs: {
+          injectId: action.session_inject_id,
+        },
+        sessionInjectId: action.session_inject_id,
+        sourceId: action.id,
+      });
+    }
+
+    for (const decision of visibleDecisions) {
+      const linkedAction = decision.action_id ? actionsById.get(decision.action_id) : null;
+      items.push({
+        id: `decision:${decision.id}`,
+        at: decision.created_at,
+        kind: "decision",
+        title: `${decision.decision_type.toUpperCase()} decision`,
+        detail: decision.rationale ?? "Decision captured by the session engine.",
+        meta: [decision.status.toUpperCase()],
+        relations: [
+          decision.action_id
+            ? {
+                label: `Derived from ${linkedAction?.action_type?.toUpperCase() ?? compactId(decision.action_id, "action")}`,
+                emphasis: "primary",
+              }
+            : {
+                label: "Recorded directly in session",
+                emphasis: "secondary",
+              },
+          ...(decision.session_inject_id
+            ? [
+                {
+                  label: `Attached to ${describeInject(decision.session_inject_id)}`,
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+        ],
+        refs: {
+          injectId: decision.session_inject_id,
+          actionId: decision.action_id,
+          decisionId: decision.id,
+        },
+        sessionInjectId: decision.session_inject_id,
+        sourceId: decision.id,
+      });
+    }
+
+    for (const consequence of visibleConsequences) {
+      const linkedDecision = consequence.decision_id ? decisionsById.get(consequence.decision_id) : null;
+      const linkedTask = consequence.task_id ? tasksById.get(consequence.task_id) : null;
+      items.push({
+        id: `consequence:${consequence.id}`,
+        at: consequence.applied_at,
+        kind: "consequence",
+        title: consequence.title,
+        detail: consequence.description ?? "Runtime consequence applied.",
+        meta: [consequenceTypeLabel(consequence), consequence.severity.toUpperCase()],
+        relations: [
+          ...(consequence.decision_id
+            ? [
+                {
+                  label: `Triggered by ${linkedDecision?.decision_type?.toUpperCase() ?? compactId(consequence.decision_id, "decision")}`,
+                  emphasis: "primary" as const,
+                },
+              ]
+            : []),
+          ...(consequence.task_id
+            ? [
+                {
+                  label: `Touches task ${compactLabel(linkedTask?.title, compactId(consequence.task_id, "task"))}`,
+                  emphasis: "primary" as const,
+                },
+              ]
+            : []),
+          ...(consequence.rule_template_id
+            ? [
+                {
+                  label: `Applied rule ${compactId(consequence.rule_template_id, "rule")}`,
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+          ...(consequence.session_inject_id
+            ? [
+                {
+                  label: `Anchored to ${describeInject(consequence.session_inject_id)}`,
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+        ],
+        refs: {
+          injectId: consequence.session_inject_id,
+          decisionId: consequence.decision_id,
+          taskId: consequence.task_id,
+        },
+        sessionInjectId: consequence.session_inject_id,
+        sourceId: consequence.id,
+      });
+    }
+
+    for (const task of visibleTasks) {
+      const linkedDecision = task.decision_id ? decisionsById.get(task.decision_id) : null;
+      const linkedAction = task.source_action_id ? actionsById.get(task.source_action_id) : null;
+      items.push({
+        id: `task:${task.id}`,
+        at: task.created_at,
+        kind: "task",
+        title: task.title,
+        detail: task.description ?? "Follow-up task created.",
+        meta: [task.status.replaceAll("_", " "), task.priority],
+        relations: [
+          ...(task.decision_id
+            ? [
+                {
+                  label: `Created by ${linkedDecision?.decision_type?.toUpperCase() ?? compactId(task.decision_id, "decision")}`,
+                  emphasis: "primary" as const,
+                },
+              ]
+            : []),
+          ...(task.source_action_id
+            ? [
+                {
+                  label: `Spawned by ${linkedAction?.action_type?.toUpperCase() ?? compactId(task.source_action_id, "action")}`,
+                  emphasis: "primary" as const,
+                },
+              ]
+            : []),
+          ...(task.session_inject_id
+            ? [
+                {
+                  label: `Anchored to ${describeInject(task.session_inject_id)}`,
+                  emphasis: "secondary" as const,
+                },
+              ]
+            : []),
+        ],
+        refs: {
+          injectId: task.session_inject_id,
+          decisionId: task.decision_id,
+          sourceActionId: task.source_action_id,
+          taskId: task.id,
+        },
+        sessionInjectId: task.session_inject_id,
+        sourceId: task.id,
+      });
+    }
+
+    const maxAgeMinutes = timelineWindowMinutes(timelineWindow);
+
+    return items
+      .filter((item) => timelineFilter[item.kind])
+      .filter((item) => {
+        if (maxAgeMinutes == null) return true;
+        const ts = new Date(item.at ?? 0).getTime();
+        if (!Number.isFinite(ts)) return false;
+        return Date.now() - ts <= maxAgeMinutes * 60_000;
+      })
+      .sort((a, b) => new Date(b.at ?? 0).getTime() - new Date(a.at ?? 0).getTime())
+      .slice(0, 18);
+  }, [
+    activeThreadId,
+    actionsById,
+    decisionsById,
+    selectedItem,
+    tasksById,
+    visibleActions,
+    visibleConsequences,
+    visibleDecisions,
+    visibleTasks,
+    timelineFilter,
+    timelineWindow,
+  ]);
+
+  const groupedChainEvents = useMemo(() => {
+    const groups: Array<{ label: string; items: typeof chainEvents }> = [];
+    for (const event of chainEvents) {
+      const label = timelineBucketLabel(event.at);
+      const current = groups[groups.length - 1];
+      if (current && current.label === label) {
+        current.items.push(event);
+      } else {
+        groups.push({ label, items: [event] });
+      }
+    }
+    return groups;
+  }, [chainEvents]);
+
+  const selectedTimelinePathIds = useMemo(() => {
+    if (!selectedTimelineEventId) return new Set<string>();
+
+    const eventIds = new Set(chainEvents.map((event) => event.id));
+    if (!eventIds.has(selectedTimelineEventId)) return new Set<string>();
+
+    const eventIdBySourceId = new Map(chainEvents.map((event) => [event.sourceId, event.id]));
+    const adjacency = new Map<string, Set<string>>();
+
+    const connect = (left: string, right: string) => {
+      if (!adjacency.has(left)) adjacency.set(left, new Set());
+      if (!adjacency.has(right)) adjacency.set(right, new Set());
+      adjacency.get(left)?.add(right);
+      adjacency.get(right)?.add(left);
+    };
+
+    for (const event of chainEvents) {
+      const referencedIds = [
+        event.refs.injectId,
+        event.refs.actionId,
+        event.refs.decisionId,
+        event.refs.taskId,
+        event.refs.sourceActionId,
+      ].filter((value): value is string => Boolean(value));
+
+      for (const referencedId of referencedIds) {
+        const relatedEventId = eventIdBySourceId.get(referencedId);
+        if (relatedEventId && relatedEventId !== event.id) {
+          connect(event.id, relatedEventId);
+        }
+      }
+    }
+
+    const visited = new Set<string>();
+    const queue = [selectedTimelineEventId];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || visited.has(current)) continue;
+      visited.add(current);
+      for (const next of adjacency.get(current) ?? []) {
+        if (!visited.has(next)) queue.push(next);
+      }
+    }
+
+    return visited;
+  }, [chainEvents, selectedTimelineEventId]);
+
+  const selectedTimelinePathEvents = useMemo(() => {
+    if (selectedTimelinePathIds.size === 0) return [];
+    return chainEvents
+      .filter((event) => selectedTimelinePathIds.has(event.id))
+      .sort((a, b) => new Date(a.at ?? 0).getTime() - new Date(b.at ?? 0).getTime());
+  }, [chainEvents, selectedTimelinePathIds]);
+
   useEffect(() => {
-    if (!validSessionId || scenarioRules.length === 0 || openTasks.length === 0) return;
+    if (!validSessionId || openTasks.length === 0) return;
 
     const checkOverdueTasks = () => {
-      const now = Date.now();
-      for (const task of openTasks) {
-        if (!task.due_at) continue;
-        const dueAt = new Date(task.due_at).getTime();
-        if (!Number.isFinite(dueAt) || dueAt > now) continue;
-        void evaluateRuntimeRules({
-          type: "task_overdue",
-          sessionInject: null,
-          task,
-        });
-      }
+      void (async () => {
+        try {
+          const result = await processOverdueSessionTasks(sessionId);
+          setRuntimeNoticeFromResult(result);
+        } catch {
+          // ignore periodic runtime evaluation errors
+        }
+      })();
     };
 
     checkOverdueTasks();
     const intervalId = window.setInterval(checkOverdueTasks, 30_000);
     return () => window.clearInterval(intervalId);
-  }, [validSessionId, scenarioRules, openTasks]);
-
-  async function evaluateRuntimeRules(event: RuntimeRuleEvent) {
-    const matchingRules = scenarioRules.filter((rule) => matchesRule(rule, event));
-    if (matchingRules.length === 0) return;
-
-    let createdCount = 0;
-    const sessionInject = event.sessionInject;
-    const inject =
-      event.type === "inject_released"
-        ? event.sessionInject.injects
-        : sessionInject?.injects ?? null;
-    const task = event.type === "task_overdue" ? event.task : null;
-    const templateContext = {
-      scenario_title: scenario?.title ?? null,
-      session_id: sessionId,
-      session_inject_id: sessionInject?.id ?? null,
-      inject_id: inject?.id ?? null,
-      inject_title: inject?.title ?? null,
-      inject_body: inject?.body ?? null,
-      inject_kind: inject?.inject_kind ?? null,
-      channel: inject?.channel ?? null,
-      severity: inject?.severity ?? null,
-      entity_scope: inject?.entity_scope ?? null,
-      branch_key: inject?.branch_key ?? null,
-      decision_template_key: inject?.decision_template_key ?? null,
-      decision_type: event.type === "decision_recorded" ? event.decision.decision_type : null,
-      decision_rationale: event.type === "decision_recorded" ? event.decision.rationale : null,
-      action_type: event.type === "decision_recorded" ? event.action.action_type : null,
-      action_comment: event.type === "decision_recorded" ? event.action.comment : null,
-      source: event.type === "decision_recorded" ? event.source : null,
-      task_id: task?.id ?? null,
-      task_title: task?.title ?? null,
-      task_description: task?.description ?? null,
-      task_priority: task?.priority ?? null,
-      task_status: task?.status ?? null,
-      task_due_at: task?.due_at ?? null,
-      task_assigned_role: task?.assigned_role ?? null,
-    };
-
-    for (const rule of matchingRules) {
-      const effect = asObject(rule.effect_config);
-      const consequencePayload = asObject(effect.payload);
-
-      const consequenceTitle =
-        typeof effect.title === "string" && effect.title.trim()
-          ? interpolateTemplate(effect.title.trim(), templateContext)
-          : rule.rule_name;
-      const consequenceDescription =
-        typeof effect.description === "string" && effect.description.trim()
-          ? interpolateTemplate(effect.description.trim(), templateContext)
-          : rule.description ?? null;
-      const consequenceType =
-        typeof effect.consequence_type === "string" && effect.consequence_type.trim()
-          ? effect.consequence_type.trim()
-          : event.type;
-      const severity = (
-        effect.severity === "low" ||
-        effect.severity === "medium" ||
-        effect.severity === "high" ||
-        effect.severity === "critical"
-          ? effect.severity
-          : inject?.severity === "low" ||
-              inject?.severity === "medium" ||
-              inject?.severity === "high" ||
-              inject?.severity === "critical"
-            ? inject.severity
-            : "medium"
-      ) as SessionConsequence["severity"];
-
-      const consequenceResult = await createSessionConsequenceIfMissing({
-        sessionId,
-        sessionInjectId: sessionInject?.id ?? null,
-        decisionId: event.type === "decision_recorded" ? event.decision.id : null,
-        taskId: task?.id ?? null,
-        ruleTemplateId: rule.id,
-        consequenceType,
-        severity,
-        title: consequenceTitle,
-        description: consequenceDescription,
-        payload: {
-          ...consequencePayload,
-          trigger_type: event.type,
-          inject_kind: inject?.inject_kind ?? null,
-          channel: inject?.channel ?? null,
-          decision_type: event.type === "decision_recorded" ? event.decision.decision_type : null,
-        },
-      });
-
-      if (!consequenceResult.created) continue;
-
-      createdCount += 1;
-      setConsequences((prev) => [consequenceResult.consequence, ...prev].slice(0, 100));
-
-      const createTaskConfig = asObject(effect.create_task);
-      if (Object.keys(createTaskConfig).length > 0) {
-        const taskTitle =
-          typeof createTaskConfig.title === "string" && createTaskConfig.title.trim()
-            ? interpolateTemplate(createTaskConfig.title.trim(), templateContext)
-            : `Follow-up: ${consequenceTitle}`;
-        const dueInMinutes =
-          typeof createTaskConfig.due_in_minutes === "number" && Number.isFinite(createTaskConfig.due_in_minutes)
-            ? createTaskConfig.due_in_minutes
-            : null;
-        const dueAt =
-          dueInMinutes != null ? new Date(Date.now() + dueInMinutes * 60_000).toISOString() : null;
-
-        const existingTask = tasks.find(
-          (task) =>
-            task.session_inject_id === (sessionInject?.id ?? null) &&
-            task.decision_id === (event.type === "decision_recorded" ? event.decision.id : null) &&
-            task.title === taskTitle &&
-            task.description ===
-              (typeof createTaskConfig.description === "string"
-                ? interpolateTemplate(createTaskConfig.description, templateContext)
-                : consequenceDescription)
-        );
-
-        if (!existingTask) {
-          const newTask = await createSessionTask({
-            sessionId,
-            sessionInjectId: sessionInject?.id ?? null,
-            decisionId: event.type === "decision_recorded" ? event.decision.id : null,
-            assignedRole:
-              typeof createTaskConfig.assigned_role === "string" ? createTaskConfig.assigned_role : "facilitator",
-            title: taskTitle,
-            description:
-              typeof createTaskConfig.description === "string"
-                ? interpolateTemplate(createTaskConfig.description, templateContext)
-                : consequenceDescription,
-            priority:
-              createTaskConfig.priority === "low" ||
-              createTaskConfig.priority === "medium" ||
-              createTaskConfig.priority === "high" ||
-              createTaskConfig.priority === "critical"
-                ? createTaskConfig.priority
-                : "medium",
-            status:
-              createTaskConfig.status === "open" ||
-              createTaskConfig.status === "in_progress" ||
-              createTaskConfig.status === "blocked" ||
-              createTaskConfig.status === "done" ||
-              createTaskConfig.status === "cancelled"
-                ? createTaskConfig.status
-                : "open",
-            dueAt,
-          });
-          setTasks((prev) => [newTask, ...prev].slice(0, 100));
-        }
-      }
-
-      const sendInjectConfig = asObject(effect.send_inject);
-      if (typeof sendInjectConfig.title === "string" && typeof sendInjectConfig.body === "string") {
-        await sendInjectToSession(
-          sessionId,
-          interpolateTemplate(sendInjectConfig.title, templateContext),
-          interpolateTemplate(sendInjectConfig.body, templateContext),
-          {
-          channel:
-            typeof sendInjectConfig.channel === "string"
-              ? interpolateTemplate(sendInjectConfig.channel, templateContext)
-              : "ops",
-          severity:
-            sendInjectConfig.severity === "low" ||
-            sendInjectConfig.severity === "medium" ||
-            sendInjectConfig.severity === "high" ||
-            sendInjectConfig.severity === "critical"
-              ? sendInjectConfig.severity
-              : severity,
-          sender_name: "System",
-          sender_org: "Decisionary",
-          inject_kind:
-            sendInjectConfig.inject_kind === "operational" ||
-            sendInjectConfig.inject_kind === "media" ||
-            sendInjectConfig.inject_kind === "social" ||
-            sendInjectConfig.inject_kind === "intel" ||
-            sendInjectConfig.inject_kind === "internal" ||
-            sendInjectConfig.inject_kind === "system"
-              ? sendInjectConfig.inject_kind
-              : "system",
-          source_type: "consequence",
-          entity_scope:
-            typeof sendInjectConfig.entity_scope === "string"
-              ? interpolateTemplate(sendInjectConfig.entity_scope, templateContext)
-              : null,
-          requires_decision: Boolean(sendInjectConfig.requires_decision),
-          decision_template_key:
-            typeof sendInjectConfig.decision_template_key === "string"
-              ? interpolateTemplate(sendInjectConfig.decision_template_key, templateContext)
-              : null,
-          visibility_scope:
-            typeof sendInjectConfig.visibility_scope === "string"
-              ? interpolateTemplate(sendInjectConfig.visibility_scope, templateContext)
-              : "all",
-          branch_key:
-            typeof sendInjectConfig.branch_key === "string"
-              ? interpolateTemplate(sendInjectConfig.branch_key, templateContext)
-              : null,
-        });
-      }
-    }
-
-    if (createdCount > 0) {
-      setRuntimeNotice(
-        createdCount === 1
-          ? "A runtime consequence was applied."
-          : `${createdCount} runtime consequences were applied.`
-      );
-    }
-  }
+  }, [sessionId, validSessionId, openTasks.length]);
 
   async function doAction(actionType: "ignore" | "escalate" | "act") {
     if (!selectedItem) return;
@@ -1012,13 +1230,15 @@ export default function SessionParticipantPage() {
         }
       }
 
-      await evaluateRuntimeRules({
-        type: "decision_recorded",
-        sessionInject: selectedItem,
-        decision: savedDecision,
-        action: saved,
+      const runtimeResult = await evaluateSessionRules({
+        sessionId,
+        eventType: "decision_recorded",
+        sessionInjectId: selectedItem.id,
+        decisionId: savedDecision.id,
+        actionId: saved.id,
         source: selectedSource,
       });
+      setRuntimeNoticeFromResult(runtimeResult);
 
       setComment("");
     } catch (e: unknown) {
@@ -1088,14 +1308,18 @@ export default function SessionParticipantPage() {
         (pulseBody ? `\n\nQuoted content:\n${pulseBody}` : "");
 
       await sendInjectToSession(sessionId, title, body);
-      await evaluateRuntimeRules({
-        type: "decision_recorded",
-        sessionInject: selectedItem,
-        decision: savedDecision,
-        action: saved,
+      const runtimeResult = await evaluateSessionRules({
+        sessionId,
+        eventType: "decision_recorded",
+        sessionInjectId: selectedItem.id,
+        decisionId: savedDecision.id,
+        actionId: saved.id,
         source: "pulse",
       });
-      setRuntimeNotice("Pulse decision recorded and communications task created.");
+      setRuntimeNoticeFromResult(runtimeResult);
+      if (!runtimeResult.created_consequences && !runtimeResult.created_tasks && !runtimeResult.created_injects) {
+        setRuntimeNotice("Pulse decision recorded and communications task created.");
+      }
       setComment("");
     } catch (e: unknown) {
       setActionsError(getErrorMessage(e, "Failed to process Pulse decision"));
@@ -1112,6 +1336,31 @@ export default function SessionParticipantPage() {
     } finally {
       setTaskBusyId(null);
     }
+  }
+
+  function focusTimelineEvent(sessionInjectId: string | null, eventId?: string) {
+    if (!sessionInjectId) return;
+    setSelectedTimelineEventId((current) => (current === eventId ? null : eventId ?? current));
+    setFocusedThreadId(sessionInjectId);
+    if (selectedItem?.id === sessionInjectId) {
+      setSelectedSource(selectedItem.injects?.channel === "pulse" ? "pulse" : "inbox");
+      setStreamTab(selectedItem.injects?.channel === "pulse" ? "pulse" : "inbox");
+    }
+    setSelectedThreadOnly(true);
+  }
+
+  function toggleTimelineKind(kind: TimelineKind) {
+    setTimelineFilter((prev) => ({ ...prev, [kind]: !prev[kind] }));
+  }
+
+  function scrollTimeline(groupLabel: string, direction: "left" | "right") {
+    const el = document.querySelector<HTMLElement>(`[data-timeline-group="${groupLabel}"]`);
+    if (!el) return;
+    const delta = Math.max(280, Math.floor(el.clientWidth * 0.7));
+    el.scrollBy({
+      left: direction === "left" ? -delta : delta,
+      behavior: "smooth",
+    });
   }
 
   function clearInboxFilters() {
@@ -1131,6 +1380,12 @@ export default function SessionParticipantPage() {
     Boolean(inboxChannel);
   const pulseFiltersActive =
     Boolean(pulseSearch.trim()) || Boolean(pulseSeverity);
+  const participantVisibleTasks = visibleTasks.slice(0, 5);
+  const participantFocusText = selectedItem
+    ? selectedItem.injects?.requires_decision
+      ? "Review the selected update and decide how your team should respond."
+      : "Review the selected update and capture the next operational step."
+    : "Choose a message from the feed to see what needs your attention.";
 
   if (!sessionId) {
     return (
@@ -1174,7 +1429,7 @@ export default function SessionParticipantPage() {
               <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
                   <Radio className="h-3.5 w-3.5" />
-                  Live session control
+                  {isFacilitator ? "Live session control" : "Exercise workspace"}
                 </div>
 
                 <div className="mt-4 text-xs text-[color:var(--studio-muted2)]">
@@ -1184,8 +1439,9 @@ export default function SessionParticipantPage() {
                   {sessionTitle}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Run the live exercise, track incoming signals, record decisions,
-                  and keep the common operating picture current from one place.
+                  {isFacilitator
+                    ? "Run the live exercise, track incoming signals, record decisions, and keep the common operating picture current from one place."
+                    : "Follow incoming updates, assess what matters, and record your response without getting buried in system detail."}
                 </p>
 
                 <div className="mt-5 flex flex-wrap items-center gap-2.5">
@@ -1278,19 +1534,9 @@ export default function SessionParticipantPage() {
                   }
                 />
                 <RuntimeMetric
-                  label="Action log"
-                  value={String(actions.length)}
-                  icon={<ListChecks className="h-4 w-4" />}
-                />
-                <RuntimeMetric
-                  label="Open tasks"
+                  label="Next actions"
                   value={String(openTasks.length)}
                   icon={<CheckSquare className="h-4 w-4" />}
-                />
-                <RuntimeMetric
-                  label="Consequences"
-                  value={String(consequences.length)}
-                  icon={<Sparkles className="h-4 w-4" />}
                 />
               </div>
             </div>
@@ -1575,6 +1821,7 @@ export default function SessionParticipantPage() {
                   selectedId={selectedItem?.id ?? null}
                   onSelect={(item) => {
                     setSelectedItem(item);
+                    setFocusedThreadId(item.id);
                     setSelectedSource("inbox");
                   }}
                   channel={inboxChannel}
@@ -1587,6 +1834,7 @@ export default function SessionParticipantPage() {
                   selectedId={selectedItem?.id ?? null}
                   onSelect={(item) => {
                     setSelectedItem(item);
+                    setFocusedThreadId(item.id);
                     setSelectedSource("pulse");
                   }}
                   severity={pulseSeverity}
@@ -1633,6 +1881,273 @@ export default function SessionParticipantPage() {
       </div>
 
       <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
+          <div className={isMobile ? "" : "col-span-4"}>
+            <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+              <div className="border-b border-[var(--studio-border)] px-4 py-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                  <Sparkles className="h-4 w-4 opacity-80" />
+                  What to focus on now
+                </div>
+              </div>
+              <div className="p-5">
+                <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
+                  <div className="text-sm leading-7 text-[color:var(--studio-muted)]">
+                    {overdueTaskCount > 0
+                      ? "There are overdue follow-ups waiting. Start with the oldest open task and close the loop before moving on."
+                      : openTasks.length > 0
+                      ? participantFocusText
+                      : selectedItem
+                      ? "No follow-up has been assigned yet. Review the selected update and record the response that best fits the situation."
+                      : "Pick an update from the left-hand feed to continue the exercise."}
+                  </div>
+                  {latestConsequence?.description ? (
+                    <div className="mt-3 rounded-[12px] border border-[var(--studio-border)] bg-white/80 px-3 py-3 text-sm text-[color:var(--studio-muted)]">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                        Latest development
+                      </div>
+                      <div className="mt-1 font-medium text-[color:var(--studio-ink)]">
+                        {latestConsequence.title}
+                      </div>
+                      <div className="mt-1">{latestConsequence.description}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className={isMobile ? "" : "col-span-8"}>
+            <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+              <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                    <CheckSquare className="h-4 w-4 opacity-80" />
+                    Follow-up actions
+                  </div>
+                  <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                    The tasks that currently matter for your participation in the exercise.
+                  </div>
+                </div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">
+                  {`${participantVisibleTasks.length} shown`}
+                </div>
+              </div>
+
+              <div className="p-5">
+                <div className="space-y-3">
+                  {participantVisibleTasks.length === 0 ? (
+                    <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                      No follow-up tasks are assigned right now.
+                    </div>
+                  ) : (
+                    participantVisibleTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="font-medium text-[color:var(--studio-ink)]">{task.title}</div>
+                            {task.description ? (
+                              <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                                {task.description}
+                              </div>
+                            ) : null}
+                          </div>
+                          <span
+                            className={[
+                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                              taskStatusTone(task.status),
+                            ].join(" ")}
+                          >
+                            {task.status.replaceAll("_", " ")}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                          <div className="text-xs text-[color:var(--studio-muted2)]">
+                            {task.due_at ? `Due ${fmt(task.due_at)}` : "No deadline set"}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {task.status !== "in_progress" ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={taskBusyId === task.id}
+                                onClick={() => handleTaskStatus(task.id, "in_progress")}
+                              >
+                                Start
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              disabled={taskBusyId === task.id}
+                              onClick={() => handleTaskStatus(task.id, "done")}
+                            >
+                              Mark done
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+        <button
+          type="button"
+          onClick={() => setAdvancedInsightsOpen((value) => !value)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        >
+          <div>
+            <div className="text-sm font-semibold text-[color:var(--studio-ink)]">
+              Advanced session insights
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+              Runtime telemetry, engine links, logs and detailed operational traces.
+            </div>
+          </div>
+          <ChevronDown
+            className={[
+              "h-4 w-4 shrink-0 text-[color:var(--studio-muted2)] transition-transform",
+              advancedInsightsOpen ? "rotate-180" : "",
+            ].join(" ")}
+          />
+        </button>
+      </div>
+
+      {advancedInsightsOpen ? (
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+              <Sparkles className="h-4 w-4 opacity-80" />
+              Engine pulse
+              <HintTooltip text="A compact readout of what the runtime is currently generating and where operator attention is accumulating." />
+            </div>
+          </div>
+          <div className="text-xs text-[color:var(--studio-muted2)]">
+            {latestConsequence ? `Latest at ${fmt(latestConsequence.applied_at)}` : "Awaiting first consequence"}
+          </div>
+        </div>
+
+        <div className="grid gap-3 p-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              Runtime pressure
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div>
+                <div className="text-2xl font-semibold tracking-tight">{openTasks.length}</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Active tasks</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold tracking-tight">{overdueTaskCount}</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Overdue tasks</div>
+              </div>
+              <div>
+                <div className="text-2xl font-semibold tracking-tight">{consequences.length}</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Consequences logged</div>
+              </div>
+            </div>
+            <div className="mt-4 text-sm text-[color:var(--studio-muted)]">
+              {overdueTaskCount > 0
+                ? "The runtime is carrying overdue follow-up work. Clear the oldest tasks first to reduce repeated escalation."
+                : openTasks.length > 0
+                ? "Follow-up work is active but still inside its current window."
+                : "No active pressure is building right now."}
+            </div>
+          </div>
+
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+              Latest runtime output
+            </div>
+            {latestConsequence ? (
+              <>
+                <div className="mt-2 flex items-center gap-2">
+                  <span
+                    className={[
+                      "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                      consequenceSeverityTone(latestConsequence.severity),
+                    ].join(" ")}
+                  >
+                    {latestConsequence.severity}
+                  </span>
+                  <span className="text-xs text-[color:var(--studio-muted2)]">
+                    {consequenceTypeLabel(latestConsequence)}
+                  </span>
+                </div>
+                <div className="mt-3 font-medium">{latestConsequence.title}</div>
+                <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                  {latestConsequence.description ?? "The engine applied a rule without additional description."}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                  {latestConsequence.task_id ? <span>Task linked</span> : null}
+                  {latestConsequence.decision_id ? <span>Decision linked</span> : null}
+                  {latestConsequence.session_inject_id ? <span>Inject linked</span> : null}
+                </div>
+              </>
+            ) : (
+              <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">
+                No runtime output yet. Release an inject or record a decision to start the chain.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      ) : null}
+
+      {advancedInsightsOpen ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            setSelectedThreadOnly((value) => {
+              const next = !value;
+              if (!next) setFocusedThreadId(null);
+              else if (!focusedThreadId && selectedItem?.id) setFocusedThreadId(selectedItem.id);
+              return next;
+            })
+          }
+          className={[
+            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+            selectedThreadOnly
+              ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+              : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+          ].join(" ")}
+        >
+          {selectedThreadOnly ? "Selected thread only" : "Show all threads"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setRuntimeTasksOnly((value) => !value)}
+          className={[
+            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+            runtimeTasksOnly
+              ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+              : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+          ].join(" ")}
+        >
+          {runtimeTasksOnly ? "Runtime tasks only" : "All task sources"}
+        </button>
+        <div className="text-xs text-[color:var(--studio-muted2)]">
+          {selectedThreadOnly
+            ? activeThreadId
+              ? "Focused on the active thread from the stream or timeline."
+              : "Select a message or timeline event to focus the thread filter."
+          : "Filters are showing the broader session picture."}
+        </div>
+      </div>
+      ) : null}
+
+      {advancedInsightsOpen ? (
+      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
         <div className={isMobile ? "" : "col-span-4"}>
           <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
             <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
@@ -1644,18 +2159,18 @@ export default function SessionParticipantPage() {
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
-                {`${openTasks.length} open • ${decisions.length} decisions`}
+                {`${visibleTasks.length} shown • ${visibleDecisions.length} decisions`}
               </div>
             </div>
 
             <div className="p-5">
               <div className="space-y-3">
-                {openTasks.length === 0 ? (
+                {visibleTasks.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
                     No active follow-up tasks yet.
                   </div>
                 ) : (
-                  openTasks.slice(0, 8).map((task) => (
+                  visibleTasks.slice(0, 8).map((task) => (
                     <div
                       key={task.id}
                       className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
@@ -1680,9 +2195,18 @@ export default function SessionParticipantPage() {
                       </div>
 
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs text-[color:var(--studio-muted2)]">
-                          {task.assigned_role ? `Role: ${task.assigned_role}` : "Unassigned"}
-                          {task.due_at ? ` • Due ${fmt(task.due_at)}` : ""}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+                          <span
+                            className={[
+                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                              taskStatusTone(task.status),
+                            ].join(" ")}
+                          >
+                            {task.status.replaceAll("_", " ")}
+                          </span>
+                          <span>{task.assigned_role ? `Role: ${task.assigned_role}` : "Unassigned"}</span>
+                          {task.due_at ? <span>{`Due ${fmt(task.due_at)}`}</span> : null}
+                          {task.decision_id ? <span>Decision-linked</span> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {task.status !== "in_progress" ? (
@@ -1724,18 +2248,18 @@ export default function SessionParticipantPage() {
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
-                {`${consequences.length} total`}
+                {`${visibleConsequences.length} shown`}
               </div>
             </div>
 
             <div className="p-5">
               <div className="space-y-3">
-                {consequences.length === 0 ? (
+                {visibleConsequences.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
                     No runtime consequences yet.
                   </div>
                 ) : (
-                  consequences.slice(0, 8).map((item) => (
+                  visibleConsequences.slice(0, 8).map((item) => (
                     <div
                       key={item.id}
                       className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
@@ -1760,7 +2284,14 @@ export default function SessionParticipantPage() {
                       </div>
 
                       <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
-                        {item.consequence_type} • {fmt(item.applied_at)}
+                        {consequenceTypeLabel(item)} • {fmt(item.applied_at)}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                        {item.task_id ? <span>Created or matched task</span> : null}
+                        {item.decision_id ? <span>Decision-linked</span> : null}
+                        {item.session_inject_id ? <span>Inject-linked</span> : null}
+                        {item.rule_template_id ? <span>Rule template attached</span> : null}
                       </div>
                     </div>
                   ))
@@ -1785,7 +2316,7 @@ export default function SessionParticipantPage() {
                   ? "Loading…"
                   : actionsError
                   ? actionsError
-                  : `${actions.length} total`}
+                  : `${visibleActions.length} shown`}
               </div>
             </div>
 
@@ -1795,12 +2326,12 @@ export default function SessionParticipantPage() {
                   <div className="text-sm text-[color:var(--studio-muted2)]">
                     Loading…
                   </div>
-                ) : actions.length === 0 ? (
+                ) : visibleActions.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
                     No actions yet.
                   </div>
                 ) : (
-                  actions.slice(0, 30).map((a) => (
+                  visibleActions.slice(0, 30).map((a) => (
                     <div
                       key={a.id}
                       className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
@@ -1824,6 +2355,283 @@ export default function SessionParticipantPage() {
           </div>
         </div>
       </div>
+      ) : null}
+
+      {advancedInsightsOpen ? (
+      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+              <Sparkles className="h-4 w-4 opacity-80" />
+              Chain of events
+              <HintTooltip text="A stitched sequence of injects, operator actions, decisions, runtime consequences, and follow-up tasks for the current session view." />
+            </div>
+          </div>
+          <div className="text-xs text-[color:var(--studio-muted2)]">
+            {selectedThreadOnly ? "Thread-focused chain" : "Session-wide chain"}
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {(["15m", "60m", "all"] as TimelineWindow[]).map((window) => (
+              <button
+                key={window}
+                type="button"
+                onClick={() => setTimelineWindow(window)}
+                className={[
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase transition",
+                  timelineWindow === window
+                    ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                    : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+                ].join(" ")}
+              >
+                {window}
+              </button>
+            ))}
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            {(["inject", "action", "decision", "consequence", "task"] as TimelineKind[]).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => toggleTimelineKind(kind)}
+                className={[
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
+                  timelineFilter[kind]
+                    ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                    : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+                ].join(" ")}
+              >
+                {kind}
+              </button>
+            ))}
+            {selectedTimelineEventId ? (
+              <button
+                type="button"
+                onClick={() => setSelectedTimelineEventId(null)}
+                className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)]"
+              >
+                Clear selected path
+              </button>
+            ) : null}
+          </div>
+
+          {selectedTimelinePathEvents.length > 0 ? (
+            <div className="mb-4 rounded-[16px] border border-emerald-500/20 bg-emerald-500/[0.045] px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-emerald-500/20 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800">
+                  Selected path
+                </span>
+                <span className="text-sm text-[color:var(--studio-muted)]">
+                  {selectedTimelinePathEvents.length} linked events
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+                {selectedTimelinePathEvents.map((event, index) => (
+                  <React.Fragment key={`summary:${event.id}`}>
+                    <span className="rounded-full border border-[var(--studio-border)] bg-white/80 px-2.5 py-1 font-medium text-[color:var(--studio-ink)]">
+                      {event.kind}: {compactLabel(event.title, event.kind)}
+                    </span>
+                    {index < selectedTimelinePathEvents.length - 1 ? (
+                      <span className="text-emerald-700/70">→</span>
+                    ) : null}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {chainEvents.length === 0 ? (
+            <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+              No linked events to show yet.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {groupedChainEvents.map((group) => (
+                <div key={group.label} className="space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="inline-flex rounded-full border border-[var(--studio-border)] bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)] backdrop-blur">
+                      {group.label}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="icon" onClick={() => scrollTimeline(group.label, "left")} title="Scroll timeline left">
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="icon" onClick={() => scrollTimeline(group.label, "right")} title="Scroll timeline right">
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div data-timeline-group={group.label} className="relative overflow-x-auto pb-2 pt-8 snap-x snap-mandatory">
+                    <div className="pointer-events-none absolute left-0 right-0 top-[46px] h-px bg-[linear-gradient(90deg,hsl(210_20%_86%),hsl(220_30%_78%),hsl(210_20%_86%))]" />
+                    <div className="flex min-w-max items-start gap-4 pr-4">
+                      {group.items.map((event, index) => {
+                        const isActiveThreadEvent =
+                          activeThreadId != null && event.sessionInjectId === activeThreadId;
+                        const isHoveredThreadEvent =
+                          hoveredThreadId != null && event.sessionInjectId === hoveredThreadId;
+                        const isSelectedPathEvent =
+                          selectedTimelineEventId != null && selectedTimelinePathIds.has(event.id);
+                        const isMutedByHover =
+                          hoveredThreadId != null &&
+                          event.sessionInjectId != null &&
+                          event.sessionInjectId !== hoveredThreadId;
+                        const isMutedBySelection =
+                          selectedTimelineEventId != null && !isSelectedPathEvent;
+                        const nextEvent = group.items[index + 1] ?? null;
+                        const connectorLabel = timelineConnectorLabel(event, nextEvent);
+                        const isSelectedPathConnector =
+                          nextEvent != null &&
+                          selectedTimelineEventId != null &&
+                          selectedTimelinePathIds.has(event.id) &&
+                          selectedTimelinePathIds.has(nextEvent.id);
+                        const shouldShowConnectorLabel =
+                          Boolean(connectorLabel) &&
+                          (isSelectedPathConnector || isHoveredThreadEvent || isActiveThreadEvent);
+                        const hasThreadContinuation =
+                          event.sessionInjectId != null &&
+                          nextEvent?.sessionInjectId != null &&
+                          event.sessionInjectId === nextEvent.sessionInjectId;
+                        return (
+                          <div
+                            key={event.id}
+                            className={[
+                              "relative w-[260px] min-w-[260px] snap-start space-y-3 transition-opacity",
+                              isMutedByHover ? "opacity-45" : isMutedBySelection ? "opacity-55" : "opacity-100",
+                            ].join(" ")}
+                          >
+                            {hasThreadContinuation ? (
+                              <div className="pointer-events-none absolute left-full top-[-8px] z-0 w-28">
+                                {shouldShowConnectorLabel ? (
+                                  <div
+                                    className={[
+                                      "mb-2 inline-flex max-w-[124px] rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm",
+                                      isSelectedPathConnector
+                                        ? "border-emerald-500/25 bg-white text-emerald-800"
+                                        : isHoveredThreadEvent || isActiveThreadEvent
+                                        ? "border-primary/25 bg-white text-[color:var(--studio-ink)]"
+                                        : "border-orange-500/20 bg-white text-orange-800",
+                                    ].join(" ")}
+                                  >
+                                    {connectorLabel}
+                                  </div>
+                                ) : null}
+                                <div
+                                  className={[
+                                    "h-[2px] w-12",
+                                    isSelectedPathConnector
+                                      ? "bg-[linear-gradient(90deg,hsl(160_84%_39%/0.85),hsl(160_84%_39%/0.18))]"
+                                      : isHoveredThreadEvent || isActiveThreadEvent
+                                      ? "bg-[linear-gradient(90deg,hsl(220_90%_56%/0.85),hsl(220_90%_56%/0.2))]"
+                                      : shouldShowConnectorLabel
+                                      ? "bg-[linear-gradient(90deg,hsl(25_95%_55%/0.65),hsl(25_95%_55%/0.1))]"
+                                      : "bg-[linear-gradient(90deg,hsl(220_90%_56%/0.55),hsl(220_90%_56%/0.12))]",
+                                  ].join(" ")}
+                                />
+                              </div>
+                            ) : null}
+                            <div className="flex items-center gap-2 px-1">
+                              <div
+                                className={[
+                                  "h-3 w-3 rounded-full border-2 bg-white",
+                                  isSelectedPathEvent
+                                    ? "border-emerald-500"
+                                    : isActiveThreadEvent || isHoveredThreadEvent
+                                    ? "border-primary"
+                                    : "border-[var(--studio-border-strong)]",
+                                ].join(" ")}
+                              />
+                              <div className="text-xs font-semibold text-[color:var(--studio-muted2)]">
+                                {fmt(event.at)}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => focusTimelineEvent(event.sessionInjectId, event.id)}
+                              onMouseEnter={() => setHoveredThreadId(event.sessionInjectId)}
+                              onMouseLeave={() => setHoveredThreadId((current) => (current === event.sessionInjectId ? null : current))}
+                              className={[
+                                "relative min-h-[170px] w-full rounded-[18px] border px-4 py-3 text-left transition",
+                                isSelectedPathEvent
+                                  ? "border-emerald-500/35 bg-emerald-500/[0.045] shadow-[0_0_0_1px_hsl(160_84%_39%/0.08)]"
+                                  : isActiveThreadEvent
+                                  ? "border-primary/35 bg-primary/5 shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
+                                  : isHoveredThreadEvent
+                                  ? "border-primary/25 bg-primary/[0.03] shadow-[0_10px_30px_hsl(220_70%_55%/0.08)]"
+                                  : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] hover:border-[var(--studio-border-strong)] hover:bg-white/70",
+                              ].join(" ")}
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                                    eventTone(event.kind),
+                                  ].join(" ")}
+                                >
+                                  {event.kind}
+                                </span>
+                                {isActiveThreadEvent ? (
+                                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase text-[color:var(--studio-ink)]">
+                                    Active thread
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-3 font-medium leading-snug">{event.title}</div>
+                              <div className="mt-2 line-clamp-4 text-sm text-[color:var(--studio-muted)]">
+                                {event.detail}
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {event.meta.map((meta) => (
+                                  <span
+                                    key={`${event.id}:${meta}`}
+                                    className="rounded-full border border-[var(--studio-border)] bg-white/70 px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]"
+                                  >
+                                    {meta}
+                                  </span>
+                                ))}
+                              </div>
+                              {event.relations.length > 0 ? (
+                                <div className="mt-3 border-t border-[var(--studio-border)] pt-3">
+                                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                                    Causal links
+                                  </div>
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {event.relations.map((relation) => (
+                                      <span
+                                        key={`${event.id}:rel:${relation.label}`}
+                                        className={[
+                                          "rounded-full px-2 py-0.5 text-[11px]",
+                                          relation.emphasis === "primary"
+                                            ? "border border-primary/20 bg-primary/10 text-[color:var(--studio-ink)]"
+                                            : "border border-[var(--studio-border)] bg-white/70 text-[color:var(--studio-muted2)]",
+                                        ].join(" ")}
+                                      >
+                                        {relation.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+                              {event.sessionInjectId ? (
+                                <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                                  Click to focus this thread
+                                </div>
+                              ) : null}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      ) : null}
     </div>
   );
 }

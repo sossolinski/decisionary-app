@@ -9,6 +9,13 @@ import { getErrorMessage } from "@/lib/errors";
 import { normalizeSessionStatus } from "@/lib/sessionStatus";
 import { validateMessagePayload } from "@/lib/validators";
 import {
+  listSessionConsequences,
+  listSessionTasks,
+  processOverdueSessionTasks,
+  type SessionConsequence,
+  type SessionTask,
+} from "@/lib/sessionEngine";
+import {
   Card,
   CardContent,
   CardHeader,
@@ -17,7 +24,7 @@ import {
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
-import { ChevronDown, ChevronUp, Send, Zap } from "lucide-react";
+import { ChevronDown, ChevronUp, Send, Sparkles, TimerReset, Zap } from "lucide-react";
 
 type SessionMeta = {
   status: string | null;
@@ -80,6 +87,7 @@ export default function FacilitatorToolsPanel({
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [engineRefreshing, setEngineRefreshing] = useState(false);
 
   // collapsibles
   const [injectReleaseOpen, setInjectReleaseOpen] = useState(false);
@@ -97,6 +105,11 @@ export default function FacilitatorToolsPanel({
   const [qmSeverity, setQmSeverity] = useState<string>("");
   const [qmSenderName, setQmSenderName] = useState("Facilitator");
   const [qmSenderOrg, setQmSenderOrg] = useState("Decisionary");
+  const [qmRequiresDecision, setQmRequiresDecision] = useState(false);
+  const [qmDecisionTemplateKey, setQmDecisionTemplateKey] = useState("");
+
+  const [taskRows, setTaskRows] = useState<SessionTask[]>([]);
+  const [consequenceRows, setConsequenceRows] = useState<SessionConsequence[]>([]);
 
   const effectiveScenarioId = scenarioId ?? meta?.scenario_id ?? null;
 
@@ -157,6 +170,15 @@ export default function FacilitatorToolsPanel({
     setSelectedSiId(firstPending?.id ?? "");
   }
 
+  async function refreshEngineState() {
+    const [tasks, consequences] = await Promise.all([
+      listSessionTasks(sessionId, 100),
+      listSessionConsequences(sessionId, 100),
+    ]);
+    setTaskRows(tasks);
+    setConsequenceRows(consequences);
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -164,6 +186,8 @@ export default function FacilitatorToolsPanel({
         await refreshMeta();
         if (!alive) return;
         await refreshInjectLibrary();
+        if (!alive) return;
+        await refreshEngineState();
       } catch {
         // soft fail
       }
@@ -183,6 +207,22 @@ export default function FacilitatorToolsPanel({
   const selectedSI = useMemo(() => {
     return (scenarioInjects ?? []).find((x) => x.id === selectedSiId) ?? null;
   }, [scenarioInjects, selectedSiId]);
+
+  const openTasks = useMemo(
+    () => taskRows.filter((task) => task.status !== "done" && task.status !== "cancelled"),
+    [taskRows]
+  );
+
+  const overdueTasks = useMemo(() => {
+    const now = Date.now();
+    return openTasks.filter((task) => {
+      if (!task.due_at) return false;
+      const dueAt = new Date(task.due_at).getTime();
+      return Number.isFinite(dueAt) && dueAt <= now;
+    });
+  }, [openTasks]);
+
+  const latestConsequence = consequenceRows[0] ?? null;
 
   // =========================
   // Session control
@@ -263,6 +303,7 @@ export default function FacilitatorToolsPanel({
       setMsg("Session restarted.");
       await refreshMeta();
       await refreshInjectLibrary();
+      await refreshEngineState();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to restart session."));
     } finally {
@@ -281,6 +322,7 @@ export default function FacilitatorToolsPanel({
       const res = await deliverDueInjects(sessionId);
       setMsg(`Delivered ${res.delivered} due inject(s).`);
       await refreshInjectLibrary();
+      await refreshEngineState();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to deliver due injects."));
     } finally {
@@ -306,6 +348,7 @@ export default function FacilitatorToolsPanel({
       await deliverInjectNow(selectedSI.inject_id);
       setMsg(`Delivered: ${selectedSI.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
+      await refreshEngineState();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to deliver inject."));
     } finally {
@@ -322,6 +365,7 @@ export default function FacilitatorToolsPanel({
       await deliverInjectNow(next.inject_id);
       setMsg(`Delivered next: ${next.injects?.title ?? "inject"}`);
       await refreshInjectLibrary();
+      await refreshEngineState();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to deliver next inject."));
     } finally {
@@ -347,16 +391,43 @@ export default function FacilitatorToolsPanel({
         severity: qmSeverity.trim() ? qmSeverity.trim() : null,
         sender_name: qmSenderName.trim() ? qmSenderName.trim() : null,
         sender_org: qmSenderOrg.trim() ? qmSenderOrg.trim() : null,
+        requires_decision: qmRequiresDecision,
+        decision_template_key: qmDecisionTemplateKey.trim() ? qmDecisionTemplateKey.trim() : null,
       });
       setMsg("Quick message sent.");
       setQmTitle("");
       setQmBody("");
       setQmSeverity("");
+      setQmRequiresDecision(false);
+      setQmDecisionTemplateKey("");
       await refreshInjectLibrary();
+      await refreshEngineState();
     } catch (e: unknown) {
       setMsg(getErrorMessage(e, "Failed to send quick message."));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function processOverdueNow() {
+    setEngineRefreshing(true);
+    setMsg(null);
+    try {
+      const result = await processOverdueSessionTasks(sessionId);
+      await refreshEngineState();
+      const parts: string[] = [];
+      if (result.created_consequences > 0) parts.push(`${result.created_consequences} consequences`);
+      if (result.created_tasks > 0) parts.push(`${result.created_tasks} tasks`);
+      if (result.created_injects > 0) parts.push(`${result.created_injects} injects`);
+      setMsg(
+        parts.length > 0
+          ? `Processed overdue runtime: ${parts.join(", ")}.`
+          : "No overdue runtime actions were needed."
+      );
+    } catch (e: unknown) {
+      setMsg(getErrorMessage(e, "Failed to process overdue runtime."));
+    } finally {
+      setEngineRefreshing(false);
     }
   }
 
@@ -410,6 +481,71 @@ export default function FacilitatorToolsPanel({
               {loading ? "..." : "Restart"}
             </Button>
           </div>
+          </div>
+
+          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Sparkles className="h-4 w-4" />
+                  Engine snapshot
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Keep an eye on open runtime work and manually process overdue rules if needed.
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={processOverdueNow}
+                disabled={engineRefreshing}
+              >
+                <TimerReset className="mr-2 h-4 w-4" />
+                {engineRefreshing ? "Working..." : "Process overdue"}
+              </Button>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-4">
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Pending injects
+                </div>
+                <div className="mt-1 text-lg font-semibold">{pending.length}</div>
+              </div>
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Open tasks
+                </div>
+                <div className="mt-1 text-lg font-semibold">{openTasks.length}</div>
+              </div>
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Overdue
+                </div>
+                <div className="mt-1 text-lg font-semibold">{overdueTasks.length}</div>
+              </div>
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Consequences
+                </div>
+                <div className="mt-1 text-lg font-semibold">{consequenceRows.length}</div>
+              </div>
+            </div>
+
+            {latestConsequence ? (
+              <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-white/70 p-3">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                  Latest consequence
+                </div>
+                <div className="mt-1 text-sm font-semibold">{latestConsequence.title}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {latestConsequence.consequence_type} • {fmtIso(latestConsequence.applied_at)}
+                </div>
+                {latestConsequence.description ? (
+                  <div className="mt-2 text-sm text-foreground">{latestConsequence.description}</div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           {/* Inject release (collapsed) */}
@@ -577,6 +713,23 @@ export default function FacilitatorToolsPanel({
                       value={qmSeverity}
                       onChange={(e) => setQmSeverity(e.target.value)}
                       placeholder="low / medium / high"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold">Decision flow</div>
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={qmRequiresDecision}
+                        onChange={(e) => setQmRequiresDecision(e.target.checked)}
+                      />
+                      Mark this message as decision-required
+                    </label>
+                    <Input
+                      value={qmDecisionTemplateKey}
+                      onChange={(e) => setQmDecisionTemplateKey(e.target.value)}
+                      placeholder="Decision template key"
                     />
                   </div>
 
