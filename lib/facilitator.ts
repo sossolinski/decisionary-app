@@ -25,6 +25,12 @@ export type FacilitatorProfile = {
   role?: string | null;
 };
 
+export type ProfileIdentity = {
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+};
+
 /* =========================
    HELPERS
 ========================= */
@@ -137,12 +143,25 @@ export async function transferScenarioOwnership(
 export async function listFacilitators(): Promise<FacilitatorProfile[]> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("id:user_id, email")
+    .select("id:user_id, email, full_name")
     .eq("role", "facilitator")
     .order("email", { ascending: true });
 
   if (error) throw error;
   return (data ?? []) as FacilitatorProfile[];
+}
+
+export async function listProfileIdentities(userIds: string[]): Promise<ProfileIdentity[]> {
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("user_id,email,full_name")
+    .in("user_id", ids);
+
+  if (error) throw error;
+  return (data ?? []) as ProfileIdentity[];
 }
 
 /* =========================

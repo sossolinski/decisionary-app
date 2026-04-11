@@ -6,10 +6,11 @@ import { useParams, useRouter } from "next/navigation";
 
 import { listSessionRoster, kickFromSession, type SessionRosterRow } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
-import { Users, RefreshCw, UserMinus, ArrowLeft, Shield, User, Sparkles } from "lucide-react";
+import { Users, UserMinus, ArrowLeft, Shield, User, Sparkles } from "lucide-react";
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
@@ -28,6 +29,10 @@ function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
 }
 
+function shortParticipantId(value: string) {
+  return `Participant ${value.slice(0, 8)}`;
+}
+
 function RolePill({ role }: { role?: string | null }) {
   const r = String(role ?? "participant").toLowerCase();
   const base =
@@ -40,7 +45,7 @@ function RolePill({ role }: { role?: string | null }) {
   return (
     <span className={`${base} ${cls}`}>
       {r === "facilitator" ? <Shield className="h-3.5 w-3.5 opacity-80" /> : <User className="h-3.5 w-3.5 opacity-70" />}
-      {r.toUpperCase()}
+      {r.charAt(0).toUpperCase() + r.slice(1)}
     </span>
   );
 }
@@ -60,7 +65,7 @@ export default function FacilitatorRosterPage() {
   const load = useCallback(async () => {
     if (!valid) {
       setLoading(false);
-      setError("Invalid session id (expected UUID).");
+      setError("This session link is not valid.");
       return;
     }
 
@@ -97,11 +102,18 @@ export default function FacilitatorRosterPage() {
     };
   }, [roleLoading, canFacilitate, sessionId, valid, load]);
 
+  useAutoRefresh(
+    async () => {
+      await load();
+    },
+    { enabled: !roleLoading && canFacilitate && valid && !busyId, intervalMs: 30000 }
+  );
+
   async function onKick(participantId: string, displayName?: string | null) {
     if (!valid) return;
     if (busyId) return;
 
-    const label = displayName?.trim() ? displayName.trim() : participantId;
+    const label = displayName?.trim() ? displayName.trim() : shortParticipantId(participantId);
     if (!confirm(`Remove "${label}" from this session?`)) return;
 
     setBusyId(participantId);
@@ -131,7 +143,7 @@ export default function FacilitatorRosterPage() {
           <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-2 min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+              <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
                 Session roster
               </div>
@@ -148,11 +160,6 @@ export default function FacilitatorRosterPage() {
               <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
                 Back to session
-              </Button>
-
-              <Button variant="outline" onClick={load} disabled={!!busyId || !valid} className="gap-2">
-                <RefreshCw className={["h-4 w-4", busyId ? "animate-spin" : ""].join(" ")} />
-                Refresh
               </Button>
             </div>
           </div>
@@ -186,10 +193,10 @@ export default function FacilitatorRosterPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--studio-border)] bg-[var(--studio-surface2)]">
-                    <th className="px-4 py-3 text-left font-semibold">Participant</th>
-                    <th className="px-4 py-3 text-left font-semibold">Role</th>
-                    <th className="px-4 py-3 text-left font-semibold">Joined</th>
-                    <th className="px-4 py-3 text-right font-semibold">Actions</th>
+                    <th className="px-4 py-3 text-left ui-section-label">Participant</th>
+                    <th className="px-4 py-3 text-left ui-section-label">Role</th>
+                    <th className="px-4 py-3 text-left ui-section-label">Joined</th>
+                    <th className="px-4 py-3 text-right ui-section-label">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -204,7 +211,7 @@ export default function FacilitatorRosterPage() {
                             {r.display_name ?? "Anonymous"}
                           </div>
                           <div className="text-xs text-muted-foreground truncate max-w-[520px]">
-                            {pid}
+                            {shortParticipantId(pid)}
                           </div>
                         </td>
 
@@ -224,6 +231,7 @@ export default function FacilitatorRosterPage() {
                             disabled={isBusy}
                             className="gap-2"
                             title="Remove from session"
+                            aria-label={`Remove ${r.display_name ?? "participant"} from session`}
                           >
                             <UserMinus className="h-4 w-4" />
                             {isBusy ? "…" : "Remove"}

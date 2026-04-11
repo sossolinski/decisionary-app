@@ -51,6 +51,42 @@ export type ManagedParticipant = {
   active: boolean;
 };
 
+export type NotificationAnnouncementKind = "system" | "product";
+export type NotificationAnnouncementAudience = "all" | "admins" | "facilitators" | "participants";
+export type NotificationAnnouncementPriority = "normal" | "important";
+
+export type NotificationAnnouncement = {
+  id: string;
+  org_id: string | null;
+  kind: NotificationAnnouncementKind;
+  audience: NotificationAnnouncementAudience;
+  priority: NotificationAnnouncementPriority;
+  title: string;
+  body: string;
+  link_path: string | null;
+  published_at: string;
+  expires_at: string | null;
+  archived: boolean;
+  created_at: string;
+  created_by: string | null;
+  updated_at: string;
+  updated_by: string | null;
+};
+
+function isMissingAnnouncementInfra(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error && typeof error.code === "string" ? error.code : "";
+  const message = "message" in error && typeof error.message === "string" ? error.message.toLowerCase() : "";
+
+  return (
+    code === "PGRST202" ||
+    message.includes("notification_announcements") ||
+    message.includes("admin_list_notification_announcements") ||
+    message.includes("admin_create_notification_announcement") ||
+    message.includes("admin_archive_notification_announcement")
+  );
+}
+
 export async function listOrganizationsForCurrentUser() {
   const { data, error } = await supabase.rpc("list_my_organizations");
 
@@ -114,6 +150,30 @@ export async function createOrganization(params: { name: string }) {
   return row as Organization;
 }
 
+export async function listAllOrganizationsForAdmin() {
+  const { data, error } = await supabase.rpc("admin_list_all_organizations");
+  if (error) throw error;
+  return (data ?? []) as Organization[];
+}
+
+export async function archiveOrganization(orgId: string) {
+  const { data, error } = await supabase.rpc("admin_archive_organization", {
+    p_org_id: orgId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as Organization;
+}
+
+export async function restoreOrganization(orgId: string) {
+  const { data, error } = await supabase.rpc("admin_restore_organization", {
+    p_org_id: orgId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as Organization;
+}
+
 export async function deleteOrganization(orgId: string) {
   const { error } = await supabase.rpc("admin_delete_organization", {
     p_org_id: orgId,
@@ -122,12 +182,9 @@ export async function deleteOrganization(orgId: string) {
 }
 
 export async function listMembershipsForOrg(orgId: string) {
-  const { data, error } = await supabase
-    .from("org_memberships")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("admin_list_org_memberships", {
+    p_org_id: orgId,
+  });
 
   if (error) throw error;
   return (data ?? []) as OrganizationMembership[];
@@ -156,11 +213,9 @@ export async function removeMembership(membershipId: string) {
 }
 
 export async function listInvitesForOrg(orgId: string) {
-  const { data, error } = await supabase
-    .from("facilitator_invites")
-    .select("*")
-    .eq("org_id", orgId)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("admin_list_facilitator_invites", {
+    p_org_id: orgId,
+  });
 
   if (error) throw error;
   return (data ?? []) as FacilitatorInvite[];
@@ -205,12 +260,9 @@ export async function acceptFacilitatorInvite(token: string) {
 }
 
 export async function listParticipantsForOrg(orgId: string) {
-  const { data, error } = await supabase
-    .from("managed_participants")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("active", true)
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.rpc("admin_list_managed_participants", {
+    p_org_id: orgId,
+  });
 
   if (error) throw error;
   return (data ?? []) as ManagedParticipant[];
@@ -236,4 +288,58 @@ export async function deactivateManagedParticipant(participantId: string) {
     p_participant_id: participantId,
   });
   if (error) throw error;
+}
+
+export async function listNotificationAnnouncements(orgId: string | null) {
+  const { data, error } = await supabase.rpc("admin_list_notification_announcements", {
+    p_org_id: orgId,
+  });
+
+  if (error) {
+    if (isMissingAnnouncementInfra(error)) return [];
+    throw error;
+  }
+  return (data ?? []) as NotificationAnnouncement[];
+}
+
+export async function createNotificationAnnouncement(params: {
+  orgId: string | null;
+  title: string;
+  body: string;
+  linkPath?: string | null;
+  kind: NotificationAnnouncementKind;
+  audience: NotificationAnnouncementAudience;
+  priority: NotificationAnnouncementPriority;
+  expiresAt?: string | null;
+}) {
+  const { data, error } = await supabase.rpc("admin_create_notification_announcement", {
+    p_org_id: params.orgId,
+    p_title: params.title,
+    p_body: params.body,
+    p_link_path: params.linkPath ?? null,
+    p_kind: params.kind,
+    p_audience: params.audience,
+    p_priority: params.priority,
+    p_expires_at: params.expiresAt ?? null,
+  });
+  if (error) {
+    if (isMissingAnnouncementInfra(error)) {
+      throw new Error("Notification announcements need the latest Supabase migration before publishing is available.");
+    }
+    throw error;
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  return row as NotificationAnnouncement;
+}
+
+export async function archiveNotificationAnnouncement(announcementId: string) {
+  const { error } = await supabase.rpc("admin_archive_notification_announcement", {
+    p_announcement_id: announcementId,
+  });
+  if (error) {
+    if (isMissingAnnouncementInfra(error)) {
+      throw new Error("Notification announcements need the latest Supabase migration before archiving is available.");
+    }
+    throw error;
+  }
 }

@@ -9,17 +9,26 @@ import {
   BookOpen,
   PlayCircle,
   Settings,
+  BellRing,
   ChevronsLeft,
   ChevronsRight,
   User,
   Shield,
+  Building2,
+  Users,
 } from "lucide-react";
 
-import HintTooltip from "@/app/components/HintTooltip";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import HintTooltip from "@/app/components/HintTooltip";
 import RoleSwitcher from "@/app/components/RoleSwitcher";
 
+function humanRole(value?: string | null) {
+  if (!value) return "—";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function itemActive(pathname: string, href: string) {
+  if (href === "/admin") return pathname === "/admin";
   if (href === "/facilitator") return pathname === "/facilitator";
   return pathname === href || pathname.startsWith(href + "/");
 }
@@ -47,7 +56,7 @@ function SectionLabel({
   }
 
   return (
-    <div className="px-2 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+    <div className="px-2 pt-2 pb-1 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
       {children}
     </div>
   );
@@ -95,11 +104,15 @@ export default function AppSidebar({
 }: AppSidebarProps) {
   const pathname = usePathname();
   const { loading, activeRole, isDisabled } = useRoleContext();
+  const isParticipantArea = (pathname ?? "").startsWith("/participant");
+  const isAdminArea = (pathname ?? "").startsWith("/admin");
+  const isFacilitatorArea =
+    (pathname ?? "").startsWith("/facilitator") || (pathname ?? "").startsWith("/sessions/");
 
   const width = collapsed ? "w-[84px]" : "w-[260px]";
   const asidePosition = mobile
     ? "relative h-full w-full pt-0"
-    : ["fixed left-0 top-0 z-30 h-screen", "pt-[76px]", width].join(" ");
+    : ["fixed left-0 top-0 z-30 h-screen", "pt-[68px]", width].join(" ");
 
   const canFacilitate =
     !loading &&
@@ -108,6 +121,8 @@ export default function AppSidebar({
 
   const isParticipantView = !loading && !isDisabled && activeRole === "participant";
   const isAdminView = !loading && !isDisabled && activeRole === "admin";
+  const viewingRole =
+    isAdminArea ? "admin" : isParticipantArea ? "participant" : isFacilitatorArea ? "facilitator" : activeRole;
 
   const facilitatorNav = useMemo(
     () => [
@@ -125,6 +140,22 @@ export default function AppSidebar({
         label: "Sessions",
         href: "/facilitator/sessions",
         icon: <PlayCircle className="h-5 w-5" />,
+      },
+      {
+        label: "Workspace",
+        href: "/facilitator/workspace",
+        icon: <Settings className="h-5 w-5" />,
+      },
+    ],
+    []
+  );
+
+  const participantNav = useMemo(
+    () => [
+      {
+        label: "Overview",
+        href: "/participant",
+        icon: <User className="h-5 w-5" />,
       },
     ],
     []
@@ -156,32 +187,31 @@ export default function AppSidebar({
   return (
     <aside className={asidePosition}>
       <div className="h-full px-3 pb-4">
-        <div className="h-full overflow-hidden surface shadow-soft rounded-[18px] flex flex-col">
-          {/* Top spacer / tiny brand */}
-          <div className="px-3 pt-3 pb-2">
-            <div
-              className={[
-                "rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-highlight)]",
-                "flex items-center",
-                collapsed ? "justify-center h-11" : "h-11 px-3 gap-3",
-              ].join(" ")}
-            >
-              <span
-                className="block h-5 w-5 rounded-full"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--studio-accent-blue), var(--studio-accent-purple))",
-                }}
-              />
-              {!collapsed ? <div className="text-sm font-semibold">Decisionary</div> : null}
-            </div>
-          </div>
-
+        <div className="h-full overflow-visible surface shadow-soft rounded-[18px] flex flex-col">
           {/* NAV */}
-          <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-2 space-y-3">
-            {/* Facilitator nav visible only in facilitator/admin view */}
-            {canFacilitate ? (
-              <div className="space-y-2">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3 space-y-3.5">
+            {(isParticipantArea || isParticipantView) ? (
+              <div className="space-y-2.5">
+                <SectionLabel collapsed={collapsed}>Participant</SectionLabel>
+                {participantNav.map((n) => (
+                  <NavItem
+                    key={n.href}
+                    href={n.href}
+                    label={n.label}
+                    icon={n.icon}
+                    pathname={pathname ?? ""}
+                    collapsed={collapsed}
+                    itemBase={itemBase}
+                    itemCollapsed={itemCollapsed}
+                    itemExpanded={itemExpanded}
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {/* Facilitator nav visible in facilitator areas, not above admin nav */}
+            {canFacilitate && isFacilitatorArea && !isParticipantArea && !isAdminArea ? (
+              <div className="space-y-2.5">
                 <SectionLabel collapsed={collapsed}>Facilitator</SectionLabel>
                 {facilitatorNav.map((n) => (
                   <NavItem
@@ -199,14 +229,24 @@ export default function AppSidebar({
               </div>
             ) : null}
 
-            {/* Admin nav visible only when VIEW AS admin */}
-            {isAdminView ? (
-              <div className="space-y-2">
+            {/* Admin nav takes priority inside admin area */}
+            {isAdminView && isAdminArea ? (
+              <div className="space-y-2.5">
                 <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
                 <NavItem
+                  href="/admin"
+                  label="Overview"
+                  icon={<LayoutGrid className="h-5 w-5" />}
+                  pathname={pathname ?? ""}
+                  collapsed={collapsed}
+                  itemBase={itemBase}
+                  itemCollapsed={itemCollapsed}
+                  itemExpanded={itemExpanded}
+                />
+                <NavItem
                   href="/admin/organizations"
-                  label="Admin · Orgs"
-                  icon={<Shield className="h-5 w-5" />}
+                  label="Organizations"
+                  icon={<Building2 className="h-5 w-5" />}
                   pathname={pathname ?? ""}
                   collapsed={collapsed}
                   itemBase={itemBase}
@@ -215,8 +255,18 @@ export default function AppSidebar({
                 />
                 <NavItem
                   href="/admin/users"
-                  label="Admin · Users"
-                  icon={<Shield className="h-5 w-5" />}
+                  label="People"
+                  icon={<Users className="h-5 w-5" />}
+                  pathname={pathname ?? ""}
+                  collapsed={collapsed}
+                  itemBase={itemBase}
+                  itemCollapsed={itemCollapsed}
+                  itemExpanded={itemExpanded}
+                />
+                <NavItem
+                  href="/admin/announcements"
+                  label="Announcements"
+                  icon={<BellRing className="h-5 w-5" />}
                   pathname={pathname ?? ""}
                   collapsed={collapsed}
                   itemBase={itemBase}
@@ -225,43 +275,19 @@ export default function AppSidebar({
                 />
               </div>
             ) : null}
+
           </nav>
 
           {/* Bottom */}
-          <div className="border-t border-[var(--studio-border)] px-2 pb-3 pt-3 space-y-2">
-            {/* Participant shortcut visible only in participant view (full simulation) */}
-            {isParticipantView ? (
-              <NavItem
-                href="/participant"
-                label="Participant"
-                icon={<User className="h-5 w-5" />}
-                pathname={pathname ?? ""}
-                collapsed={collapsed}
-                itemBase={itemBase}
-                itemCollapsed={itemCollapsed}
-                itemExpanded={itemExpanded}
-              />
-            ) : null}
-
-            {/* Settings only for facilitator/admin views */}
-            {canFacilitate ? (
-              <NavItem
-                href="/facilitator/settings"
-                label="Settings"
-                icon={<Settings className="h-5 w-5" />}
-                pathname={pathname ?? ""}
-                collapsed={collapsed}
-                itemBase={itemBase}
-                itemCollapsed={itemCollapsed}
-                itemExpanded={itemExpanded}
-              />
-            ) : null}
-
+          <div className="border-t border-[var(--studio-border)] px-2 pb-3 pt-3.5 space-y-2.5">
             {!collapsed ? (
-              <div className="space-y-2 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3">
-                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                  <span>View Mode</span>
-                  <HintTooltip text="Preview the workspace as a different role without signing out." />
+              <div className="space-y-2.5 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="ui-section-label">View mode</div>
+                  <HintTooltip
+                    text="Preview the workspace from another perspective without signing out."
+                    side="top"
+                  />
                 </div>
                 <RoleSwitcher />
               </div>
@@ -272,6 +298,8 @@ export default function AppSidebar({
               <button
                 type="button"
                 onClick={onToggleCollapsed}
+                aria-expanded={!collapsed}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                 className={[
                   itemBase,
                   collapsed ? itemCollapsed : itemExpanded,
@@ -291,11 +319,11 @@ export default function AppSidebar({
 
             {/* Mini role indicator in sidebar (only expanded) */}
             {!collapsed ? (
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2 text-xs text-[color:var(--studio-muted2)]">
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2.5 text-xs text-[color:var(--studio-muted2)]">
                 <div>
-                  View as: <b className="text-foreground">{activeRole ?? "—"}</b>
+                  Viewing as: <b className="text-foreground">{humanRole(viewingRole)}</b>
                 </div>
-                {isDisabled ? <div className="mt-1 text-red-400">Account disabled</div> : null}
+                {isDisabled ? <div className="mt-1 text-destructive">Account disabled</div> : null}
               </div>
             ) : null}
           </div>

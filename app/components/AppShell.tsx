@@ -81,17 +81,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <main
+        id="main-content"
         className={[
-          isMobile ? "pt-14" : "pt-[64px]",
           isMobile ? "" : sidebarCollapsed ? "pl-[84px]" : "pl-[260px]",
           "transition-[padding] duration-200",
         ].join(" ")}
       >
-        <div className={["mx-auto w-full max-w-[1400px]", isMobile ? "px-5 py-6" : "px-3 pb-4"].join(" ")}>
+        <div className={["mx-auto w-full max-w-[1400px]", isMobile ? "px-5 py-5" : "px-4 py-4"].join(" ")}>
           {isMobile ? (
             children
           ) : (
-            <div className="min-h-[calc(100vh-92px)] rounded-[18px] border border-[var(--studio-border)] bg-[var(--studio-surface)]/78 shadow-soft px-5 py-5 md:px-6 md:py-6">
+            <div className="min-h-[calc(100vh-92px)] rounded-[18px] border border-[var(--studio-border)] bg-[var(--studio-surface)]/78 shadow-soft px-5 py-4 md:px-6 md:py-5">
               {children}
             </div>
           )}

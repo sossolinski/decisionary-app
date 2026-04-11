@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { listScenarios, listSessions } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 
 import {
   Card,
@@ -42,29 +43,37 @@ export default function FacilitatorHomePage() {
     })();
   }, [roleLoading, canFacilitate]);
 
+  useAutoRefresh(
+    async () => {
+      await loadCounts();
+    },
+    { enabled: !roleLoading && canFacilitate, intervalMs: 30000 }
+  );
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Card className="overflow-hidden bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--card)/0.94))]">
-        <CardContent className="relative pt-6">
+        <CardContent className="relative pt-5 pb-5 md:pt-6 md:pb-6">
           <div className="pointer-events-none absolute right-0 top-0 h-32 w-56 rounded-bl-[32px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
-          <div className="relative grid gap-5 lg:grid-cols-[1.35fr_0.85fr] lg:items-start">
-            <div className="space-y-5">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+          <div className="relative grid gap-4 lg:grid-cols-[1.45fr_0.8fr] lg:items-start">
+            <div className="space-y-4">
+              <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
                 Facilitator workspace
+                <HintTooltip
+                  text="Build scenarios, launch sessions, and coordinate the exercise flow from one calm control surface."
+                  side="top"
+                />
               </div>
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Run realistic exercises with less friction.</h1>
-                <p className="max-w-[60ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Build scenarios, launch sessions, and coordinate the exercise flow from one calm control surface.
-                </p>
                 <div className="text-sm text-[color:var(--studio-muted)]">
                   Active organization: <b className="text-foreground">{activeOrg?.name ?? "not selected"}</b>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 pt-0.5">
                 <Button asChild>
                   <Link href="/facilitator/sessions">
                     Go to Sessions
@@ -73,27 +82,21 @@ export default function FacilitatorHomePage() {
                 </Button>
 
                 <Button asChild variant="secondary">
+                  <Link href="/facilitator/sessions#create-session">New Session</Link>
+                </Button>
+
+                <Button asChild variant="outline">
                   <Link href="/facilitator/scenarios">Manage Scenarios</Link>
                 </Button>
 
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    setLoading(true);
-                    await loadCounts();
-                    setLoading(false);
-                  }}
-                >
-                  Refresh
-                </Button>
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+            <div className="grid gap-3 self-start sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <div className="ui-metric-card">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                    <div className="ui-metric-label">
                       Scenarios
                     </div>
                     <div className="mt-2 text-3xl font-semibold">{loading ? "—" : scenarioCount}</div>
@@ -104,10 +107,10 @@ export default function FacilitatorHomePage() {
                 </div>
               </div>
 
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+              <div className="ui-metric-card">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                    <div className="ui-metric-label">
                       Sessions
                     </div>
                     <div className="mt-2 text-3xl font-semibold">{loading ? "—" : sessionCount}</div>
@@ -129,8 +132,8 @@ export default function FacilitatorHomePage() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
+        <Card className="h-full">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CardTitle>1. Prepare</CardTitle>
@@ -141,18 +144,18 @@ export default function FacilitatorHomePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
+          <CardContent className="flex min-h-[92px] items-end justify-between gap-4 pt-0">
+            <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               Create and iterate on content.
             </span>
-            <Button asChild variant="secondary" size="sm">
+            <Button asChild variant="secondary" size="sm" className="shrink-0">
               <Link href="/facilitator/scenarios">Scenarios</Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card className="h-full">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CardTitle>2. Run</CardTitle>
@@ -163,18 +166,18 @@ export default function FacilitatorHomePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <span className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-              Lifecycle control & tools.
+          <CardContent className="flex min-h-[92px] items-end justify-between gap-4 pt-0">
+            <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
+              Lifecycle control and live tools.
             </span>
-            <Button asChild variant="secondary" size="sm">
+            <Button asChild variant="secondary" size="sm" className="shrink-0">
               <Link href="/facilitator/sessions">Sessions</Link>
             </Button>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card className="h-full">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <CardTitle>3. Review</CardTitle>
@@ -185,8 +188,8 @@ export default function FacilitatorHomePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-            (Next) Add After-Action Report & exports.
+          <CardContent className="flex min-h-[92px] items-end pt-0 text-sm leading-6 text-[hsl(var(--muted-foreground))]">
+            <span className="max-w-[28ch]">(Next) Add after-action reports and exports.</span>
           </CardContent>
         </Card>
       </div>

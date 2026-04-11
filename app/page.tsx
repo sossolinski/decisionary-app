@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -22,7 +22,7 @@ type Role = "admin" | "facilitator" | "participant";
 function Hero() {
   return (
     <div className="space-y-4 text-center">
-      <div className="inline-flex items-center rounded-full border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)] shadow-soft">
+      <div className="ui-eyebrow shadow-soft">
         Decisionary
       </div>
       <div className="space-y-2">
@@ -39,6 +39,9 @@ function Hero() {
 
 export default function Home() {
   const router = useRouter();
+  const signInEmailId = useId();
+  const signInPasswordId = useId();
+  const joinCodeId = useId();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -69,7 +72,7 @@ export default function Home() {
       const nextRole = (profile?.active_role ?? profile?.role ?? null) as Role | null;
 
       if (nextRole === "admin") {
-        router.replace("/admin/organizations");
+        router.replace("/admin");
         return;
       }
       if (nextRole === "facilitator") {
@@ -130,10 +133,10 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen px-6 py-10 sm:py-16">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-4xl items-center justify-center">
+    <main className="min-h-screen px-6 py-8 sm:py-12">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-5xl items-center justify-center">
         <div className="w-full">
-          <section className="mx-auto flex w-full max-w-3xl flex-col items-center space-y-8">
+          <section className="mx-auto flex w-full max-w-[920px] flex-col items-center space-y-7">
             <Hero />
 
             <div className="grid w-full gap-4 sm:grid-cols-2">
@@ -144,33 +147,37 @@ export default function Home() {
                     <HintTooltip text="Use this if you already have a Decisionary account. Facilitator and admin access is assigned by your organization." />
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3.5">
                   <form onSubmit={handleSignIn} className="space-y-3">
-                    <Input
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Work email"
-                      autoComplete="email"
-                    />
-                    <Input
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      type="password"
-                      placeholder="Your password"
-                      autoComplete="current-password"
-                    />
+                    <div>
+                      <label htmlFor={signInEmailId} className="ui-form-label">Work email</label>
+                      <Input
+                        id={signInEmailId}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Work email"
+                        autoComplete="email"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={signInPasswordId} className="ui-form-label">Password</label>
+                      <Input
+                        id={signInPasswordId}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        type="password"
+                        placeholder="Your password"
+                        autoComplete="current-password"
+                      />
+                    </div>
 
                     {authError ? (
-                      <div className="rounded-[14px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      <div role="alert" aria-live="assertive" className="rounded-[14px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         {authError}
                       </div>
                     ) : null}
 
-                    {authMessage ? (
-                      <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                        {authMessage}
-                      </div>
-                    ) : null}
+                    {authMessage ? <div role="status" aria-live="polite" className="notice notice-success">{authMessage}</div> : null}
 
                     <div className="space-y-2">
                       <Button type="submit" className="w-full" disabled={authLoading || joinLoading}>
@@ -188,7 +195,7 @@ export default function Home() {
                     </div>
                   </form>
 
-                  <p className="text-sm leading-6 text-[color:var(--studio-muted2)]">
+                  <p className="pt-1 text-sm leading-6 text-[color:var(--studio-muted2)]">
                     New here? Create a participant account first. Facilitator and admin access is granted separately by your organization.
                   </p>
                 </CardContent>
@@ -201,17 +208,21 @@ export default function Home() {
                     <HintTooltip text="Use the 6-character code shared by your facilitator to enter a live exercise without creating an account." />
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-3.5">
                   <form onSubmit={handleJoin} className="space-y-3">
-                    <Input
-                      value={joinCode}
-                      onChange={(e) => setJoinCode(e.target.value)}
-                      placeholder="Session code"
-                      autoCapitalize="characters"
-                    />
+                    <div>
+                      <label htmlFor={joinCodeId} className="ui-form-label">Session code</label>
+                      <Input
+                        id={joinCodeId}
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                        placeholder="Session code"
+                        autoCapitalize="characters"
+                      />
+                    </div>
 
                     {joinError ? (
-                      <div className="rounded-[14px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      <div role="alert" aria-live="assertive" className="rounded-[14px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                         {joinError}
                       </div>
                     ) : (
@@ -230,7 +241,7 @@ export default function Home() {
                     </Button>
                   </form>
 
-                  <p className="text-sm leading-6 text-[color:var(--studio-muted2)]">
+                  <p className="pt-1 text-sm leading-6 text-[color:var(--studio-muted2)]">
                     If you were invited as a facilitator, use the registration link from your email instead of this form.
                   </p>
                 </CardContent>

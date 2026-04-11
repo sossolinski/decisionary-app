@@ -126,13 +126,19 @@ export default function MessageDetail({
     inject?.inject_kind ? { label: "Type", value: inject.inject_kind } : null,
     inject?.entity_scope ? { label: "Focus", value: inject.entity_scope } : null,
   ].filter((item): item is { label: string; value: string } => Boolean(item));
+  const responseHint =
+    activeTab === "pulse"
+      ? "Use confirm only when the team is ready to stand behind the information publicly. Otherwise dismiss it and keep the note in the working trail."
+      : requiresDecision
+        ? "This update should probably end with an explicit team decision and a named owner."
+        : "Pick the smallest clear next step so the team can keep moving without overcommitting too early.";
 
   return (
     <div className="space-y-4">
       {!item ? (
         <Card className="border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
           <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--studio-border)] bg-white/70">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
               {activeTab === "pulse" ? (
                 <Radio className="h-4 w-4" />
               ) : (
@@ -151,13 +157,13 @@ export default function MessageDetail({
         </Card>
       ) : (
         <>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-lg font-semibold leading-snug text-[color:var(--studio-ink)]">
+                <div className="text-xl font-semibold leading-snug text-[color:var(--studio-ink)]">
                   {title}
                 </div>
-                <div className="mt-1 text-xs text-muted-foreground">
+                <div className="mt-1 text-xs font-medium text-muted-foreground">
                   {senderLine ? senderLine : "—"}
                   {item.delivered_at ? (
                     <>
@@ -182,6 +188,15 @@ export default function MessageDetail({
               </div>
             </div>
 
+            <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                Quick read
+              </div>
+              <div className="mt-2 text-sm leading-7 text-[color:var(--studio-muted)]">
+                {responseHint}
+              </div>
+            </div>
+
             {contextualMeta.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {contextualMeta.map((item) => (
@@ -191,21 +206,24 @@ export default function MessageDetail({
             ) : null}
 
             {body ? (
-              <div className="whitespace-pre-wrap rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 text-sm leading-7 text-[color:var(--studio-ink)]">
+              <div className="whitespace-pre-wrap rounded-[20px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-5 text-[15px] leading-8 text-[color:var(--studio-ink)] shadow-[0_14px_30px_hsl(220_20%_20%/0.04)]">
                 {body}
               </div>
             ) : (
-              <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 text-sm text-muted-foreground">
+              <div className="rounded-[20px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-5 text-sm text-muted-foreground">
                 No message body.
               </div>
             )}
           </div>
 
           {/* Comment */}
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <span>Working note</span>
               <HintTooltip text="Capture your reasoning, next step, or draft wording before you record a response." />
+            </div>
+            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+              Add a short note if the team needs context for the response.
             </div>
             <Input
               value={comment}
@@ -220,13 +238,16 @@ export default function MessageDetail({
           </div>
 
           {/* Primary actions */}
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-white/55 p-4">
-            <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
+            <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <span>What do you want to do?</span>
               <HintTooltip text="Pick the response that best matches the situation. Keep it simple and choose the next step the team should take." />
             </div>
+            <div className="mb-3 text-xs text-[color:var(--studio-muted2)]">
+              Choose the clearest next step for the team.
+            </div>
             {requiresDecision ? (
-              <div className="mb-3 rounded-[14px] border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
+              <div className="mb-3 rounded-[14px] border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
                 This update likely needs an explicit team decision and a clear follow-up owner.
               </div>
             ) : null}
@@ -235,11 +256,11 @@ export default function MessageDetail({
               <>
                 <Button variant="default" onClick={onConfirm} className="gap-2">
                   <ShieldCheck className="h-4 w-4" />
-                  Confirm it
+                  Confirm publicly
                 </Button>
                 <Button variant="destructive" onClick={onDeny} className="gap-2">
                   <ShieldX className="h-4 w-4" />
-                  Dismiss it
+                  Dismiss claim
                 </Button>
               </>
             ) : (
@@ -248,11 +269,11 @@ export default function MessageDetail({
                   Monitor only
                 </Button>
                 <Button variant="secondary" onClick={onEscalate}>
-                  Escalate
+                  Escalate now
                 </Button>
                 <Button variant="default" onClick={onAct} className="gap-2">
                   <Send className="h-4 w-4" />
-                  Take action
+                  Take action now
                 </Button>
               </>
             )}

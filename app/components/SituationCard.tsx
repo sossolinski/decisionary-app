@@ -12,7 +12,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
 } from "@/app/components/ui/card";
 
 import {
@@ -148,12 +147,12 @@ function SmallStat({
   value: number | null | undefined;
 }) {
   return (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+    <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-2.5">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
         <span className="opacity-80">{icon}</span>
         <span className="font-semibold">{label}</span>
       </div>
-      <div className="mt-2 text-xl font-semibold leading-none text-[color:var(--studio-ink)]">
+      <div className="mt-1.5 text-[1.15rem] font-semibold leading-none text-[color:var(--studio-ink)]">
         {typeof value === "number" ? value : "—"}
       </div>
     </div>
@@ -170,12 +169,12 @@ function FieldRow({
   value: string;
 }) {
   return (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+    <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-2.5">
       <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
         <span className="opacity-80">{icon}</span>
         <span className="font-semibold">{label}</span>
       </div>
-      <div className="mt-2 text-sm font-semibold leading-6 text-[color:var(--studio-ink)]">{value}</div>
+      <div className="mt-1.5 text-sm font-semibold leading-5 text-[color:var(--studio-ink)]">{value}</div>
     </div>
   );
 }
@@ -304,14 +303,13 @@ export default function SituationCard({
   return (
     <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
       {/* LEFT */}
-      <div className={isMobile ? "" : "col-span-7"}>
+      <div className={isMobile ? "" : "col-span-8"}>
         <Card className="border border-[var(--studio-border)] shadow-soft">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 opacity-80" />
               Situation
             </CardTitle>
-            <CardDescription>Classification and summary</CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-3">
@@ -327,7 +325,7 @@ export default function SituationCard({
               value={location}
             />
 
-            <div className={isMobile ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-3"}>
+            <div className={isMobile ? "grid grid-cols-1 gap-3" : "grid grid-cols-3 gap-2.5"}>
               <FieldRow
                 icon={<CalendarDays className="h-4 w-4" />}
                 label="Date"
@@ -345,30 +343,29 @@ export default function SituationCard({
               />
             </div>
 
-            <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3">
+            <div className="ui-subtle-panel px-3.5 py-3">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
                 <FileText className="h-4 w-4 opacity-80" />
                 <span className="font-semibold">Short description</span>
               </div>
-              <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[color:var(--studio-ink)]">{shortDescription}</div>
+              <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[color:var(--studio-ink)]">{shortDescription}</div>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* RIGHT */}
-      <div className={isMobile ? "" : "col-span-5"}>
+      <div className={isMobile ? "" : "col-span-4"}>
         <Card className="border border-[var(--studio-border)] shadow-soft">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
               <Users className="h-4 w-4 opacity-80" />
               Casualties
             </CardTitle>
-            <CardDescription>Current numbers</CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <SmallStat
                 icon={<AlertTriangle className="h-4 w-4" />}
                 label="Injured"
@@ -392,7 +389,7 @@ export default function SituationCard({
             </div>
 
             {onUpdateCasualties ? (
-              <div className="flex items-center justify-between gap-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <Button
                   variant="outline"
                   onClick={() => setEditOpen((v) => !v)}
@@ -400,11 +397,11 @@ export default function SituationCard({
                   className="gap-2"
                 >
                   <Pencil className="h-4 w-4" />
-                  {editOpen ? "Close" : "Edit"}
+                  {editOpen ? "Close" : "Update counts"}
                 </Button>
 
                 {s && (updatedAt || updatedBy) ? (
-                  <div className="text-xs text-[color:var(--studio-muted2)] text-right">
+                  <div className="text-xs leading-5 text-[color:var(--studio-muted2)] text-right">
                     {updatedAt ? `Last updated: ${updatedAt}` : ""}
                     {updatedAt && updatedBy ? " · " : ""}
                     {updatedBy ? `By: ${updatedBy}` : ""}

@@ -9,6 +9,7 @@ import {
   type ParticipantSession,
 } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 
 import {
   Card,
@@ -57,6 +58,13 @@ export default function ParticipantPage() {
     if (!loading && userId) void load();
   }, [loading, userId]);
 
+  useAutoRefresh(
+    async () => {
+      await load();
+    },
+    { enabled: !loading && !!userId, intervalMs: 30000 }
+  );
+
   if (loading) {
     return <div className="text-sm text-[hsl(var(--muted-foreground))]">Loading…</div>;
   }
@@ -90,7 +98,7 @@ export default function ParticipantPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-xs text-[hsl(var(--muted-foreground))]">
+            <div className="ui-section-label">
               Signed in · Current identity
             </div>
             <div className="font-medium">{label}</div>
@@ -102,9 +110,6 @@ export default function ParticipantPage() {
             </Button>
             <Button asChild variant="secondary">
               <Link href="/facilitator">Facilitator</Link>
-            </Button>
-            <Button variant="secondary" onClick={load} disabled={busy}>
-              {busy ? "Refreshing…" : "Refresh"}
             </Button>
           </div>
         </CardContent>
@@ -123,7 +128,7 @@ export default function ParticipantPage() {
           ) : null}
 
           {items.length === 0 ? (
-            <div className="text-sm text-[hsl(var(--muted-foreground))]">
+            <div className="ui-empty-state">
               No sessions yet. Use “Join session” if you received a code from the facilitator.
             </div>
           ) : (
@@ -131,7 +136,7 @@ export default function ParticipantPage() {
               {items.map((s) => (
                 <div
                   key={s.id}
-                  className="surface2 rounded-[var(--radius)] px-4 py-3 shadow-soft flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between"
+                  className="ui-list-card flex flex-col gap-2 px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
                 >
                   <div className="min-w-0">
                     <div className="font-medium truncate">
@@ -153,6 +158,7 @@ export default function ParticipantPage() {
                       variant="outline"
                       onClick={() => navigator.clipboard?.writeText(s.join_code)}
                       title="Copy join code"
+                      aria-label={`Copy join code for session ${s.title}`}
                     >
                       Copy code
                     </Button>

@@ -1,7 +1,7 @@
 // app/(app)/facilitator/scenarios/[id]/page.tsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -25,6 +25,7 @@ import {
 } from "@/lib/scenarios";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -32,7 +33,6 @@ import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   ArrowLeft,
-  RefreshCw,
   Save,
   FileText,
   Calendar,
@@ -182,16 +182,19 @@ const RULE_PRESETS = [
 ] as const;
 
 function Select({
+  id,
   value,
   onChange,
   children,
 }: {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   children: React.ReactNode;
 }) {
   return (
     <select
+      id={id}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={[
@@ -304,6 +307,7 @@ export default function FacilitatorScenarioEditorPage() {
   const params = useParams<{ id: string }>();
   const { loading: roleLoading, canFacilitate } = useRoleContext();
   const id = params?.id ?? "";
+  const formId = useId();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -362,6 +366,43 @@ export default function FacilitatorScenarioEditorPage() {
   const [nrEffectConfig, setNrEffectConfig] = useState('{\n  "create_consequence": true,\n  "severity": "medium"\n}');
   const [nrEnabled, setNrEnabled] = useState(true);
 
+  const basicsTitleId = `${formId}-basics-title`;
+  const basicsDescriptionId = `${formId}-basics-description`;
+  const eventDateId = `${formId}-event-date`;
+  const eventTimeId = `${formId}-event-time`;
+  const eventTimezoneId = `${formId}-event-timezone`;
+  const eventLocationId = `${formId}-event-location`;
+  const situationTypeId = `${formId}-situation-type`;
+  const shortDescriptionId = `${formId}-short-description`;
+  const injuredId = `${formId}-injured`;
+  const fatalitiesId = `${formId}-fatalities`;
+  const uninjuredId = `${formId}-uninjured`;
+  const unknownId = `${formId}-unknown`;
+  const newInjectPanelId = `${formId}-new-inject-panel`;
+  const newRulePanelId = `${formId}-new-rule-panel`;
+  const niTitleId = `${formId}-new-inject-title`;
+  const niScheduledId = `${formId}-new-inject-scheduled`;
+  const niChannelId = `${formId}-new-inject-channel`;
+  const niKindId = `${formId}-new-inject-kind`;
+  const niSeverityId = `${formId}-new-inject-severity`;
+  const niSourceTypeId = `${formId}-new-inject-source-type`;
+  const niSenderNameId = `${formId}-new-inject-sender-name`;
+  const niSenderOrgId = `${formId}-new-inject-sender-org`;
+  const niEntityScopeId = `${formId}-new-inject-entity-scope`;
+  const niVisibilityId = `${formId}-new-inject-visibility`;
+  const niDecisionTemplateKeyId = `${formId}-new-inject-decision-template-key`;
+  const niBranchKeyId = `${formId}-new-inject-branch-key`;
+  const niRequiresDecisionId = `${formId}-new-inject-requires-decision`;
+  const niBodyId = `${formId}-new-inject-body`;
+  const nrRuleKeyId = `${formId}-new-rule-key`;
+  const nrRuleNameId = `${formId}-new-rule-name`;
+  const nrDescriptionId = `${formId}-new-rule-description`;
+  const nrTriggerTypeId = `${formId}-new-rule-trigger-type`;
+  const nrEnabledId = `${formId}-new-rule-enabled`;
+  const nrTriggerConfigId = `${formId}-new-rule-trigger-config`;
+  const nrConditionConfigId = `${formId}-new-rule-condition-config`;
+  const nrEffectConfigId = `${formId}-new-rule-effect-config`;
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -402,6 +443,13 @@ export default function FacilitatorScenarioEditorPage() {
     if (roleLoading || !canFacilitate) return;
     void load();
   }, [roleLoading, canFacilitate, load]);
+
+  useAutoRefresh(
+    async () => {
+      await load();
+    },
+    { enabled: !roleLoading && canFacilitate && !saving, intervalMs: 30000 }
+  );
 
   const sortedInjects = useMemo(() => {
     return [...injects].sort((a, b) => {
@@ -748,7 +796,7 @@ export default function FacilitatorScenarioEditorPage() {
           <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+              <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
                 Scenario editor
               </div>
@@ -769,11 +817,6 @@ export default function FacilitatorScenarioEditorPage() {
                 Back
               </Button>
 
-              <Button variant="outline" onClick={load} disabled={saving} className="gap-2">
-                <RefreshCw className="h-4 w-4 opacity-80" />
-                Refresh
-              </Button>
-
               <Button onClick={onSaveScenario} disabled={!hasChanges || saving} className="gap-2">
                 <Save className="h-4 w-4" />
                 {saving ? "…" : "Save changes"}
@@ -784,7 +827,7 @@ export default function FacilitatorScenarioEditorPage() {
 
         {error ? (
           <div className="border-t border-[var(--studio-border)] px-5 py-3">
-            <div className="notice notice-error">
+            <div className="notice notice-error" role="alert" aria-live="assertive">
               {error}
             </div>
           </div>
@@ -803,12 +846,13 @@ export default function FacilitatorScenarioEditorPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Title</div>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+              <label htmlFor={basicsTitleId} className="text-sm font-semibold">Title</label>
+              <Input id={basicsTitleId} value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Description</div>
+              <label htmlFor={basicsDescriptionId} className="text-sm font-semibold">Description</label>
               <textarea
+                id={basicsDescriptionId}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -828,23 +872,23 @@ export default function FacilitatorScenarioEditorPage() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Date</div>
-              <Input value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="YYYY-MM-DD" />
+              <label htmlFor={eventDateId} className="text-sm font-semibold">Date</label>
+              <Input id={eventDateId} value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="YYYY-MM-DD" />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Time</div>
-              <Input value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="HH:MM" />
+              <label htmlFor={eventTimeId} className="text-sm font-semibold">Time</label>
+              <Input id={eventTimeId} value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="HH:MM" />
             </div>
             <div className="space-y-1 sm:col-span-2">
-              <div className="text-sm font-semibold">Timezone</div>
-              <Input value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g., Europe/Warsaw" />
+              <label htmlFor={eventTimezoneId} className="text-sm font-semibold">Timezone</label>
+              <Input id={eventTimezoneId} value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g., Europe/Warsaw" />
             </div>
             <div className="space-y-1 sm:col-span-2">
-              <div className="text-sm font-semibold flex items-center gap-2">
+              <label htmlFor={eventLocationId} className="text-sm font-semibold flex items-center gap-2">
                 <MapPin className="h-4 w-4 opacity-70" />
                 Location
-              </div>
-              <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Airport / city / region…" />
+              </label>
+              <Input id={eventLocationId} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Airport / city / region…" />
             </div>
           </CardContent>
         </Card>
@@ -859,16 +903,18 @@ export default function FacilitatorScenarioEditorPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Situation type</div>
+              <label htmlFor={situationTypeId} className="text-sm font-semibold">Situation type</label>
               <Input
+                id={situationTypeId}
                 value={situationType}
                 onChange={(e) => setSituationType(e.target.value)}
                 placeholder="e.g., Accident, Disruption, Security…"
               />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Short description</div>
+              <label htmlFor={shortDescriptionId} className="text-sm font-semibold">Short description</label>
               <textarea
+                id={shortDescriptionId}
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
                 className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -888,20 +934,20 @@ export default function FacilitatorScenarioEditorPage() {
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Injured</div>
-              <Input value={injured} onChange={(e) => setInjured(e.target.value)} />
+              <label htmlFor={injuredId} className="text-sm font-semibold">Injured</label>
+              <Input id={injuredId} value={injured} onChange={(e) => setInjured(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Fatalities</div>
-              <Input value={fatalities} onChange={(e) => setFatalities(e.target.value)} />
+              <label htmlFor={fatalitiesId} className="text-sm font-semibold">Fatalities</label>
+              <Input id={fatalitiesId} value={fatalities} onChange={(e) => setFatalities(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Uninjured</div>
-              <Input value={uninjured} onChange={(e) => setUninjured(e.target.value)} />
+              <label htmlFor={uninjuredId} className="text-sm font-semibold">Uninjured</label>
+              <Input id={uninjuredId} value={uninjured} onChange={(e) => setUninjured(e.target.value)} />
             </div>
             <div className="space-y-1">
-              <div className="text-sm font-semibold">Unknown</div>
-              <Input value={unknown} onChange={(e) => setUnknown(e.target.value)} />
+              <label htmlFor={unknownId} className="text-sm font-semibold">Unknown</label>
+              <Input id={unknownId} value={unknown} onChange={(e) => setUnknown(e.target.value)} />
             </div>
           </CardContent>
         </Card>
@@ -918,7 +964,13 @@ export default function FacilitatorScenarioEditorPage() {
               </div>
             </div>
 
-          <Button variant="outline" onClick={() => setNewInjectOpen((v) => !v)} className="gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setNewInjectOpen((v) => !v)}
+            className="gap-2"
+            aria-expanded={newInjectOpen}
+            aria-controls={newInjectPanelId}
+          >
             <Plus className="h-4 w-4" />
             New inject
             {newInjectOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
@@ -928,7 +980,12 @@ export default function FacilitatorScenarioEditorPage() {
         <div className="p-5 space-y-4">
           {/* NEW INJECT (collapsible) */}
           {newInjectOpen ? (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3">
+            <div
+              id={newInjectPanelId}
+              role="region"
+              aria-label="Create inject"
+              className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3"
+            >
               <div className="text-sm font-semibold flex items-center gap-2">
                 <Plus className="h-4 w-4 opacity-80" />
                 Create inject
@@ -936,23 +993,23 @@ export default function FacilitatorScenarioEditorPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Title</div>
-                  <Input value={niTitle} onChange={(e) => setNiTitle(e.target.value)} />
+                  <label htmlFor={niTitleId} className="text-sm font-semibold">Title</label>
+                  <Input id={niTitleId} value={niTitle} onChange={(e) => setNiTitle(e.target.value)} />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Scheduled at</div>
-                  <Input type="datetime-local" value={niScheduledLocal} onChange={(e) => setNiScheduledLocal(e.target.value)} />
+                  <label htmlFor={niScheduledId} className="text-sm font-semibold">Scheduled at</label>
+                  <Input id={niScheduledId} type="datetime-local" value={niScheduledLocal} onChange={(e) => setNiScheduledLocal(e.target.value)} />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Channel</div>
-                  <Input value={niChannel} onChange={(e) => setNiChannel(e.target.value)} placeholder="ops / media / social / pulse…" />
+                  <label htmlFor={niChannelId} className="text-sm font-semibold">Channel</label>
+                  <Input id={niChannelId} value={niChannel} onChange={(e) => setNiChannel(e.target.value)} placeholder="ops / media / social / pulse…" />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Kind</div>
-                  <Select value={niInjectKind} onChange={(v) => setNiInjectKind(v as NonNullable<Inject["inject_kind"]>)}>
+                  <label htmlFor={niKindId} className="text-sm font-semibold">Kind</label>
+                  <Select id={niKindId} value={niInjectKind} onChange={(v) => setNiInjectKind(v as NonNullable<Inject["inject_kind"]>)}>
                     {INJECT_KIND_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -962,13 +1019,13 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Severity</div>
-                  <Input value={niSeverity} onChange={(e) => setNiSeverity(e.target.value)} placeholder="low / medium / high / critical…" />
+                  <label htmlFor={niSeverityId} className="text-sm font-semibold">Severity</label>
+                  <Input id={niSeverityId} value={niSeverity} onChange={(e) => setNiSeverity(e.target.value)} placeholder="low / medium / high / critical…" />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Source type</div>
-                  <Select value={niSourceType} onChange={(v) => setNiSourceType(v as NonNullable<Inject["source_type"]>)}>
+                  <label htmlFor={niSourceTypeId} className="text-sm font-semibold">Source type</label>
+                  <Select id={niSourceTypeId} value={niSourceType} onChange={(v) => setNiSourceType(v as NonNullable<Inject["source_type"]>)}>
                     {SOURCE_TYPE_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -978,18 +1035,19 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Sender name</div>
-                  <Input value={niSenderName} onChange={(e) => setNiSenderName(e.target.value)} />
+                  <label htmlFor={niSenderNameId} className="text-sm font-semibold">Sender name</label>
+                  <Input id={niSenderNameId} value={niSenderName} onChange={(e) => setNiSenderName(e.target.value)} />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Sender org</div>
-                  <Input value={niSenderOrg} onChange={(e) => setNiSenderOrg(e.target.value)} />
+                  <label htmlFor={niSenderOrgId} className="text-sm font-semibold">Sender org</label>
+                  <Input id={niSenderOrgId} value={niSenderOrg} onChange={(e) => setNiSenderOrg(e.target.value)} />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Entity scope</div>
+                  <label htmlFor={niEntityScopeId} className="text-sm font-semibold">Entity scope</label>
                   <Input
+                    id={niEntityScopeId}
                     value={niEntityScope}
                     onChange={(e) => setNiEntityScope(e.target.value)}
                     placeholder="flight / airport / passengers / crew…"
@@ -997,8 +1055,8 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Visibility</div>
-                  <Select value={niVisibilityScope} onChange={(v) => setNiVisibilityScope(v as (typeof VISIBILITY_SCOPE_OPTIONS)[number])}>
+                  <label htmlFor={niVisibilityId} className="text-sm font-semibold">Visibility</label>
+                  <Select id={niVisibilityId} value={niVisibilityScope} onChange={(v) => setNiVisibilityScope(v as (typeof VISIBILITY_SCOPE_OPTIONS)[number])}>
                     {VISIBILITY_SCOPE_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -1008,8 +1066,9 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Decision template key</div>
+                  <label htmlFor={niDecisionTemplateKeyId} className="text-sm font-semibold">Decision template key</label>
                   <Input
+                    id={niDecisionTemplateKeyId}
                     value={niDecisionTemplateKey}
                     onChange={(e) => setNiDecisionTemplateKey(e.target.value)}
                     placeholder="e.g., passenger-welfare-response"
@@ -1017,20 +1076,23 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Branch key</div>
-                  <Input value={niBranchKey} onChange={(e) => setNiBranchKey(e.target.value)} placeholder="Optional follow-up branch" />
+                  <label htmlFor={niBranchKeyId} className="text-sm font-semibold">Branch key</label>
+                  <Input id={niBranchKeyId} value={niBranchKey} onChange={(e) => setNiBranchKey(e.target.value)} placeholder="Optional follow-up branch" />
                 </div>
 
                 <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
                   <label className="flex items-start gap-3">
                     <input
+                      id={niRequiresDecisionId}
                       type="checkbox"
                       checked={niRequiresDecision}
                       onChange={(e) => setNiRequiresDecision(e.target.checked)}
                       className="mt-1 h-4 w-4 rounded border border-[var(--studio-border)]"
                     />
                     <div className="space-y-1">
-                      <div className="text-sm font-semibold">Requires decision</div>
+                      <div className="text-sm font-semibold">
+                        <span className="sr-only">Checkbox:</span> Requires decision
+                      </div>
                       <div className="text-xs leading-5 text-[color:var(--studio-muted2)]">
                         Turn this inject into a structured decision point so the live session can create follow-up work, not just log a message.
                       </div>
@@ -1039,8 +1101,9 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
-                  <div className="text-sm font-semibold">Body</div>
+                  <label htmlFor={niBodyId} className="text-sm font-semibold">Body</label>
                   <textarea
+                    id={niBodyId}
                     value={niBody}
                     onChange={(e) => setNiBody(e.target.value)}
                     className="min-h-[120px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -1137,6 +1200,7 @@ export default function FacilitatorScenarioEditorPage() {
                           onClick={() => onMove(si.id, -1)}
                           disabled={idx === 0 || !!isBusy}
                           title="Move up"
+                          aria-label={`Move inject ${inj?.title ?? "Untitled inject"} up`}
                           className="gap-2"
                         >
                           <MoveUp className="h-4 w-4" />
@@ -1149,6 +1213,7 @@ export default function FacilitatorScenarioEditorPage() {
                           onClick={() => onMove(si.id, 1)}
                           disabled={idx === sortedInjects.length - 1 || !!isBusy}
                           title="Move down"
+                          aria-label={`Move inject ${inj?.title ?? "Untitled inject"} down`}
                           className="gap-2"
                         >
                           <MoveDown className="h-4 w-4" />
@@ -1159,6 +1224,9 @@ export default function FacilitatorScenarioEditorPage() {
                           variant="secondary"
                           size="sm"
                           onClick={() => setOpenSiId(isOpen ? null : si.id)}
+                          aria-expanded={isOpen}
+                          aria-controls={`${formId}-inject-editor-${si.id}`}
+                          aria-label={`${isOpen ? "Close" : "Edit"} inject ${inj?.title ?? "Untitled inject"}`}
                           className="gap-2"
                         >
                           <Settings2 className="h-4 w-4" />
@@ -1172,6 +1240,7 @@ export default function FacilitatorScenarioEditorPage() {
                           disabled={!!isBusy}
                           className="gap-2"
                           title="Detach inject from scenario"
+                          aria-label={`Detach inject ${inj?.title ?? "Untitled inject"} from scenario`}
                         >
                           <Link2Off className="h-4 w-4" />
                           Detach
@@ -1180,18 +1249,25 @@ export default function FacilitatorScenarioEditorPage() {
                     </div>
 
                     {isOpen ? (
-                      <div className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2">
+                      <div
+                        id={`${formId}-inject-editor-${si.id}`}
+                        role="region"
+                        aria-label={`Edit inject ${inj?.title ?? "Untitled inject"}`}
+                        className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2"
+                      >
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Title</div>
+                          <label htmlFor={`${formId}-inject-title-${si.id}`} className="text-sm font-semibold">Title</label>
                           <Input
+                            id={`${formId}-inject-title-${si.id}`}
                             defaultValue={inj?.title ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { title: e.target.value })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Scheduled at</div>
+                          <label htmlFor={`${formId}-inject-scheduled-${si.id}`} className="text-sm font-semibold">Scheduled at</label>
                           <Input
+                            id={`${formId}-inject-scheduled-${si.id}`}
                             type="datetime-local"
                             defaultValue={scheduledLocal}
                             onBlur={(e) => onReschedule(si.id, e.target.value)}
@@ -1199,16 +1275,18 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Channel</div>
+                          <label htmlFor={`${formId}-inject-channel-${si.id}`} className="text-sm font-semibold">Channel</label>
                           <Input
+                            id={`${formId}-inject-channel-${si.id}`}
                             defaultValue={inj?.channel ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { channel: e.target.value })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Kind</div>
+                          <label htmlFor={`${formId}-inject-kind-${si.id}`} className="text-sm font-semibold">Kind</label>
                           <Select
+                            id={`${formId}-inject-kind-${si.id}`}
                             value={inj?.inject_kind ?? "operational"}
                             onChange={(value) => inj?.id && onUpdateInject(inj.id, { inject_kind: value as Inject["inject_kind"] })}
                           >
@@ -1221,16 +1299,18 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Severity</div>
+                          <label htmlFor={`${formId}-inject-severity-${si.id}`} className="text-sm font-semibold">Severity</label>
                           <Input
+                            id={`${formId}-inject-severity-${si.id}`}
                             defaultValue={inj?.severity ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { severity: e.target.value || null })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Source type</div>
+                          <label htmlFor={`${formId}-inject-source-type-${si.id}`} className="text-sm font-semibold">Source type</label>
                           <Select
+                            id={`${formId}-inject-source-type-${si.id}`}
                             value={inj?.source_type ?? "manual"}
                             onChange={(value) => inj?.id && onUpdateInject(inj.id, { source_type: value as Inject["source_type"] })}
                           >
@@ -1243,24 +1323,27 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Sender name</div>
+                          <label htmlFor={`${formId}-inject-sender-name-${si.id}`} className="text-sm font-semibold">Sender name</label>
                           <Input
+                            id={`${formId}-inject-sender-name-${si.id}`}
                             defaultValue={inj?.sender_name ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { sender_name: e.target.value || null })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Sender org</div>
+                          <label htmlFor={`${formId}-inject-sender-org-${si.id}`} className="text-sm font-semibold">Sender org</label>
                           <Input
+                            id={`${formId}-inject-sender-org-${si.id}`}
                             defaultValue={inj?.sender_org ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { sender_org: e.target.value || null })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Entity scope</div>
+                          <label htmlFor={`${formId}-inject-entity-scope-${si.id}`} className="text-sm font-semibold">Entity scope</label>
                           <Input
+                            id={`${formId}-inject-entity-scope-${si.id}`}
                             defaultValue={inj?.entity_scope ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { entity_scope: e.target.value || null })}
                             placeholder="flight / airport / passengers / crew…"
@@ -1268,8 +1351,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Visibility</div>
+                          <label htmlFor={`${formId}-inject-visibility-${si.id}`} className="text-sm font-semibold">Visibility</label>
                           <Select
+                            id={`${formId}-inject-visibility-${si.id}`}
                             value={inj?.visibility_scope ?? "all"}
                             onChange={(value) => inj?.id && onUpdateInject(inj.id, { visibility_scope: value })}
                           >
@@ -1282,8 +1366,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Decision template key</div>
+                          <label htmlFor={`${formId}-inject-decision-template-key-${si.id}`} className="text-sm font-semibold">Decision template key</label>
                           <Input
+                            id={`${formId}-inject-decision-template-key-${si.id}`}
                             defaultValue={inj?.decision_template_key ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { decision_template_key: e.target.value || null })}
                             placeholder="Optional decision playbook key"
@@ -1291,8 +1376,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Branch key</div>
+                          <label htmlFor={`${formId}-inject-branch-key-${si.id}`} className="text-sm font-semibold">Branch key</label>
                           <Input
+                            id={`${formId}-inject-branch-key-${si.id}`}
                             defaultValue={inj?.branch_key ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { branch_key: e.target.value || null })}
                             placeholder="Optional consequence branch"
@@ -1302,6 +1388,7 @@ export default function FacilitatorScenarioEditorPage() {
                         <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
                           <label className="flex items-start gap-3">
                             <input
+                              id={`${formId}-inject-requires-decision-${si.id}`}
                               type="checkbox"
                               checked={!!inj?.requires_decision}
                               onChange={(e) => inj?.id && onUpdateInject(inj.id, { requires_decision: e.target.checked })}
@@ -1317,8 +1404,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
-                          <div className="text-sm font-semibold">Body</div>
+                          <label htmlFor={`${formId}-inject-body-${si.id}`} className="text-sm font-semibold">Body</label>
                           <textarea
+                            id={`${formId}-inject-body-${si.id}`}
                             defaultValue={inj?.body ?? ""}
                             onBlur={(e) => inj?.id && onUpdateInject(inj.id, { body: e.target.value })}
                             className="min-h-[140px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -1338,6 +1426,7 @@ export default function FacilitatorScenarioEditorPage() {
                               disabled={!!isBusy}
                               className="gap-2"
                               title="Delete inject from injects table"
+                              aria-label={`Delete inject ${inj.title ?? "Untitled inject"} from the library`}
                             >
                               <Trash2 className="h-4 w-4" />
                               Delete inject
@@ -1375,7 +1464,13 @@ export default function FacilitatorScenarioEditorPage() {
             </div>
           </div>
 
-          <Button variant="outline" onClick={() => setNewRuleOpen((v) => !v)} className="gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setNewRuleOpen((v) => !v)}
+            className="gap-2"
+            aria-expanded={newRuleOpen}
+            aria-controls={newRulePanelId}
+          >
             <Plus className="h-4 w-4" />
             New rule
             {newRuleOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
@@ -1441,23 +1536,29 @@ export default function FacilitatorScenarioEditorPage() {
           </div>
 
           {newRuleOpen ? (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3">
+            <div
+              id={newRulePanelId}
+              role="region"
+              aria-label="Create rule template"
+              className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3"
+            >
               <div className="text-sm font-semibold">Create rule template</div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Rule key</div>
-                  <Input value={nrRuleKey} onChange={(e) => setNrRuleKey(e.target.value)} placeholder="e.g., welfare-delay-escalation" />
+                  <label htmlFor={nrRuleKeyId} className="text-sm font-semibold">Rule key</label>
+                  <Input id={nrRuleKeyId} value={nrRuleKey} onChange={(e) => setNrRuleKey(e.target.value)} placeholder="e.g., welfare-delay-escalation" />
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Rule name</div>
-                  <Input value={nrRuleName} onChange={(e) => setNrRuleName(e.target.value)} placeholder="Passenger welfare escalates when unresolved" />
+                  <label htmlFor={nrRuleNameId} className="text-sm font-semibold">Rule name</label>
+                  <Input id={nrRuleNameId} value={nrRuleName} onChange={(e) => setNrRuleName(e.target.value)} placeholder="Passenger welfare escalates when unresolved" />
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
-                  <div className="text-sm font-semibold">Description</div>
+                  <label htmlFor={nrDescriptionId} className="text-sm font-semibold">Description</label>
                   <textarea
+                    id={nrDescriptionId}
                     value={nrDescription}
                     onChange={(e) => setNrDescription(e.target.value)}
                     className="min-h-[80px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -1466,8 +1567,8 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Trigger type</div>
-                  <Select value={nrTriggerType} onChange={(v) => setNrTriggerType(v as (typeof RULE_TRIGGER_OPTIONS)[number])}>
+                  <label htmlFor={nrTriggerTypeId} className="text-sm font-semibold">Trigger type</label>
+                  <Select id={nrTriggerTypeId} value={nrTriggerType} onChange={(v) => setNrTriggerType(v as (typeof RULE_TRIGGER_OPTIONS)[number])}>
                     {RULE_TRIGGER_OPTIONS.map((option) => (
                       <option key={option} value={option}>
                         {option}
@@ -1479,6 +1580,7 @@ export default function FacilitatorScenarioEditorPage() {
                 <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3">
                   <label className="flex items-start gap-3">
                     <input
+                      id={nrEnabledId}
                       type="checkbox"
                       checked={nrEnabled}
                       onChange={(e) => setNrEnabled(e.target.checked)}
@@ -1494,8 +1596,9 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Trigger config</div>
+                  <label htmlFor={nrTriggerConfigId} className="text-sm font-semibold">Trigger config</label>
                   <textarea
+                    id={nrTriggerConfigId}
                     value={nrTriggerConfig}
                     onChange={(e) => setNrTriggerConfig(e.target.value)}
                     className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
@@ -1503,8 +1606,9 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="text-sm font-semibold">Condition config</div>
+                  <label htmlFor={nrConditionConfigId} className="text-sm font-semibold">Condition config</label>
                   <textarea
+                    id={nrConditionConfigId}
                     value={nrConditionConfig}
                     onChange={(e) => setNrConditionConfig(e.target.value)}
                     className="min-h-[130px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
@@ -1512,8 +1616,9 @@ export default function FacilitatorScenarioEditorPage() {
                 </div>
 
                 <div className="space-y-1 md:col-span-2">
-                  <div className="text-sm font-semibold">Effect config</div>
+                  <label htmlFor={nrEffectConfigId} className="text-sm font-semibold">Effect config</label>
                   <textarea
+                    id={nrEffectConfigId}
                     value={nrEffectConfig}
                     onChange={(e) => setNrEffectConfig(e.target.value)}
                     className="min-h-[150px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 font-mono text-xs"
@@ -1584,6 +1689,9 @@ export default function FacilitatorScenarioEditorPage() {
                           variant="secondary"
                           size="sm"
                           onClick={() => setOpenRuleId(isOpen ? null : rule.id)}
+                          aria-expanded={isOpen}
+                          aria-controls={`${formId}-rule-editor-${rule.id}`}
+                          aria-label={`${isOpen ? "Close" : "Edit"} rule ${rule.rule_name}`}
                           className="gap-2"
                         >
                           <Settings2 className="h-4 w-4" />
@@ -1596,6 +1704,7 @@ export default function FacilitatorScenarioEditorPage() {
                           onClick={() => onDeleteRuleTemplate(rule.id)}
                           disabled={!!isBusy}
                           className="gap-2"
+                          aria-label={`Delete rule ${rule.rule_name}`}
                         >
                           <Trash2 className="h-4 w-4" />
                           Delete
@@ -1604,26 +1713,34 @@ export default function FacilitatorScenarioEditorPage() {
                     </div>
 
                     {isOpen ? (
-                      <div className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2">
+                      <div
+                        id={`${formId}-rule-editor-${rule.id}`}
+                        role="region"
+                        aria-label={`Edit rule ${rule.rule_name}`}
+                        className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2"
+                      >
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Rule key</div>
+                          <label htmlFor={`${formId}-rule-key-${rule.id}`} className="text-sm font-semibold">Rule key</label>
                           <Input
+                            id={`${formId}-rule-key-${rule.id}`}
                             defaultValue={rule.rule_key}
                             onBlur={(e) => onUpdateRuleTemplate(rule.id, { rule_key: e.target.value })}
                           />
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Rule name</div>
+                          <label htmlFor={`${formId}-rule-name-${rule.id}`} className="text-sm font-semibold">Rule name</label>
                           <Input
+                            id={`${formId}-rule-name-${rule.id}`}
                             defaultValue={rule.rule_name}
                             onBlur={(e) => onUpdateRuleTemplate(rule.id, { rule_name: e.target.value })}
                           />
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
-                          <div className="text-sm font-semibold">Description</div>
+                          <label htmlFor={`${formId}-rule-description-${rule.id}`} className="text-sm font-semibold">Description</label>
                           <textarea
+                            id={`${formId}-rule-description-${rule.id}`}
                             defaultValue={rule.description ?? ""}
                             onBlur={(e) => onUpdateRuleTemplate(rule.id, { description: e.target.value || null })}
                             className="min-h-[80px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
@@ -1631,8 +1748,8 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Trigger type</div>
-                          <Select value={rule.trigger_type} onChange={(value) => onUpdateRuleTemplate(rule.id, { trigger_type: value })}>
+                          <label htmlFor={`${formId}-rule-trigger-type-${rule.id}`} className="text-sm font-semibold">Trigger type</label>
+                          <Select id={`${formId}-rule-trigger-type-${rule.id}`} value={rule.trigger_type} onChange={(value) => onUpdateRuleTemplate(rule.id, { trigger_type: value })}>
                             {RULE_TRIGGER_OPTIONS.map((option) => (
                               <option key={option} value={option}>
                                 {option}
@@ -1644,6 +1761,7 @@ export default function FacilitatorScenarioEditorPage() {
                         <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3">
                           <label className="flex items-start gap-3">
                             <input
+                              id={`${formId}-rule-enabled-${rule.id}`}
                               type="checkbox"
                               checked={rule.enabled}
                               onChange={(e) => onUpdateRuleTemplate(rule.id, { enabled: e.target.checked })}
@@ -1659,8 +1777,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Trigger config</div>
+                          <label htmlFor={`${formId}-rule-trigger-config-${rule.id}`} className="text-sm font-semibold">Trigger config</label>
                           <textarea
+                            id={`${formId}-rule-trigger-config-${rule.id}`}
                             defaultValue={jsonText(rule.trigger_config)}
                             onBlur={(e) => {
                               try {
@@ -1675,8 +1794,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1">
-                          <div className="text-sm font-semibold">Condition config</div>
+                          <label htmlFor={`${formId}-rule-condition-config-${rule.id}`} className="text-sm font-semibold">Condition config</label>
                           <textarea
+                            id={`${formId}-rule-condition-config-${rule.id}`}
                             defaultValue={jsonText(rule.condition_config)}
                             onBlur={(e) => {
                               try {
@@ -1691,8 +1811,9 @@ export default function FacilitatorScenarioEditorPage() {
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
-                          <div className="text-sm font-semibold">Effect config</div>
+                          <label htmlFor={`${formId}-rule-effect-config-${rule.id}`} className="text-sm font-semibold">Effect config</label>
                           <textarea
+                            id={`${formId}-rule-effect-config-${rule.id}`}
                             defaultValue={jsonText(rule.effect_config)}
                             onBlur={(e) => {
                               try {

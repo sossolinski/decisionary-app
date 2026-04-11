@@ -1,8 +1,9 @@
 // app/(app)/sessions/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -172,21 +173,35 @@ function RuntimeMetric({
   label,
   value,
   icon,
+  compact = false,
 }: {
   label: string;
   value: string;
   icon: React.ReactNode;
+  compact?: boolean;
 }) {
   return (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-3 shadow-[0_10px_30px_hsl(220_20%_20%/0.04)]">
+    <div
+      className={[
+        "ui-metric-card shadow-[0_10px_30px_hsl(220_20%_20%/0.04)]",
+        compact ? "px-3.5 py-2.5" : "px-4 py-3",
+      ].join(" ")}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+          <div className="ui-metric-label">
             {label}
           </div>
-          <div className="mt-1 text-xl font-semibold tracking-tight">{value}</div>
+          <div className={compact ? "mt-0.5 text-lg font-semibold tracking-tight" : "mt-1 text-xl font-semibold tracking-tight"}>
+            {value}
+          </div>
         </div>
-        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--studio-border)] bg-white/80 text-[color:var(--studio-ink)]">
+        <div
+          className={[
+            "flex items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-ink)]",
+            compact ? "h-8 w-8" : "h-9 w-9",
+          ].join(" ")}
+        >
           {icon}
         </div>
       </div>
@@ -224,25 +239,25 @@ type SessionMetaPayloadRow = {
 };
 
 function taskPriorityTone(priority: SessionTask["priority"]) {
-  if (priority === "critical") return "text-red-600 bg-red-500/10 border-red-500/20";
-  if (priority === "high") return "text-orange-700 bg-orange-500/10 border-orange-500/20";
-  if (priority === "medium") return "text-yellow-700 bg-yellow-500/10 border-yellow-500/20";
-  return "text-emerald-700 bg-emerald-500/10 border-emerald-500/20";
+  if (priority === "critical") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
+  if (priority === "high") return "text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/20";
+  if (priority === "medium") return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
+  return "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20";
 }
 
 function consequenceSeverityTone(severity: SessionConsequence["severity"]) {
-  if (severity === "critical") return "text-red-600 bg-red-500/10 border-red-500/20";
-  if (severity === "high") return "text-orange-700 bg-orange-500/10 border-orange-500/20";
-  if (severity === "medium") return "text-yellow-700 bg-yellow-500/10 border-yellow-500/20";
-  return "text-sky-700 bg-sky-500/10 border-sky-500/20";
+  if (severity === "critical") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
+  if (severity === "high") return "text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/20";
+  if (severity === "medium") return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
+  return "text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/20";
 }
 
 function taskStatusTone(status: SessionTask["status"]) {
-  if (status === "done") return "text-emerald-700 bg-emerald-500/10 border-emerald-500/20";
-  if (status === "in_progress") return "text-sky-700 bg-sky-500/10 border-sky-500/20";
-  if (status === "blocked") return "text-red-600 bg-red-500/10 border-red-500/20";
-  if (status === "cancelled") return "text-slate-600 bg-slate-500/10 border-slate-500/20";
-  return "text-yellow-700 bg-yellow-500/10 border-yellow-500/20";
+  if (status === "done") return "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20";
+  if (status === "in_progress") return "text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/20";
+  if (status === "blocked") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
+  if (status === "cancelled") return "text-slate-600 dark:text-slate-300 bg-slate-500/10 border-slate-500/20";
+  return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
 }
 
 function consequenceTypeLabel(item: SessionConsequence) {
@@ -252,12 +267,19 @@ function consequenceTypeLabel(item: SessionConsequence) {
   return item.consequence_type;
 }
 
+function consequenceImpactLabel(item: SessionConsequence) {
+  if (item.task_id) return "Created or updated follow-up";
+  if (item.decision_id) return "Changed decision pressure";
+  if (item.session_inject_id) return "Changed update chain";
+  return "Added session pressure";
+}
+
 function eventTone(kind: "inject" | "action" | "decision" | "task" | "consequence") {
-  if (kind === "inject") return "border-sky-500/20 bg-sky-500/10 text-sky-800";
-  if (kind === "action") return "border-slate-500/20 bg-slate-500/10 text-slate-800";
-  if (kind === "decision") return "border-indigo-500/20 bg-indigo-500/10 text-indigo-800";
-  if (kind === "task") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-800";
-  return "border-orange-500/20 bg-orange-500/10 text-orange-800";
+  if (kind === "inject") return "border-sky-500/20 bg-sky-500/10 text-sky-800 dark:text-sky-300";
+  if (kind === "action") return "border-slate-500/20 bg-slate-500/10 text-slate-800 dark:text-slate-300";
+  if (kind === "decision") return "border-indigo-500/20 bg-indigo-500/10 text-indigo-800 dark:text-indigo-300";
+  if (kind === "task") return "border-emerald-500/20 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300";
+  return "border-orange-500/20 bg-orange-500/10 text-orange-800 dark:text-orange-300";
 }
 
 function timelineWindowMinutes(window: TimelineWindow) {
@@ -286,6 +308,28 @@ function compactId(value: string | null | undefined, prefix: string) {
   return `${prefix} ${value.slice(0, 8)}`;
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+}
+
+function humanActionLabel(actionType: string | null | undefined) {
+  if (actionType === "ignore") return "Monitoring update";
+  if (actionType === "escalate") return "Escalation";
+  if (actionType === "act") return "Action taken";
+  return "Team response";
+}
+
+function humanDecisionLabel(decisionType: string | null | undefined) {
+  if (decisionType === "ignore") return "Decision to monitor";
+  if (decisionType === "escalate") return "Decision to escalate";
+  if (decisionType === "act") return "Decision to act";
+  if (decisionType === "confirm") return "Confirmed update";
+  if (decisionType === "deny") return "Dismissed update";
+  return "Team decision";
+}
+
 function timelineConnectorLabel(
   current: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs },
   next: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs; sourceId: string } | null
@@ -293,22 +337,22 @@ function timelineConnectorLabel(
   if (!next) return null;
 
   if (current.kind === "task" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
-    return "created by decision";
+    return "created after decision";
   }
   if (current.kind === "task" && current.refs.sourceActionId && current.refs.sourceActionId === next.sourceId) {
-    return "spawned by action";
+    return "created after response";
   }
   if (current.kind === "consequence" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
-    return "triggered by decision";
+    return "followed decision";
   }
   if (current.kind === "consequence" && current.refs.taskId && current.refs.taskId === next.sourceId) {
-    return "touches task";
+    return "linked to follow-up";
   }
   if (current.kind === "decision" && current.refs.actionId && current.refs.actionId === next.sourceId) {
-    return "derived from action";
+    return "followed response";
   }
   if (current.kind === "action" && current.refs.injectId && current.refs.injectId === next.sourceId) {
-    return "responds to inject";
+    return "response to update";
   }
 
   return null;
@@ -320,6 +364,10 @@ export default function SessionParticipantPage() {
   const validSessionId = useMemo(() => isUuid(sessionId), [sessionId]);
 
   const isMobile = useMediaQuery("(max-width: 1100px)");
+  const copPanelId = useId();
+  const toolsPanelId = useId();
+  const filtersPanelId = useId();
+  const insightsPanelId = useId();
 
   const [error, setError] = useState<string | null>(null);
 
@@ -346,6 +394,9 @@ export default function SessionParticipantPage() {
   const [streamTab, setStreamTab] = useState<StreamTab>("inbox");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersWrapRef = useRef<HTMLDivElement | null>(null);
+  const filtersButtonRef = useRef<HTMLButtonElement | null>(null);
+  const filtersPanelRef = useRef<HTMLDivElement | null>(null);
+  const [filtersPanelPosition, setFiltersPanelPosition] = useState<{ top: number; left: number } | null>(null);
 
   // Inbox filters
   const [inboxSearch, setInboxSearch] = useState("");
@@ -383,13 +434,13 @@ export default function SessionParticipantPage() {
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
   const [advancedInsightsOpen, setAdvancedInsightsOpen] = useState(false);
-  const toolsWrapRef = useRef<HTMLDivElement | null>(null);
 
   // Unseen badges
   const [unseenInbox, setUnseenInbox] = useState(0);
   const [unseenPulse, setUnseenPulse] = useState(0);
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
+  const totalWaitingUpdates = unseenInbox + unseenPulse;
 
   function setRuntimeNoticeFromResult(
     result: { created_consequences: number; created_tasks: number; created_injects: number } | null
@@ -607,7 +658,7 @@ export default function SessionParticipantPage() {
     return () => clearInterval(t);
   }, [startedAt]);
 
-  // Close popovers (filters/tools) on Escape/outside click
+  // Close popovers on Escape/outside click
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -616,11 +667,6 @@ export default function SessionParticipantPage() {
       }
     }
     function onDocMouseDown(e: MouseEvent) {
-      if (toolsOpen) {
-        const el = toolsWrapRef.current;
-        if (el && e.target instanceof Node && !el.contains(e.target))
-          setToolsOpen(false);
-      }
       if (filtersOpen) {
         const el2 = filtersWrapRef.current;
         if (el2 && e.target instanceof Node && !el2.contains(e.target))
@@ -633,7 +679,99 @@ export default function SessionParticipantPage() {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onDocMouseDown);
     };
-  }, [toolsOpen, filtersOpen]);
+  }, [filtersOpen]);
+
+  useLayoutEffect(() => {
+    if (!filtersOpen) return;
+
+    const gap = 10;
+    const viewportPadding = 16;
+
+    function placePanel() {
+      const button = filtersButtonRef.current;
+      const panel = filtersPanelRef.current;
+      if (!button || !panel) return;
+
+      const anchor = button.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth;
+      const panelHeight = panel.offsetHeight;
+
+      let nextLeft = anchor.right - panelWidth;
+      let nextTop = anchor.bottom + gap;
+
+      if (nextTop + panelHeight > window.innerHeight - viewportPadding) {
+        nextTop = Math.max(viewportPadding, anchor.top - panelHeight - gap);
+      }
+
+      if (nextLeft < viewportPadding) nextLeft = viewportPadding;
+      if (nextLeft + panelWidth > window.innerWidth - viewportPadding) {
+        nextLeft = window.innerWidth - panelWidth - viewportPadding;
+      }
+
+      setFiltersPanelPosition({ top: nextTop, left: nextLeft });
+    }
+
+    placePanel();
+    window.addEventListener("resize", placePanel);
+    window.addEventListener("scroll", placePanel, true);
+    return () => {
+      window.removeEventListener("resize", placePanel);
+      window.removeEventListener("scroll", placePanel, true);
+    };
+  }, [filtersOpen, streamTab]);
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (isEditableTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const key = e.key.toLowerCase();
+
+      if (key === "i") {
+        e.preventDefault();
+        setStreamTab("inbox");
+        setSelectedSource("inbox");
+        markSeen("inbox");
+        void refreshUnseen();
+        return;
+      }
+
+      if (key === "p") {
+        e.preventDefault();
+        setStreamTab("pulse");
+        setSelectedSource("pulse");
+        markSeen("pulse");
+        void refreshUnseen();
+        return;
+      }
+
+      if (key === "f") {
+        e.preventDefault();
+        setFiltersOpen((value) => !value);
+        return;
+      }
+
+      if (key === "c") {
+        e.preventDefault();
+        setCopOpen((value) => !value);
+        return;
+      }
+
+      if (key === "d") {
+        e.preventDefault();
+        setAdvancedInsightsOpen((value) => !value);
+        return;
+      }
+
+      if (key === "t" && isFacilitator) {
+        e.preventDefault();
+        setToolsOpen((value) => !value);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFacilitator, refreshUnseen]);
 
   // ✅ Role gating (session_role_assignments OR created_by fallback)
   useEffect(() => {
@@ -765,6 +903,24 @@ export default function SessionParticipantPage() {
   }, [openTasks]);
 
   const latestConsequence = consequences[0] ?? null;
+  const heroEyebrow = isFacilitator ? "Live session control" : "Live session";
+  const heroHint =
+    isFacilitator && totalWaitingUpdates > 0 && overdueTaskCount === 0
+      ? "Watch the feed and decide when to introduce the next turn."
+      : null;
+  const heroSummary = isFacilitator
+    ? overdueTaskCount > 0
+      ? `Clear ${overdueTaskCount === 1 ? "the overdue follow-up" : `${overdueTaskCount} overdue follow-ups`} before the next turn.`
+      : totalWaitingUpdates > 0
+      ? "The feed is active and ready for the next facilitator move."
+      : latestConsequence
+      ? `Latest development: ${compactLabel(latestConsequence.title, "New session development")}.`
+      : "Session is stable. Use COP or Facilitator tools when you want to steer the next turn."
+    : totalWaitingUpdates > 0
+    ? `${totalWaitingUpdates} update${totalWaitingUpdates === 1 ? "" : "s"} waiting. Pick one thread and respond.`
+    : latestConsequence
+    ? `Latest development: ${compactLabel(latestConsequence.title, "New session development")}.`
+    : "Watch the feed, choose one thread, and keep the team moving.";
 
   const runtimeGeneratedTaskIds = useMemo(() => {
     return new Set(
@@ -848,20 +1004,20 @@ export default function SessionParticipantPage() {
         relations: [
           {
             label: selectedItem.injects?.source_type
-              ? `Entered from ${selectedItem.injects.source_type}`
-              : "Session entrypoint",
+              ? `Entered via ${selectedItem.injects.source_type}`
+              : "Starting point",
             emphasis: "primary",
           },
           ...(selectedItem.injects?.decision_template_key
             ? [
                 {
-                  label: `Decision template ${selectedItem.injects.decision_template_key}`,
+                  label: `Decision guidance ${selectedItem.injects.decision_template_key}`,
                   emphasis: "secondary" as const,
                 },
               ]
             : []),
           ...(selectedItem.injects?.requires_decision
-            ? [{ label: "Requires facilitator decision", emphasis: "secondary" as const }]
+            ? [{ label: "Needs a clear decision", emphasis: "secondary" as const }]
             : []),
         ],
         refs: {
@@ -884,9 +1040,9 @@ export default function SessionParticipantPage() {
         id: `action:${action.id}`,
         at: action.created_at,
         kind: "action",
-        title: `${action.action_type.toUpperCase()} action`,
-        detail: action.comment ?? "Operator response recorded.",
-        meta: [action.source.toUpperCase()],
+        title: humanActionLabel(action.action_type),
+        detail: action.comment ?? "Team response recorded.",
+        meta: [action.source === "pulse" ? "Pulse" : "Inbox"],
         relations: [
           action.session_inject_id
             ? {
@@ -894,7 +1050,7 @@ export default function SessionParticipantPage() {
                 emphasis: "primary",
               }
             : {
-                label: "Standalone action",
+                label: "Logged as a separate response",
                 emphasis: "secondary",
               },
         ],
@@ -912,23 +1068,23 @@ export default function SessionParticipantPage() {
         id: `decision:${decision.id}`,
         at: decision.created_at,
         kind: "decision",
-        title: `${decision.decision_type.toUpperCase()} decision`,
-        detail: decision.rationale ?? "Decision captured by the session engine.",
-        meta: [decision.status.toUpperCase()],
+        title: humanDecisionLabel(decision.decision_type),
+        detail: decision.rationale ?? "Team decision recorded.",
+        meta: [decision.status.replaceAll("_", " ")],
         relations: [
           decision.action_id
             ? {
-                label: `Derived from ${linkedAction?.action_type?.toUpperCase() ?? compactId(decision.action_id, "action")}`,
+                label: `Followed ${linkedAction ? humanActionLabel(linkedAction.action_type).toLowerCase() : compactId(decision.action_id, "response")}`,
                 emphasis: "primary",
               }
             : {
-                label: "Recorded directly in session",
+                label: "Recorded directly",
                 emphasis: "secondary",
               },
           ...(decision.session_inject_id
             ? [
                 {
-                  label: `Attached to ${describeInject(decision.session_inject_id)}`,
+                  label: `Linked to ${describeInject(decision.session_inject_id)}`,
                   emphasis: "secondary" as const,
                 },
               ]
@@ -952,13 +1108,13 @@ export default function SessionParticipantPage() {
         at: consequence.applied_at,
         kind: "consequence",
         title: consequence.title,
-        detail: consequence.description ?? "Runtime consequence applied.",
+        detail: consequence.description ?? "A new development was added to the session.",
         meta: [consequenceTypeLabel(consequence), consequence.severity.toUpperCase()],
         relations: [
           ...(consequence.decision_id
             ? [
                 {
-                  label: `Triggered by ${linkedDecision?.decision_type?.toUpperCase() ?? compactId(consequence.decision_id, "decision")}`,
+                  label: `Followed ${linkedDecision ? humanDecisionLabel(linkedDecision.decision_type).toLowerCase() : compactId(consequence.decision_id, "decision")}`,
                   emphasis: "primary" as const,
                 },
               ]
@@ -966,7 +1122,7 @@ export default function SessionParticipantPage() {
           ...(consequence.task_id
             ? [
                 {
-                  label: `Touches task ${compactLabel(linkedTask?.title, compactId(consequence.task_id, "task"))}`,
+                  label: `Linked to ${compactLabel(linkedTask?.title, compactId(consequence.task_id, "follow-up"))}`,
                   emphasis: "primary" as const,
                 },
               ]
@@ -974,7 +1130,7 @@ export default function SessionParticipantPage() {
           ...(consequence.rule_template_id
             ? [
                 {
-                  label: `Applied rule ${compactId(consequence.rule_template_id, "rule")}`,
+                  label: "Created automatically",
                   emphasis: "secondary" as const,
                 },
               ]
@@ -982,7 +1138,7 @@ export default function SessionParticipantPage() {
           ...(consequence.session_inject_id
             ? [
                 {
-                  label: `Anchored to ${describeInject(consequence.session_inject_id)}`,
+                  label: `Linked to ${describeInject(consequence.session_inject_id)}`,
                   emphasis: "secondary" as const,
                 },
               ]
@@ -1012,7 +1168,7 @@ export default function SessionParticipantPage() {
           ...(task.decision_id
             ? [
                 {
-                  label: `Created by ${linkedDecision?.decision_type?.toUpperCase() ?? compactId(task.decision_id, "decision")}`,
+                  label: `Created after ${linkedDecision ? humanDecisionLabel(linkedDecision.decision_type).toLowerCase() : compactId(task.decision_id, "decision")}`,
                   emphasis: "primary" as const,
                 },
               ]
@@ -1020,7 +1176,7 @@ export default function SessionParticipantPage() {
           ...(task.source_action_id
             ? [
                 {
-                  label: `Spawned by ${linkedAction?.action_type?.toUpperCase() ?? compactId(task.source_action_id, "action")}`,
+                  label: `Created after ${linkedAction ? humanActionLabel(linkedAction.action_type).toLowerCase() : compactId(task.source_action_id, "response")}`,
                   emphasis: "primary" as const,
                 },
               ]
@@ -1028,7 +1184,7 @@ export default function SessionParticipantPage() {
           ...(task.session_inject_id
             ? [
                 {
-                  label: `Anchored to ${describeInject(task.session_inject_id)}`,
+                  label: `Linked to ${describeInject(task.session_inject_id)}`,
                   emphasis: "secondary" as const,
                 },
               ]
@@ -1398,9 +1554,9 @@ export default function SessionParticipantPage() {
   if (!validSessionId) {
     return (
       <div className="space-y-2">
-        <h1 className="text-xl font-semibold">Invalid session id</h1>
+        <h1 className="text-xl font-semibold">Invalid session link</h1>
         <p className="text-sm text-[color:var(--studio-muted2)]">
-          This URL parameter must be a UUID.
+          This session address does not look valid.
         </p>
       </div>
     );
@@ -1421,35 +1577,35 @@ export default function SessionParticipantPage() {
       {/* Header */}
       <div className="relative z-20 surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
         <div className="relative overflow-visible rounded-[var(--studio-radius)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-32 rounded-t-[var(--studio-radius)] bg-[radial-gradient(circle_at_top_left,hsl(240_75%_92%/0.7),transparent_58%)]" />
-          <div className="pointer-events-none absolute right-0 top-0 h-40 w-56 rounded-tr-[var(--studio-radius)] bg-[radial-gradient(circle_at_top_right,hsl(205_90%_96%/0.95),transparent_68%)]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-12 rounded-t-[var(--studio-radius)] bg-[linear-gradient(180deg,hsl(220_22%_96%/0.62),transparent_78%)] dark:bg-[linear-gradient(180deg,hsl(225_20%_18%/0.24),transparent_80%)]" />
 
-          <div className="relative px-5 py-5 sm:px-6 sm:py-6">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_360px] xl:items-start">
+          <div className="relative px-5 py-3.5 sm:px-6 sm:py-4">
+            <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.58fr)_220px] xl:items-start">
               <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                <div className="ui-eyebrow">
                   <Radio className="h-3.5 w-3.5" />
-                  {isFacilitator ? "Live session control" : "Exercise workspace"}
+                  {heroEyebrow}
+                  {heroHint ? <HintTooltip text={heroHint} side="right" /> : null}
                 </div>
 
-                <div className="mt-4 text-xs text-[color:var(--studio-muted2)]">
-                  Session {sessionId.slice(0, 8)} • Started {fmt(startedAt)}
+                <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
+                  Started {fmt(startedAt)}
                 </div>
-                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[2rem]">
+                <h1 className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[1.68rem]">
                   {sessionTitle}
                 </h1>
-                <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--studio-muted)]">
-                  {isFacilitator
-                    ? "Run the live exercise, track incoming signals, record decisions, and keep the common operating picture current from one place."
-                    : "Follow incoming updates, assess what matters, and record your response without getting buried in system detail."}
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                  {heroSummary}
                 </p>
 
-                <div className="mt-5 flex flex-wrap items-center gap-2.5">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button
                     variant={copOpen ? "secondary" : "outline"}
                     onClick={() => setCopOpen((v) => !v)}
                     className="gap-2"
                     title="Toggle COP"
+                    aria-expanded={copOpen}
+                    aria-controls={copPanelId}
                   >
                     <LayoutDashboard className="h-4 w-4 opacity-80" />
                     {copOpen ? "Hide COP" : "Open COP"}
@@ -1461,82 +1617,37 @@ export default function SessionParticipantPage() {
                     />
                   </Button>
 
-                  <div className="relative overflow-visible" ref={toolsWrapRef}>
-                    {roleLoading ? (
-                      <div className="px-2 text-xs text-[color:var(--studio-muted2)]">
-                        Loading role…
-                      </div>
-                    ) : isFacilitator ? (
-                      <>
-                        <Button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setToolsOpen((v) => !v);
-                          }}
-                          className="gap-2"
-                        >
-                          <Wrench className="h-4 w-4" />
-                          Facilitator tools
-                        </Button>
-
-                        {toolsOpen ? (
-                          <div className="absolute left-0 top-full z-50 mt-3 w-[420px] max-w-[92vw] overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface)] shadow-soft">
-                            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-                              <div>
-                                <div className="text-sm font-semibold">
-                                  Facilitator panel
-                                </div>
-                                <div className="text-xs text-[color:var(--studio-muted2)]">
-                                  Release injects and steer the live run.
-                                </div>
-                              </div>
-                              <Button
-                                variant="outline"
-                                onClick={() => setToolsOpen(false)}
-                              >
-                                Close
-                              </Button>
-                            </div>
-
-                            <div className="max-h-[70vh] overflow-auto p-4">
-                              <FacilitatorToolsPanel
-                                sessionId={sessionId}
-                                scenarioId={scenario?.id ?? null}
-                                compact
-                                onSessionMetaChange={(meta) =>
-                                  applySessionMeta(meta as SessionMetaPayloadRow | null)
-                                }
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                  </div>
+                  {roleLoading ? (
+                    <div className="px-2 text-xs text-[color:var(--studio-muted2)]">
+                      Loading role…
+                    </div>
+                  ) : isFacilitator ? (
+                    <Button
+                      variant={toolsOpen ? "secondary" : "outline"}
+                      onClick={() => setToolsOpen((v) => !v)}
+                      className="gap-2"
+                      aria-expanded={toolsOpen}
+                      aria-controls={toolsPanelId}
+                    >
+                      <Wrench className="h-4 w-4" />
+                      {toolsOpen ? "Hide tools" : "Facilitator tools"}
+                      <ChevronDown
+                        className={[
+                          "h-4 w-4 opacity-70 transition-transform",
+                          toolsOpen ? "rotate-180" : "",
+                        ].join(" ")}
+                      />
+                    </Button>
+                  ) : null}
                 </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="grid gap-2.5">
                 <RuntimeMetric
                   label="Exercise clock"
                   value={exerciseClock}
                   icon={<Radio className="h-4 w-4" />}
-                />
-                <RuntimeMetric
-                  label="Selected stream"
-                  value={streamTab === "inbox" ? "Inbox" : "Pulse"}
-                  icon={
-                    streamTab === "inbox" ? (
-                      <MessagesSquare className="h-4 w-4" />
-                    ) : (
-                      <Radio className="h-4 w-4" />
-                    )
-                  }
-                />
-                <RuntimeMetric
-                  label="Next actions"
-                  value={String(openTasks.length)}
-                  icon={<CheckSquare className="h-4 w-4" />}
+                  compact
                 />
               </div>
             </div>
@@ -1545,16 +1656,17 @@ export default function SessionParticipantPage() {
 
         {/* COP collapsible */}
         {copOpen ? (
-          <div className="border-t border-[var(--studio-border)]">
+          <div id={copPanelId} className="border-t border-[var(--studio-border)]">
             <div className="px-5 py-4">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
                   <div className="flex items-center gap-2 text-sm font-semibold">
                     <LayoutDashboard className="h-4 w-4 opacity-80" />
-                    Common Operating Picture
-                  </div>
-                  <div className="text-xs text-[color:var(--studio-muted2)] mt-1">
-                    Update key figures and keep the situation current.
+                    COP
+                    <HintTooltip
+                      side="right"
+                      text="Keep the shared situation picture current: event details, location, timing, and casualty counts."
+                    />
                   </div>
                 </div>
               </div>
@@ -1577,6 +1689,34 @@ export default function SessionParticipantPage() {
             </div>
           </div>
         ) : null}
+
+        {isFacilitator && toolsOpen ? (
+          <div id={toolsPanelId} className="border-t border-[var(--studio-border)]">
+            <div className="px-5 py-4">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Wrench className="h-4 w-4 opacity-80" />
+                    Facilitator tools
+                    <HintTooltip
+                      side="right"
+                      text="Release injects, manage runtime pressure, and steer the live run from one place."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <FacilitatorToolsPanel
+                sessionId={sessionId}
+                scenarioId={scenario?.id ?? null}
+                compact
+                onSessionMetaChange={(meta) =>
+                  applySessionMeta(meta as SessionMetaPayloadRow | null)
+                }
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* Streams + Detail */}
@@ -1594,8 +1734,8 @@ export default function SessionParticipantPage() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <MessagesSquare className="h-4 w-4 opacity-80" />
-                  Streams
-                  <HintTooltip text="Monitor incoming messages here and switch between Inbox and Pulse depending on the feed you need." />
+                  Incoming updates
+                  <HintTooltip text="Watch the latest messages here and switch between Inbox and Pulse depending on what you need to review." />
                 </div>
               </div>
 
@@ -1614,6 +1754,7 @@ export default function SessionParticipantPage() {
                     markSeen("inbox");
                     refreshUnseen();
                   }}
+                  aria-pressed={streamTab === "inbox"}
                 >
                   <MessagesSquare className="h-4 w-4 opacity-75" />
                   Inbox <Badge n={unseenInbox} />
@@ -1633,6 +1774,7 @@ export default function SessionParticipantPage() {
                     markSeen("pulse");
                     refreshUnseen();
                   }}
+                  aria-pressed={streamTab === "pulse"}
                 >
                   <Radio className="h-4 w-4 opacity-75" />
                   Pulse <Badge n={unseenPulse} />
@@ -1640,10 +1782,14 @@ export default function SessionParticipantPage() {
 
                 <div className="relative overflow-visible" ref={filtersWrapRef}>
                   <Button
+                    ref={filtersButtonRef}
                     variant="outline"
                     size="icon"
                     onClick={() => setFiltersOpen((v) => !v)}
                     title="Filters"
+                    aria-label={`Open ${streamTab === "inbox" ? "inbox" : "pulse"} filters`}
+                    aria-expanded={filtersOpen}
+                    aria-controls={filtersPanelId}
                     className={
                       streamTab === "inbox"
                         ? inboxFiltersActive
@@ -1657,14 +1803,32 @@ export default function SessionParticipantPage() {
                     <SlidersHorizontal className="h-4 w-4" />
                   </Button>
 
-                  {filtersOpen ? (
-                    <div className="absolute right-0 mt-2 w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
+                  {filtersOpen && typeof document !== "undefined"
+                    ? createPortal(
+                    <div
+                      id={filtersPanelId}
+                      ref={filtersPanelRef}
+                      role="dialog"
+                      aria-label={streamTab === "inbox" ? "Inbox filters" : "Pulse filters"}
+                      className="fixed z-[110] w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden"
+                      style={
+                        filtersPanelPosition
+                          ? {
+                              top: `${filtersPanelPosition.top}px`,
+                              left: `${filtersPanelPosition.left}px`,
+                            }
+                          : {
+                              top: "-9999px",
+                              left: "-9999px",
+                            }
+                      }
+                    >
                       <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-                        <div className="text-sm font-semibold">
-                          {streamTab === "inbox"
-                            ? "Inbox filters"
-                            : "Pulse filters"}
-                        </div>
+                          <div className="text-sm font-semibold">
+                            {streamTab === "inbox"
+                            ? "Filter inbox"
+                            : "Filter pulse"}
+                          </div>
                         <Button
                           variant="outline"
                           onClick={() => setFiltersOpen(false)}
@@ -1679,7 +1843,7 @@ export default function SessionParticipantPage() {
                             <Input
                               value={inboxSearch}
                               onChange={(e) => setInboxSearch(e.target.value)}
-                              placeholder="Search inbox…"
+                              placeholder="Search updates..."
                             />
 
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1689,7 +1853,7 @@ export default function SessionParticipantPage() {
                                   setInboxSeverity(v ? v : null)
                                 }
                               >
-                                <option value="">Severity: All</option>
+                                <option value="">Urgency: All</option>
                                 <option value="low">LOW</option>
                                 <option value="medium">MEDIUM</option>
                                 <option value="high">HIGH</option>
@@ -1722,9 +1886,10 @@ export default function SessionParticipantPage() {
                                   markSeen("inbox");
                                   refreshUnseen();
                                 }}
-                                title="Marks all current Inbox as seen"
+                                title="Mark current inbox items as read"
+                                aria-label="Mark current inbox items as read"
                               >
-                                Mark seen
+                                Mark read
                               </Button>
                             </div>
 
@@ -1737,7 +1902,7 @@ export default function SessionParticipantPage() {
                               ) : null}
                               {inboxSeverity ? (
                                 <Chip
-                                  label={`Severity: ${inboxSeverity}`}
+                                  label={`Urgency: ${inboxSeverity}`}
                                   onClear={() => setInboxSeverity(null)}
                                 />
                               ) : null}
@@ -1754,7 +1919,7 @@ export default function SessionParticipantPage() {
                             <Input
                               value={pulseSearch}
                               onChange={(e) => setPulseSearch(e.target.value)}
-                              placeholder="Search pulse…"
+                              placeholder="Search pulse updates..."
                             />
 
                             <Select
@@ -1763,7 +1928,7 @@ export default function SessionParticipantPage() {
                                 setPulseSeverity(v ? v : null)
                               }
                             >
-                              <option value="">Severity: All</option>
+                              <option value="">Urgency: All</option>
                               <option value="low">LOW</option>
                               <option value="medium">MEDIUM</option>
                               <option value="high">HIGH</option>
@@ -1785,9 +1950,10 @@ export default function SessionParticipantPage() {
                                   markSeen("pulse");
                                   refreshUnseen();
                                 }}
-                                title="Marks all current Pulse as seen"
+                                title="Mark current pulse items as read"
+                                aria-label="Mark current pulse items as read"
                               >
-                                Mark seen
+                                Mark read
                               </Button>
                             </div>
 
@@ -1800,7 +1966,7 @@ export default function SessionParticipantPage() {
                               ) : null}
                               {pulseSeverity ? (
                                 <Chip
-                                  label={`Severity: ${pulseSeverity}`}
+                                  label={`Urgency: ${pulseSeverity}`}
                                   onClear={() => setPulseSeverity(null)}
                                 />
                               ) : null}
@@ -1808,13 +1974,33 @@ export default function SessionParticipantPage() {
                           </>
                         )}
                       </div>
-                    </div>
+                    </div>,
+                    document.body
                   ) : null}
                 </div>
               </div>
             </div>
 
             <div className="p-3">
+              <div className="mb-3 flex flex-wrap gap-2 px-1">
+                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
+                  <kbd className="font-semibold text-foreground">i</kbd> Inbox
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
+                  <kbd className="font-semibold text-foreground">p</kbd> Pulse
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
+                  <kbd className="font-semibold text-foreground">f</kbd> Filters
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
+                  <kbd className="font-semibold text-foreground">d</kbd> Details
+                </span>
+                {isFacilitator ? (
+                  <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
+                    <kbd className="font-semibold text-foreground">t</kbd> Tools
+                  </span>
+                ) : null}
+              </div>
               {streamTab === "inbox" ? (
                 <Inbox
                   sessionId={sessionId}
@@ -1852,14 +2038,14 @@ export default function SessionParticipantPage() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <FileText className="h-4 w-4 opacity-80" />
-                  Message detail
-                  <HintTooltip text="Review the selected item here and record the operational response you want to take." />
+                  Selected update
+                  <HintTooltip text="Read the selected update here and record the response you want the team to take." />
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
                 {selectedItem
-                  ? `Actions: ${actionsLoading ? "…" : selectedActions.length}`
-                  : "No selection"}
+                  ? `Responses saved: ${actionsLoading ? "…" : selectedActions.length}`
+                  : "Nothing selected"}
               </div>
             </div>
 
@@ -1875,6 +2061,11 @@ export default function SessionParticipantPage() {
                 onConfirm={() => doPulseDecision("confirm")}
                 onDeny={() => doPulseDecision("deny")}
               />
+              {!selectedItem ? (
+                <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+                  Start with the update feed on the left, then pick one message to review and respond from here.
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1886,24 +2077,42 @@ export default function SessionParticipantPage() {
               <div className="border-b border-[var(--studio-border)] px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <Sparkles className="h-4 w-4 opacity-80" />
-                  What to focus on now
+                  What matters now
+                </div>
+                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                  A short read on the most important thing to address next.
                 </div>
               </div>
               <div className="p-5">
-                <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
+                <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
                   <div className="text-sm leading-7 text-[color:var(--studio-muted)]">
                     {overdueTaskCount > 0
                       ? "There are overdue follow-ups waiting. Start with the oldest open task and close the loop before moving on."
                       : openTasks.length > 0
                       ? participantFocusText
                       : selectedItem
-                      ? "No follow-up has been assigned yet. Review the selected update and record the response that best fits the situation."
-                      : "Pick an update from the left-hand feed to continue the exercise."}
+                      ? "No follow-up has been assigned yet. Review this update and record the response that best fits the situation."
+                      : "Choose an update from the left to continue the exercise."}
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[color:var(--studio-muted2)]">
+                    {overdueTaskCount > 0 ? (
+                      <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 font-semibold text-orange-800 dark:text-orange-300">
+                        Suggested next move: clear overdue follow-ups
+                      </span>
+                    ) : selectedItem ? (
+                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 font-semibold text-[color:var(--studio-ink)]">
+                        Suggested next move: record a response for the selected update
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2.5 py-1 font-semibold">
+                        Suggested next move: choose one update chain to focus
+                      </span>
+                    )}
                   </div>
                   {latestConsequence?.description ? (
-                    <div className="mt-3 rounded-[12px] border border-[var(--studio-border)] bg-white/80 px-3 py-3 text-sm text-[color:var(--studio-muted)]">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-                        Latest development
+                    <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-3 text-sm text-[color:var(--studio-muted)]">
+                      <div className="ui-section-label">
+                        Latest change
                       </div>
                       <div className="mt-1 font-medium text-[color:var(--studio-ink)]">
                         {latestConsequence.title}
@@ -1922,10 +2131,10 @@ export default function SessionParticipantPage() {
                 <div>
                   <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                     <CheckSquare className="h-4 w-4 opacity-80" />
-                    Follow-up actions
+                    Current follow-ups
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                    The tasks that currently matter for your participation in the exercise.
+                    The actions that currently need attention during the exercise.
                   </div>
                 </div>
                 <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -1936,40 +2145,63 @@ export default function SessionParticipantPage() {
               <div className="p-5">
                 <div className="space-y-3">
                   {participantVisibleTasks.length === 0 ? (
-                    <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                      No follow-up tasks are assigned right now.
+                    <div className="rounded-[18px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                      No follow-ups are assigned right now.
                     </div>
                   ) : (
                     participantVisibleTasks.map((task) => (
                       <div
                         key={task.id}
-                        className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4"
+                        className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-medium text-[color:var(--studio-ink)]">{task.title}</div>
-                            {task.description ? (
-                              <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
-                                {task.description}
+                          <div className="min-w-0 flex items-start gap-3">
+                            <div
+                              className={[
+                                "mt-0.5 h-5 w-5 shrink-0 rounded-full border-2",
+                                task.status === "done"
+                                  ? "border-emerald-500 bg-emerald-500"
+                                  : task.status === "in_progress"
+                                  ? "border-sky-500 bg-sky-500/15"
+                                  : "border-[var(--studio-border-strong)] bg-transparent",
+                              ].join(" ")}
+                              aria-hidden="true"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-medium text-[color:var(--studio-ink)]">{task.title}</div>
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--studio-muted2)]">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                                    taskStatusTone(task.status),
+                                  ].join(" ")}
+                                >
+                                  {task.status.replaceAll("_", " ")}
+                                </span>
+                                <span>{task.due_at ? `Due ${fmt(task.due_at)}` : "No deadline"}</span>
                               </div>
-                            ) : null}
+                            </div>
                           </div>
                           <span
                             className={[
                               "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                              taskStatusTone(task.status),
+                              taskPriorityTone(task.priority),
                             ].join(" ")}
                           >
-                            {task.status.replaceAll("_", " ")}
+                            {task.priority}
                           </span>
                         </div>
-
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        {task.description ? (
+                          <div className="mt-3 pl-8 text-sm leading-6 text-[color:var(--studio-muted)]">
+                            {task.description}
+                          </div>
+                        ) : null}
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--studio-border)] pt-3 pl-8">
                           <div className="text-xs text-[color:var(--studio-muted2)]">
-                            {task.due_at ? `Due ${fmt(task.due_at)}` : "No deadline set"}
+                            {task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}
                           </div>
                           <div className="flex flex-wrap gap-2">
-                            {task.status !== "in_progress" ? (
+                            {task.status !== "in_progress" && task.status !== "done" ? (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1979,14 +2211,16 @@ export default function SessionParticipantPage() {
                                 Start
                               </Button>
                             ) : null}
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              disabled={taskBusyId === task.id}
-                              onClick={() => handleTaskStatus(task.id, "done")}
-                            >
-                              Mark done
-                            </Button>
+                            {task.status !== "done" ? (
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={taskBusyId === task.id}
+                                onClick={() => handleTaskStatus(task.id, "done")}
+                              >
+                                Mark done
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -2002,14 +2236,16 @@ export default function SessionParticipantPage() {
         <button
           type="button"
           onClick={() => setAdvancedInsightsOpen((value) => !value)}
+          aria-expanded={advancedInsightsOpen}
+          aria-controls={insightsPanelId}
           className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
         >
           <div>
             <div className="text-sm font-semibold text-[color:var(--studio-ink)]">
-              Advanced session insights
+              Detailed session view
             </div>
             <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Runtime telemetry, engine links, logs and detailed operational traces.
+              Extra detail for facilitators, including follow-up chains, logs, and session trace.
             </div>
           </div>
           <ChevronDown
@@ -2022,51 +2258,65 @@ export default function SessionParticipantPage() {
       </div>
 
       {advancedInsightsOpen ? (
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+      <div className="flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
+          <kbd className="font-semibold text-foreground">c</kbd> Toggle COP
+        </span>
+        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
+          <kbd className="font-semibold text-foreground">d</kbd> Toggle detailed view
+        </span>
+        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
+          <kbd className="font-semibold text-foreground">Esc</kbd> Close panels
+        </span>
+      </div>
+      ) : null}
+
+      {advancedInsightsOpen ? (
+      <div id={insightsPanelId} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
         <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <Sparkles className="h-4 w-4 opacity-80" />
-              Engine pulse
-              <HintTooltip text="A compact readout of what the runtime is currently generating and where operator attention is accumulating." />
+              Session activity
+              <HintTooltip text="A compact readout of what the session is generating and where team attention is building up." />
             </div>
           </div>
           <div className="text-xs text-[color:var(--studio-muted2)]">
-            {latestConsequence ? `Latest at ${fmt(latestConsequence.applied_at)}` : "Awaiting first consequence"}
+            {latestConsequence ? `Latest at ${fmt(latestConsequence.applied_at)}` : "Waiting for first development"}
           </div>
         </div>
 
         <div className="grid gap-3 p-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 shadow-[0_12px_28px_hsl(220_20%_20%/0.03)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              Runtime pressure
+              Current pressure
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <div>
                 <div className="text-2xl font-semibold tracking-tight">{openTasks.length}</div>
-                <div className="text-xs text-[color:var(--studio-muted2)]">Active tasks</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Open follow-ups</div>
               </div>
               <div>
                 <div className="text-2xl font-semibold tracking-tight">{overdueTaskCount}</div>
-                <div className="text-xs text-[color:var(--studio-muted2)]">Overdue tasks</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Overdue</div>
               </div>
               <div>
                 <div className="text-2xl font-semibold tracking-tight">{consequences.length}</div>
-                <div className="text-xs text-[color:var(--studio-muted2)]">Consequences logged</div>
+                <div className="text-xs text-[color:var(--studio-muted2)]">Developments</div>
               </div>
             </div>
             <div className="mt-4 text-sm text-[color:var(--studio-muted)]">
               {overdueTaskCount > 0
-                ? "The runtime is carrying overdue follow-up work. Clear the oldest tasks first to reduce repeated escalation."
+                ? "The session is carrying overdue follow-up work. Clear the oldest tasks first to reduce repeated escalation."
                 : openTasks.length > 0
                 ? "Follow-up work is active but still inside its current window."
                 : "No active pressure is building right now."}
             </div>
           </div>
 
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4">
+          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 shadow-[0_12px_28px_hsl(220_20%_20%/0.03)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              Latest runtime output
+              Latest development
             </div>
             {latestConsequence ? (
               <>
@@ -2085,17 +2335,17 @@ export default function SessionParticipantPage() {
                 </div>
                 <div className="mt-3 font-medium">{latestConsequence.title}</div>
                 <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
-                  {latestConsequence.description ?? "The engine applied a rule without additional description."}
+                  {latestConsequence.description ?? "A new session development was added without extra detail."}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
-                  {latestConsequence.task_id ? <span>Task linked</span> : null}
-                  {latestConsequence.decision_id ? <span>Decision linked</span> : null}
-                  {latestConsequence.session_inject_id ? <span>Inject linked</span> : null}
+                  {latestConsequence.task_id ? <span>Has follow-up</span> : null}
+                  {latestConsequence.decision_id ? <span>Decision related</span> : null}
+                  {latestConsequence.session_inject_id ? <span>Update related</span> : null}
                 </div>
               </>
             ) : (
               <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">
-                No runtime output yet. Release an inject or record a decision to start the chain.
+                No follow-on developments yet. Release an update or record a decision to start the chain.
               </div>
             )}
           </div>
@@ -2104,7 +2354,7 @@ export default function SessionParticipantPage() {
       ) : null}
 
       {advancedInsightsOpen ? (
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-4 py-3">
         <button
           type="button"
           onClick={() =>
@@ -2115,6 +2365,7 @@ export default function SessionParticipantPage() {
               return next;
             })
           }
+          aria-pressed={selectedThreadOnly}
           className={[
             "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
             selectedThreadOnly
@@ -2122,11 +2373,12 @@ export default function SessionParticipantPage() {
               : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
           ].join(" ")}
         >
-          {selectedThreadOnly ? "Selected thread only" : "Show all threads"}
+          {selectedThreadOnly ? "Focused chain only" : "Show all chains"}
         </button>
         <button
           type="button"
           onClick={() => setRuntimeTasksOnly((value) => !value)}
+          aria-pressed={runtimeTasksOnly}
           className={[
             "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
             runtimeTasksOnly
@@ -2134,14 +2386,14 @@ export default function SessionParticipantPage() {
               : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
           ].join(" ")}
         >
-          {runtimeTasksOnly ? "Runtime tasks only" : "All task sources"}
+          {runtimeTasksOnly ? "Auto-created only" : "All follow-ups"}
         </button>
-        <div className="text-xs text-[color:var(--studio-muted2)]">
+        <div className="text-xs text-[color:var(--studio-muted2)] sm:ml-auto">
           {selectedThreadOnly
             ? activeThreadId
-              ? "Focused on the active thread from the stream or timeline."
-              : "Select a message or timeline event to focus the thread filter."
-          : "Filters are showing the broader session picture."}
+              ? "Focused on the update chain you selected from the feed or timeline."
+              : "Select a message or timeline event to narrow the view to one chain."
+          : "Showing the broader session picture."}
         </div>
       </div>
       ) : null}
@@ -2154,8 +2406,8 @@ export default function SessionParticipantPage() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <CheckSquare className="h-4 w-4 opacity-80" />
-                  Decision board
-                  <HintTooltip text="Escalations and committed actions create structured follow-up tasks so the session behaves more like a real operational workflow." />
+                  Decision tracker
+                  <HintTooltip text="Responses and decisions create follow-up work here so it is easier to see what still needs attention." />
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -2164,6 +2416,19 @@ export default function SessionParticipantPage() {
             </div>
 
             <div className="p-5">
+              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleTasks.length} shown
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleTasks.filter((task) => task.status === "in_progress").length} in progress
+                </span>
+                {visibleTasks.some((task) => task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled") ? (
+                  <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-red-300">
+                    Overdue work needs attention
+                  </span>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 {visibleTasks.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
@@ -2173,7 +2438,12 @@ export default function SessionParticipantPage() {
                   visibleTasks.slice(0, 8).map((task) => (
                     <div
                       key={task.id}
-                      className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
+                      className={[
+                        "rounded-[18px] border bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]",
+                        task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled"
+                          ? "border-red-500/25"
+                          : "border-[var(--studio-border)]",
+                      ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -2194,7 +2464,7 @@ export default function SessionParticipantPage() {
                         </span>
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--studio-border)] pt-3">
                         <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
                           <span
                             className={[
@@ -2204,9 +2474,14 @@ export default function SessionParticipantPage() {
                           >
                             {task.status.replaceAll("_", " ")}
                           </span>
-                          <span>{task.assigned_role ? `Role: ${task.assigned_role}` : "Unassigned"}</span>
+                          {task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled" ? (
+                            <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 font-semibold text-red-300">
+                              Overdue
+                            </span>
+                          ) : null}
+                          <span>{task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}</span>
                           {task.due_at ? <span>{`Due ${fmt(task.due_at)}`}</span> : null}
-                          {task.decision_id ? <span>Decision-linked</span> : null}
+                          {task.decision_id ? <span>Decision related</span> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {task.status !== "in_progress" ? (
@@ -2243,8 +2518,8 @@ export default function SessionParticipantPage() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <Sparkles className="h-4 w-4 opacity-80" />
-                  Consequences
-                  <HintTooltip text="Automatic rule matches land here, so you can see when the scenario engine has added pressure, created follow-up work, or emitted a new development." />
+                  Session developments
+                  <HintTooltip text="Automatic developments appear here when the session adds pressure, follow-up work, or a new turn in the scenario." />
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -2253,16 +2528,29 @@ export default function SessionParticipantPage() {
             </div>
 
             <div className="p-5">
+              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleConsequences.length} shown
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleConsequences.filter((item) => item.task_id).length} with follow-up
+                </span>
+                {visibleConsequences[0] ? (
+                  <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                    Latest {fmt(visibleConsequences[0].applied_at)}
+                  </span>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 {visibleConsequences.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                    No runtime consequences yet.
+                    No automatic developments yet.
                   </div>
                 ) : (
                   visibleConsequences.slice(0, 8).map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
+                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
@@ -2287,11 +2575,15 @@ export default function SessionParticipantPage() {
                         {consequenceTypeLabel(item)} • {fmt(item.applied_at)}
                       </div>
 
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                      <div className="mt-2 text-sm font-medium text-[color:var(--studio-ink)]">
+                        {consequenceImpactLabel(item)}
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--studio-border)] pt-3 text-xs text-[color:var(--studio-muted2)]">
                         {item.task_id ? <span>Created or matched task</span> : null}
-                        {item.decision_id ? <span>Decision-linked</span> : null}
-                        {item.session_inject_id ? <span>Inject-linked</span> : null}
-                        {item.rule_template_id ? <span>Rule template attached</span> : null}
+                        {item.decision_id ? <span>Decision related</span> : null}
+                        {item.session_inject_id ? <span>Update related</span> : null}
+                        {item.rule_template_id ? <span>Created automatically</span> : null}
                       </div>
                     </div>
                   ))
@@ -2307,8 +2599,8 @@ export default function SessionParticipantPage() {
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <ListChecks className="h-4 w-4 opacity-80" />
-                  Action log
-                  <HintTooltip text="This log captures facilitator decisions and visible operator responses during the run." />
+                  Response log
+                  <HintTooltip text="This log shows visible team responses and facilitator decisions during the exercise." />
                 </div>
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
@@ -2321,6 +2613,17 @@ export default function SessionParticipantPage() {
             </div>
 
             <div className="p-5">
+              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleActions.length} shown
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleActions.filter((action) => action.action_type === "escalate").length} escalations
+                </span>
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {visibleActions.filter((action) => action.action_type === "act").length} actioned
+                </span>
+              </div>
               <div className="space-y-2.5">
                 {actionsLoading ? (
                   <div className="text-sm text-[color:var(--studio-muted2)]">
@@ -2328,20 +2631,20 @@ export default function SessionParticipantPage() {
                   </div>
                 ) : visibleActions.length === 0 ? (
                   <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                    No actions yet.
+                    No responses yet.
                   </div>
                 ) : (
                   visibleActions.slice(0, 30).map((a) => (
                     <div
                       key={a.id}
-                      className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3.5 py-3"
+                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-xs text-[color:var(--studio-muted2)]">
                           {fmt(a.created_at)}
                         </div>
-                        <div className="text-xs font-semibold">
-                          {a.action_type.toUpperCase()}
+                        <div className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--studio-ink)]">
+                          {humanActionLabel(a.action_type)}
                         </div>
                       </div>
                       {a.comment ? (
@@ -2364,21 +2667,38 @@ export default function SessionParticipantPage() {
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <Sparkles className="h-4 w-4 opacity-80" />
               Chain of events
-              <HintTooltip text="A stitched sequence of injects, operator actions, decisions, runtime consequences, and follow-up tasks for the current session view." />
+              <HintTooltip text="A connected view of updates, responses, decisions, developments, and follow-up work for the current session." />
             </div>
           </div>
           <div className="text-xs text-[color:var(--studio-muted2)]">
-            {selectedThreadOnly ? "Thread-focused chain" : "Session-wide chain"}
+            {selectedThreadOnly ? "Focused chain" : "Full session chain"}
           </div>
         </div>
 
         <div className="p-5">
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+            <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+              {chainEvents.length} visible events
+            </span>
+            {selectedTimelinePathEvents.length > 0 ? (
+              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.045] px-2.5 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
+                {selectedTimelinePathEvents.length} linked in selected path
+              </span>
+            ) : null}
+            {selectedThreadOnly ? (
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 font-semibold text-[color:var(--studio-ink)]">
+                Focused chain mode
+              </span>
+            ) : null}
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center gap-2">
             {(["15m", "60m", "all"] as TimelineWindow[]).map((window) => (
               <button
                 key={window}
                 type="button"
                 onClick={() => setTimelineWindow(window)}
+                aria-pressed={timelineWindow === window}
                 className={[
                   "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase transition",
                   timelineWindow === window
@@ -2397,6 +2717,7 @@ export default function SessionParticipantPage() {
                 key={kind}
                 type="button"
                 onClick={() => toggleTimelineKind(kind)}
+                aria-pressed={timelineFilter[kind]}
                 className={[
                   "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
                   timelineFilter[kind]
@@ -2419,9 +2740,9 @@ export default function SessionParticipantPage() {
           </div>
 
           {selectedTimelinePathEvents.length > 0 ? (
-            <div className="mb-4 rounded-[16px] border border-emerald-500/20 bg-emerald-500/[0.045] px-4 py-3">
+            <div className="mb-4 rounded-[18px] border border-emerald-500/20 bg-emerald-500/[0.045] px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-emerald-500/20 bg-white px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800">
+                <span className="rounded-full border border-emerald-500/20 bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800 dark:text-emerald-300">
                   Selected path
                 </span>
                 <span className="text-sm text-[color:var(--studio-muted)]">
@@ -2431,11 +2752,11 @@ export default function SessionParticipantPage() {
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
                 {selectedTimelinePathEvents.map((event, index) => (
                   <React.Fragment key={`summary:${event.id}`}>
-                    <span className="rounded-full border border-[var(--studio-border)] bg-white/80 px-2.5 py-1 font-medium text-[color:var(--studio-ink)]">
-                      {event.kind}: {compactLabel(event.title, event.kind)}
+                    <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1 font-medium text-[color:var(--studio-ink)]">
+                      {compactLabel(event.title, event.kind)}
                     </span>
                     {index < selectedTimelinePathEvents.length - 1 ? (
-                      <span className="text-emerald-700/70">→</span>
+                      <span className="text-emerald-700/70 dark:text-emerald-300/70">→</span>
                     ) : null}
                   </React.Fragment>
                 ))}
@@ -2452,21 +2773,33 @@ export default function SessionParticipantPage() {
               {groupedChainEvents.map((group) => (
                 <div key={group.label} className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex rounded-full border border-[var(--studio-border)] bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)] backdrop-blur">
+                    <div className="inline-flex rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)] backdrop-blur">
                       {group.label}
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="icon" onClick={() => scrollTimeline(group.label, "left")} title="Scroll timeline left">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => scrollTimeline(group.label, "left")}
+                        title="Scroll timeline left"
+                        aria-label={`Scroll timeline left for ${group.label}`}
+                      >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
-                      <Button variant="outline" size="icon" onClick={() => scrollTimeline(group.label, "right")} title="Scroll timeline right">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => scrollTimeline(group.label, "right")}
+                        title="Scroll timeline right"
+                        aria-label={`Scroll timeline right for ${group.label}`}
+                      >
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                   <div data-timeline-group={group.label} className="relative overflow-x-auto pb-2 pt-8 snap-x snap-mandatory">
                     <div className="pointer-events-none absolute left-0 right-0 top-[46px] h-px bg-[linear-gradient(90deg,hsl(210_20%_86%),hsl(220_30%_78%),hsl(210_20%_86%))]" />
-                    <div className="flex min-w-max items-start gap-4 pr-4">
+                    <div className="flex min-w-max items-start gap-3 pr-4">
                       {group.items.map((event, index) => {
                         const isActiveThreadEvent =
                           activeThreadId != null && event.sessionInjectId === activeThreadId;
@@ -2498,7 +2831,7 @@ export default function SessionParticipantPage() {
                           <div
                             key={event.id}
                             className={[
-                              "relative w-[260px] min-w-[260px] snap-start space-y-3 transition-opacity",
+                              "relative w-[240px] min-w-[240px] snap-start space-y-3 transition-opacity",
                               isMutedByHover ? "opacity-45" : isMutedBySelection ? "opacity-55" : "opacity-100",
                             ].join(" ")}
                           >
@@ -2507,12 +2840,12 @@ export default function SessionParticipantPage() {
                                 {shouldShowConnectorLabel ? (
                                   <div
                                     className={[
-                                      "mb-2 inline-flex max-w-[124px] rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm",
+                                      "mb-2 inline-flex max-w-[118px] rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm",
                                       isSelectedPathConnector
-                                        ? "border-emerald-500/25 bg-white text-emerald-800"
+                                        ? "border-emerald-500/25 bg-[color:var(--studio-surface2)] text-emerald-800 dark:text-emerald-300"
                                         : isHoveredThreadEvent || isActiveThreadEvent
-                                        ? "border-primary/25 bg-white text-[color:var(--studio-ink)]"
-                                        : "border-orange-500/20 bg-white text-orange-800",
+                                        ? "border-primary/25 bg-[color:var(--studio-surface2)] text-[color:var(--studio-ink)]"
+                                        : "border-orange-500/20 bg-[color:var(--studio-surface2)] text-orange-800 dark:text-orange-300",
                                     ].join(" ")}
                                   >
                                     {connectorLabel}
@@ -2535,7 +2868,7 @@ export default function SessionParticipantPage() {
                             <div className="flex items-center gap-2 px-1">
                               <div
                                 className={[
-                                  "h-3 w-3 rounded-full border-2 bg-white",
+                                  "h-3 w-3 rounded-full border-2 bg-[color:var(--studio-surface2)]",
                                   isSelectedPathEvent
                                     ? "border-emerald-500"
                                     : isActiveThreadEvent || isHoveredThreadEvent
@@ -2552,15 +2885,16 @@ export default function SessionParticipantPage() {
                               onClick={() => focusTimelineEvent(event.sessionInjectId, event.id)}
                               onMouseEnter={() => setHoveredThreadId(event.sessionInjectId)}
                               onMouseLeave={() => setHoveredThreadId((current) => (current === event.sessionInjectId ? null : current))}
+                              aria-pressed={isSelectedPathEvent || isActiveThreadEvent}
                               className={[
-                                "relative min-h-[170px] w-full rounded-[18px] border px-4 py-3 text-left transition",
+                                "relative min-h-[154px] w-full rounded-[18px] border px-4 py-3 text-left transition",
                                 isSelectedPathEvent
                                   ? "border-emerald-500/35 bg-emerald-500/[0.045] shadow-[0_0_0_1px_hsl(160_84%_39%/0.08)]"
                                   : isActiveThreadEvent
-                                  ? "border-primary/35 bg-primary/5 shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
+                                  ? "border-primary/35 bg-primary/10 shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
                                   : isHoveredThreadEvent
                                   ? "border-primary/25 bg-primary/[0.03] shadow-[0_10px_30px_hsl(220_70%_55%/0.08)]"
-                                  : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] hover:border-[var(--studio-border-strong)] hover:bg-white/70",
+                                  : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
                               ].join(" ")}
                             >
                               <div className="flex flex-wrap items-center gap-2">
@@ -2579,14 +2913,14 @@ export default function SessionParticipantPage() {
                                 ) : null}
                               </div>
                               <div className="mt-3 font-medium leading-snug">{event.title}</div>
-                              <div className="mt-2 line-clamp-4 text-sm text-[color:var(--studio-muted)]">
+                              <div className="mt-1.5 line-clamp-3 text-sm leading-6 text-[color:var(--studio-muted)]">
                                 {event.detail}
                               </div>
-                              <div className="mt-3 flex flex-wrap gap-2">
+                              <div className="mt-3 flex flex-wrap gap-1.5">
                                 {event.meta.map((meta) => (
                                   <span
                                     key={`${event.id}:${meta}`}
-                                    className="rounded-full border border-[var(--studio-border)] bg-white/70 px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]"
+                                    className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]"
                                   >
                                     {meta}
                                   </span>
@@ -2594,10 +2928,7 @@ export default function SessionParticipantPage() {
                               </div>
                               {event.relations.length > 0 ? (
                                 <div className="mt-3 border-t border-[var(--studio-border)] pt-3">
-                                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-                                    Causal links
-                                  </div>
-                                  <div className="mt-2 flex flex-wrap gap-2">
+                                  <div className="flex flex-wrap gap-1.5">
                                     {event.relations.map((relation) => (
                                       <span
                                         key={`${event.id}:rel:${relation.label}`}
@@ -2605,7 +2936,7 @@ export default function SessionParticipantPage() {
                                           "rounded-full px-2 py-0.5 text-[11px]",
                                           relation.emphasis === "primary"
                                             ? "border border-primary/20 bg-primary/10 text-[color:var(--studio-ink)]"
-                                            : "border border-[var(--studio-border)] bg-white/70 text-[color:var(--studio-muted2)]",
+                                            : "border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
                                         ].join(" ")}
                                       >
                                         {relation.label}
@@ -2615,8 +2946,8 @@ export default function SessionParticipantPage() {
                                 </div>
                               ) : null}
                               {event.sessionInjectId ? (
-                                <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-                                  Click to focus this thread
+                                <div className="mt-4 text-[11px] font-medium text-[color:var(--studio-muted2)]">
+                                  Focus this update chain
                                 </div>
                               ) : null}
                             </button>

@@ -1,8 +1,9 @@
 // app/(app)/facilitator/scenarios/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import {
   listScenarios,
@@ -10,6 +11,7 @@ import {
   deleteScenario,
   duplicateScenario,
   listFacilitators,
+  listProfileIdentities,
   transferScenarioOwnership,
   shareScenario,
   revokeScenarioShare,
@@ -19,9 +21,11 @@ import {
 
 import { getErrorMessage } from "@/lib/errors";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   BookOpen,
@@ -39,7 +43,6 @@ import {
   X,
   Sparkles,
   Library,
-  UserCog,
 } from "lucide-react";
 
 function fmt(dt?: string | null) {
@@ -53,6 +56,14 @@ function fmt(dt?: string | null) {
 
 function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
+function facilitatorOptionLabel(facilitator: FacilitatorProfile) {
+  if ((facilitator as { full_name?: string | null }).full_name?.trim()) {
+    return (facilitator as { full_name?: string | null }).full_name!.trim();
+  }
+  if (facilitator.email?.trim()) return facilitator.email;
+  return `Facilitator ${facilitator.id.slice(0, 8)}`;
 }
 
 function useOutsideClose(
@@ -147,18 +158,90 @@ export default function FacilitatorScenariosPage() {
 
   // per-scenario target selection (transfer/share/revoke)
   const [targetByScenario, setTargetByScenario] = useState<Record<string, string>>({});
+  const [profileLabelById, setProfileLabelById] = useState<Record<string, string>>({});
 
   // per-scenario manage popover
   const [manageOpenId, setManageOpenId] = useState<string | null>(null);
-  const manageWrapRef = useRef<HTMLDivElement | null>(null);
+  const manageButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const managePanelRef = useRef<HTMLDivElement | null>(null);
+  const [managePanelPosition, setManagePanelPosition] = useState<{ top: number; left: number } | null>(null);
 
-  useOutsideClose(Boolean(manageOpenId), manageWrapRef, () => setManageOpenId(null));
+  useEffect(() => {
+    if (!manageOpenId) return;
+    const openId = manageOpenId;
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setManageOpenId(null);
+    }
+
+    function onDown(e: MouseEvent) {
+      const panel = managePanelRef.current;
+      const button = manageButtonRefs.current[openId];
+      if (!(e.target instanceof Node)) return;
+      if (panel?.contains(e.target) || button?.contains(e.target)) return;
+      setManageOpenId(null);
+    }
+
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [manageOpenId]);
+
+  useLayoutEffect(() => {
+    if (!manageOpenId) return;
+    const openId = manageOpenId;
+
+    const gap = 10;
+    const viewportPadding = 16;
+
+    function placePanel() {
+      const button = manageButtonRefs.current[openId];
+      const panel = managePanelRef.current;
+      if (!button || !panel) return;
+
+      const anchor = button.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth;
+      const panelHeight = panel.offsetHeight;
+
+      let nextLeft = anchor.right - panelWidth;
+      let nextTop = anchor.bottom + gap;
+
+      if (nextTop + panelHeight > window.innerHeight - viewportPadding) {
+        nextTop = Math.max(viewportPadding, anchor.top - panelHeight - gap);
+      }
+
+      if (nextLeft < viewportPadding) nextLeft = viewportPadding;
+      if (nextLeft + panelWidth > window.innerWidth - viewportPadding) {
+        nextLeft = window.innerWidth - panelWidth - viewportPadding;
+      }
+
+      setManagePanelPosition({ top: nextTop, left: nextLeft });
+    }
+
+    placePanel();
+    window.addEventListener("resize", placePanel);
+    window.addEventListener("scroll", placePanel, true);
+    return () => {
+      window.removeEventListener("resize", placePanel);
+      window.removeEventListener("scroll", placePanel, true);
+    };
+  }, [manageOpenId]);
 
   /* ================= AUTH GUARD ================= */
   useEffect(() => {
     if (roleLoading || !canFacilitate) return;
     void load().catch((e: unknown) => setError(getErrorMessage(e, "Failed to load")));
   }, [roleLoading, canFacilitate]);
+
+  useAutoRefresh(
+    async () => {
+      await load();
+    },
+    { enabled: !roleLoading && canFacilitate, intervalMs: 30000 }
+  );
 
   async function load() {
     setError(null);
@@ -169,9 +252,33 @@ export default function FacilitatorScenariosPage() {
     ]);
 
     if (scenariosRes.status === "fulfilled") {
-      setScenarios(scenariosRes.value ?? []);
+      const nextScenarios = scenariosRes.value ?? [];
+      setScenarios(nextScenarios);
+      try {
+        const identities = await listProfileIdentities(
+          nextScenarios.flatMap((scenario) => [
+            scenario.owner_id,
+            scenario.created_by,
+            scenario.updated_by,
+          ])
+        );
+        setProfileLabelById(
+          Object.fromEntries(
+            identities.map((identity) => {
+              const label =
+                identity.full_name?.trim() ||
+                identity.email?.trim() ||
+                `Account ${identity.user_id.slice(0, 8)}`;
+              return [identity.user_id, label];
+            })
+          )
+        );
+      } catch {
+        setProfileLabelById({});
+      }
     } else {
       setScenarios([]);
+      setProfileLabelById({});
       setError(getErrorMessage(scenariosRes.reason, "Failed to load scenarios."));
     }
 
@@ -305,7 +412,7 @@ export default function FacilitatorScenariosPage() {
 
   function who(userId?: string | null) {
     if (!userId) return "—";
-    return idToEmail.get(userId) ?? userId;
+    return profileLabelById[userId] ?? idToEmail.get(userId) ?? `Account ${userId.slice(0, 8)}`;
   }
 
   const filtered = useMemo(() => {
@@ -330,78 +437,38 @@ export default function FacilitatorScenariosPage() {
     return arr;
   }, [filtered]);
 
-  const describedCount = useMemo(
-    () => scenarios.filter((s) => Boolean(s.description?.trim())).length,
-    [scenarios]
-  );
-
   /* ================= UI ================= */
   return (
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
           <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
-          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
+          <div className="relative grid gap-5 lg:grid-cols-[1.45fr_auto] lg:items-start">
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+              <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
                 Scenario library
+                <HintTooltip
+                  text="Build, search, and refine your scenario library here, then hand off clean exercises into live sessions."
+                  side="bottom"
+                />
               </div>
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Design exercises that feel structured before they feel stressful.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Build, search, and refine your scenario library in one place, then hand off clean exercises into live sessions.
-                </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" onClick={load} className="gap-2" title="Reload scenarios">
-                  <RefreshCw className="h-4 w-4 opacity-80" />
-                  Refresh
-                </Button>
-              </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
+            <div className="grid gap-3 sm:grid-cols-1">
+              <div className="ui-metric-card">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                      Total
-                    </div>
+                    <div className="ui-metric-label">Scenarios</div>
                     <div className="mt-2 text-3xl font-semibold">{scenarios.length}</div>
                   </div>
-                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
-                    <Library className="h-4 w-4 text-foreground/80" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                      Detailed
-                    </div>
-                    <div className="mt-2 text-3xl font-semibold">{describedCount}</div>
-                  </div>
-                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
-                    <BookOpen className="h-4 w-4 text-foreground/80" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                      Facilitators
-                    </div>
-                    <div className="mt-2 text-3xl font-semibold">{facilitators.length}</div>
-                  </div>
-                  <div className="rounded-[12px] border border-[var(--studio-border)] bg-background/80 p-2">
-                    <UserCog className="h-4 w-4 text-foreground/80" />
+                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
+                    <Library className="h-4 w-4 text-foreground" />
                   </div>
                 </div>
               </div>
@@ -412,21 +479,30 @@ export default function FacilitatorScenariosPage() {
         <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
           <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
             <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                Search
+              <div className="flex items-center gap-2">
+                <div className="ui-section-label">
+                  Search
+                </div>
+                <HintTooltip
+                  text="Find scenarios by title, description, or ID."
+                  side="right"
+                />
               </div>
               <div className="relative w-full">
                 <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-60" />
                 <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search scenarios by title, description, or id…" className="pl-9" />
               </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                {sorted.length} of {scenarios.length} scenarios visible
-              </div>
             </div>
 
             <div className="space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                Create
+              <div className="flex items-center gap-2">
+                <div className="ui-section-label">
+                  Create
+                </div>
+                <HintTooltip
+                  text="Start a new draft here and flesh it out in the editor."
+                  side="left"
+                />
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <div className="w-full">
@@ -440,9 +516,6 @@ export default function FacilitatorScenariosPage() {
                   <Check className="h-4 w-4" />
                   {loading ? "…" : "Create"}
                 </Button>
-              </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                Start a new draft and flesh it out in the editor.
               </div>
             </div>
           </div>
@@ -484,8 +557,8 @@ export default function FacilitatorScenariosPage() {
                 <div className="px-5 py-5 md:px-6 md:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-2.5 shadow-soft">
-                        <BookOpen className="h-5 w-5 opacity-80" />
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-primary/20 bg-primary/10 shadow-soft">
+                        <BookOpen className="h-4.5 w-4.5 text-primary" />
                       </div>
 
                       <div className="min-w-0">
@@ -538,22 +611,42 @@ export default function FacilitatorScenariosPage() {
                       Open
                     </Button>
 
-                    <div
-                      className={open ? "relative z-20" : "relative"}
-                      ref={open ? manageWrapRef : undefined}
-                    >
+                    <div className="relative">
                       <Button
+                        ref={(node) => {
+                          manageButtonRefs.current[s.id] = node;
+                        }}
                         variant="outline"
                         size="icon"
                         onClick={() => setManageOpenId((prev) => (prev === s.id ? null : s.id))}
                         title="Manage"
-                        aria-label="Manage"
+                        aria-label={`Manage scenario ${s.title}`}
+                        aria-expanded={open}
+                        aria-controls={open ? `manage-scenario-${s.id}` : undefined}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
 
-                      {open ? (
-                        <div className="absolute right-0 mt-2 w-[520px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
+                      {open && typeof document !== "undefined"
+                        ? createPortal(
+                        <div
+                          id={`manage-scenario-${s.id}`}
+                          ref={managePanelRef}
+                          role="dialog"
+                          aria-label={`Manage scenario ${s.title}`}
+                          className="fixed z-[110] w-[380px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden"
+                          style={
+                            managePanelPosition
+                              ? {
+                                  top: `${managePanelPosition.top}px`,
+                                  left: `${managePanelPosition.left}px`,
+                                }
+                              : {
+                                  top: "-9999px",
+                                  left: "-9999px",
+                                }
+                          }
+                        >
                           <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
                             <div className="text-sm font-semibold">Manage scenario</div>
                             <Button variant="outline" size="sm" onClick={() => setManageOpenId(null)} className="gap-2">
@@ -590,8 +683,12 @@ export default function FacilitatorScenariosPage() {
 
                             {/* Target selector */}
                             <div className="space-y-2">
-                              <div className="text-xs font-semibold text-[color:var(--studio-muted2)]">
+                              <div className="flex items-center gap-2 text-xs font-semibold text-[color:var(--studio-muted2)]">
                                 Facilitator target
+                                <HintTooltip
+                                  text="Use the selected facilitator for transfer, share, or revoke."
+                                  side="left"
+                                />
                               </div>
                               <Select
                                 value={target}
@@ -604,18 +701,15 @@ export default function FacilitatorScenariosPage() {
                               >
                                 <option value="">Select facilitator…</option>
                                 {facilitators.map((f) => (
-                                  <option key={f.id} value={f.id}>
-                                    {f.email ?? f.id}
+                                <option key={f.id} value={f.id}>
+                                    {facilitatorOptionLabel(f)}
                                   </option>
                                 ))}
                               </Select>
-                              <div className="text-xs text-[color:var(--studio-muted2)]">
-                                Used for transfer / share / revoke.
-                              </div>
                             </div>
 
                             {/* Transfer + Share */}
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-2">
                               <Button
                                 variant="secondary"
                                 className="justify-start gap-2"
@@ -627,34 +721,33 @@ export default function FacilitatorScenariosPage() {
                                 Transfer
                               </Button>
 
-                              <Button
-                                variant="outline"
-                                className="justify-start gap-2"
-                                onClick={() => onShare(s.id)}
-                                disabled={busy || !target}
-                                title="Share read-only"
-                              >
-                                <Share2 className="h-4 w-4" />
-                                Share
-                              </Button>
+                              <div className="grid grid-cols-2 gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="justify-start gap-2"
+                                  onClick={() => onShare(s.id)}
+                                  disabled={busy || !target}
+                                  title="Share read-only"
+                                >
+                                  <Share2 className="h-4 w-4" />
+                                  Share
+                                </Button>
 
-                              <Button
-                                variant="outline"
-                                className="justify-start gap-2"
-                                onClick={() => onRevoke(s.id)}
-                                disabled={busy || !target}
-                                title="Revoke share"
-                              >
-                                <Ban className="h-4 w-4" />
-                                Revoke
-                              </Button>
-                            </div>
-
-                            <div className="text-[11px] text-[color:var(--studio-muted2)]">
-                              Transfer changes owner (you will no longer see it). Share keeps owner and grants read-only access.
+                                <Button
+                                  variant="outline"
+                                  className="justify-start gap-2"
+                                  onClick={() => onRevoke(s.id)}
+                                  disabled={busy || !target}
+                                  title="Revoke share"
+                                >
+                                  <Ban className="h-4 w-4" />
+                                  Revoke
+                                </Button>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        </div>,
+                        document.body
                       ) : null}
                     </div>
                   </div>

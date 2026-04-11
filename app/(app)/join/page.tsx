@@ -1,7 +1,7 @@
 // app/(app)/join/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { joinSessionByCode } from "@/lib/sessionsRuntime";
@@ -20,6 +20,7 @@ import HintTooltip from "@/app/components/HintTooltip";
 
 export default function JoinPage() {
   const router = useRouter();
+  const joinCodeId = useId();
 
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,42 +47,64 @@ export default function JoinPage() {
   }
 
   return (
-    <div className="min-h-[60vh] flex items-center justify-center">
-      <div className="w-full max-w-md">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span>Join session</span>
-              <HintTooltip text="Enter the session code provided by your facilitator to open the exercise." />
-            </CardTitle>
-          </CardHeader>
+    <main className="min-h-screen px-6 py-8 sm:py-12">
+      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-4xl items-center justify-center">
+        <section className="flex w-full max-w-[780px] flex-col items-center space-y-6">
+          <div className="space-y-3 text-center">
+            <div className="ui-eyebrow shadow-soft">Join a live session</div>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-[2rem]">
+                Enter your session code.
+              </h1>
+              <p className="mx-auto max-w-[46ch] text-sm leading-7 text-[color:var(--studio-muted)] sm:text-base">
+                Use the short code shared by your facilitator to open the exercise right away.
+              </p>
+            </div>
+          </div>
 
-          <CardContent className="space-y-4">
-            <Input
-              placeholder="Join code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onJoin();
-              }}
-            />
+          <div className="w-full max-w-md">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span>Join session</span>
+                  <HintTooltip text="Enter the session code provided by your facilitator to open the exercise." />
+                </CardTitle>
+              </CardHeader>
 
-            {error ? (
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-destructive/10 px-4 py-3 text-sm">
-                {error}
-              </div>
-            ) : null}
+              <CardContent className="space-y-4">
+                <div>
+                  <label htmlFor={joinCodeId} className="ui-form-label">Join code</label>
+                  <Input
+                    id={joinCodeId}
+                    placeholder="Join code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") onJoin();
+                    }}
+                  />
+                </div>
 
-            <Button
-              className="w-full"
-              onClick={onJoin}
-              disabled={loading}
-            >
-              {loading ? "Joining…" : "Join"}
-            </Button>
-          </CardContent>
-        </Card>
+                {error ? (
+                  <div role="alert" aria-live="assertive" className="notice notice-error">{error}</div>
+                ) : (
+                  <p className="text-sm leading-6 text-[color:var(--studio-muted2)]">
+                    The code is usually 6 characters long. You do not need a separate account to join.
+                  </p>
+                )}
+
+                <Button
+                  className="w-full"
+                  onClick={onJoin}
+                  disabled={loading}
+                >
+                  {loading ? "Joining…" : "Join session"}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

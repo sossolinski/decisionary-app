@@ -23,7 +23,7 @@ export function CardHeader({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("flex flex-col gap-1.5 px-5 pt-5 md:px-6 md:pt-6", className)}
+      className={cn("flex flex-col gap-1.5 px-5 pt-5 pb-4 md:px-6 md:pt-6 md:pb-4", className)}
       {...props}
     />
   );
@@ -35,7 +35,7 @@ export function CardTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn("text-base font-semibold leading-none tracking-tight", className)}
+      className={cn("text-base font-semibold leading-tight tracking-tight", className)}
       {...props}
     />
   );

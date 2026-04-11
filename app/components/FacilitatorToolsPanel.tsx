@@ -24,6 +24,7 @@ import {
 } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 import { ChevronDown, ChevronUp, Send, Sparkles, TimerReset, Zap } from "lucide-react";
 
 type SessionMeta = {
@@ -223,6 +224,20 @@ export default function FacilitatorToolsPanel({
   }, [openTasks]);
 
   const latestConsequence = consequenceRows[0] ?? null;
+  const oldestOverdueTask = overdueTasks
+    .slice()
+    .sort((a, b) => {
+      const aTime = new Date(a.due_at ?? 0).getTime();
+      const bTime = new Date(b.due_at ?? 0).getTime();
+      return aTime - bTime;
+    })[0] ?? null;
+  const operatorNextMove = overdueTasks.length > 0
+    ? `Clear overdue follow-ups first, starting with ${oldestOverdueTask?.title ?? "the oldest open task"}.`
+    : pending.length > 0
+    ? `Release the next inject when the team is ready for another turn.`
+    : latestConsequence
+    ? `Review the latest development and confirm whether it needs a named owner.`
+    : "No urgent facilitator action is waiting right now.";
 
   // =========================
   // Session control
@@ -431,135 +446,166 @@ export default function FacilitatorToolsPanel({
     }
   }
 
-  const content = (
-    <div className="space-y-4">
-          {/* Meta */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>Status: {normalizeSessionStatus(meta?.status ?? null)}</Badge>
-            <Badge>Join code: {meta?.join_code ?? "—"}</Badge>
-            <Badge>Started: {fmtIso(meta?.started_at)}</Badge>
-            <Badge>Ended: {fmtIso(meta?.ended_at)}</Badge>
+  const metaBlock = (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge>Status: {normalizeSessionStatus(meta?.status ?? null)}</Badge>
+        <Badge>Join code: {meta?.join_code ?? "—"}</Badge>
+        <Badge>Started: {fmtIso(meta?.started_at)}</Badge>
+        <Badge>Ended: {fmtIso(meta?.ended_at)}</Badge>
+      </div>
 
-            {effectiveScenarioId ? (
-              <Link
-                href={`/facilitator/scenarios/${effectiveScenarioId}`}
-                className="text-xs font-semibold text-[color:var(--studio-ink)] underline underline-offset-2"
-              >
-                Open scenario editor
-              </Link>
-            ) : null}
+      <div className="flex flex-wrap gap-2">
+        {effectiveScenarioId ? (
+          <Link
+            href={`/facilitator/scenarios/${effectiveScenarioId}`}
+            className="inline-flex h-8 items-center justify-center rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 text-xs font-semibold text-[color:var(--studio-ink)] transition hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]"
+          >
+            Scenario editor
+          </Link>
+        ) : null}
 
-            <Link
-              href={`/facilitator/sessions/${sessionId}/roster`}
-              className="text-xs font-semibold text-[color:var(--studio-ink)] underline underline-offset-2"
-            >
-              Open roster
-            </Link>
+        <Link
+          href={`/facilitator/sessions/${sessionId}/roster`}
+          className="inline-flex h-8 items-center justify-center rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 text-xs font-semibold text-[color:var(--studio-ink)] transition hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]"
+        >
+          Roster
+        </Link>
+      </div>
+    </div>
+  );
+
+  const lifecycleBlock = (
+    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
+      <div className="mb-2.5">
+        <div className="text-sm font-semibold">Exercise lifecycle</div>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Button variant="default" onClick={startExercise} disabled={loading}>
+          {loading ? "..." : "Start (T=0)"}
+        </Button>
+        <Button variant="destructive" onClick={endExercise} disabled={loading}>
+          {loading ? "..." : "End"}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={restartExercise}
+          disabled={loading}
+        >
+          {loading ? "..." : "Restart"}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const engineBlock = (
+    <div className="rounded-[16px] border border-[var(--studio-border-strong)] bg-[color:var(--studio-surface2)] p-3 shadow-[0_0_0_1px_hsl(220_70%_55%/0.04)]">
+      <div className="mb-2.5 flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Sparkles className="h-4 w-4" />
+            Engine snapshot
+            <HintTooltip
+              side="right"
+              text="A compact runtime readout. Use Process overdue only when you want to force-check overdue follow-up rules right now."
+            />
           </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={processOverdueNow}
+          disabled={engineRefreshing}
+        >
+          <TimerReset className="mr-2 h-4 w-4" />
+          {engineRefreshing ? "Working..." : "Process overdue"}
+        </Button>
+      </div>
 
-          {/* Exercise */}
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
-            <div className="mb-3">
-              <div className="text-sm font-semibold">Exercise lifecycle</div>
-              <div className="text-xs text-muted-foreground">
-                Control the current run without leaving the session screen.
-              </div>
-            </div>
+      <div className="mb-2.5 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          What to do next
+        </div>
+        <div className="mt-1 text-sm font-medium text-foreground">{operatorNextMove}</div>
+      </div>
 
-            <div className="grid gap-2 sm:grid-cols-3">
-            <Button variant="default" onClick={startExercise} disabled={loading}>
-              {loading ? "..." : "Start (T=0)"}
-            </Button>
-            <Button variant="destructive" onClick={endExercise} disabled={loading}>
-              {loading ? "..." : "End"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={restartExercise}
-              disabled={loading}
-            >
-              {loading ? "..." : "Restart"}
-            </Button>
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Pending injects
           </div>
+          <div className="mt-1 text-lg font-semibold">{pending.length}</div>
+        </div>
+        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Open tasks
           </div>
-
-          <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Sparkles className="h-4 w-4" />
-                  Engine snapshot
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Keep an eye on open runtime work and manually process overdue rules if needed.
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={processOverdueNow}
-                disabled={engineRefreshing}
-              >
-                <TimerReset className="mr-2 h-4 w-4" />
-                {engineRefreshing ? "Working..." : "Process overdue"}
-              </Button>
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-4">
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Pending injects
-                </div>
-                <div className="mt-1 text-lg font-semibold">{pending.length}</div>
-              </div>
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Open tasks
-                </div>
-                <div className="mt-1 text-lg font-semibold">{openTasks.length}</div>
-              </div>
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Overdue
-                </div>
-                <div className="mt-1 text-lg font-semibold">{overdueTasks.length}</div>
-              </div>
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-white/70 px-3 py-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Consequences
-                </div>
-                <div className="mt-1 text-lg font-semibold">{consequenceRows.length}</div>
-              </div>
-            </div>
-
-            {latestConsequence ? (
-              <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-white/70 p-3">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Latest consequence
-                </div>
-                <div className="mt-1 text-sm font-semibold">{latestConsequence.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {latestConsequence.consequence_type} • {fmtIso(latestConsequence.applied_at)}
-                </div>
-                {latestConsequence.description ? (
-                  <div className="mt-2 text-sm text-foreground">{latestConsequence.description}</div>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="mt-1 text-lg font-semibold">{openTasks.length}</div>
+        </div>
+        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Overdue
           </div>
+          <div className="mt-1 text-lg font-semibold">{overdueTasks.length}</div>
+        </div>
+        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Developments
+          </div>
+          <div className="mt-1 text-lg font-semibold">{consequenceRows.length}</div>
+        </div>
+      </div>
 
-          {/* Inject release (collapsed) */}
-          <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
+      {oldestOverdueTask ? (
+        <div className="mt-2.5 rounded-[14px] border border-red-500/20 bg-red-500/8 p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300/90">
+            Oldest overdue follow-up
+          </div>
+          <div className="mt-1 text-sm font-semibold text-foreground">{oldestOverdueTask.title}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {oldestOverdueTask.assigned_role
+              ? `Owner: ${oldestOverdueTask.assigned_role}`
+              : "No owner yet"}{" "}
+            • Due {fmtIso(oldestOverdueTask.due_at)}
+          </div>
+        </div>
+      ) : null}
+
+      {latestConsequence ? (
+        <div className="mt-2.5 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Latest development
+          </div>
+          <div className="mt-1 text-sm font-semibold">{latestConsequence.title}</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {latestConsequence.consequence_type.replaceAll("_", " ")} • {fmtIso(latestConsequence.applied_at)}
+          </div>
+          {latestConsequence.description ? (
+            <div className="mt-2 text-sm text-foreground">{latestConsequence.description}</div>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+            {latestConsequence.task_id ? <span>Created follow-up</span> : null}
+            {latestConsequence.decision_id ? <span>Decision related</span> : null}
+            {latestConsequence.session_inject_id ? <span>Update related</span> : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const injectBlock = (
+    <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
             <button
               onClick={() => setInjectReleaseOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
             >
               <div className="flex items-center gap-2">
                 <Zap className="h-4 w-4" />
                 <div>
                   <div className="text-sm font-semibold">Inject release</div>
                   <div className="text-xs font-semibold text-muted-foreground">
-                    Pending: {pending.length} / Total: {scenarioInjects.length}
+                    {pending.length} pending of {scenarioInjects.length}
                   </div>
                 </div>
               </div>
@@ -577,7 +623,7 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {injectReleaseOpen ? (
-              <div className="border-t border-[var(--studio-border)] bg-white/55 p-3">
+              <div className="border-t border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <Button
                     variant="secondary"
@@ -595,6 +641,10 @@ export default function FacilitatorToolsPanel({
                   >
                     Deliver next
                   </Button>
+                </div>
+
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Use <span className="font-semibold text-foreground">Deliver next</span> for the normal flow. Pick a specific inject only when you want to jump ahead.
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -619,7 +669,7 @@ export default function FacilitatorToolsPanel({
                 </div>
 
                 {selectedSI ? (
-                  <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-white/70 p-3">
+                  <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
                     <div className="text-xs font-semibold text-muted-foreground">
                       Preview
                     </div>
@@ -644,19 +694,20 @@ export default function FacilitatorToolsPanel({
               </div>
             ) : null}
           </div>
+  );
 
-          {/* Quick message (collapsed) */}
-          <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
+  const quickMessageBlock = (
+    <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
             <button
               onClick={() => setQuickMsgOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
             >
               <div className="flex items-center gap-2">
-                <Send className="h-4 w-4" />
+                <Send className="h-4 w-4 opacity-80" />
                 <div>
                   <div className="text-sm font-semibold">Quick message</div>
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    Send an ad-hoc message to the session.
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Send an ad-hoc inject
                   </div>
                 </div>
               </div>
@@ -674,7 +725,7 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {quickMsgOpen ? (
-              <div className="border-t border-[var(--studio-border)] bg-white/55 p-3">
+              <div className="border-t border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="space-y-1">
                     <div className="text-sm font-semibold">Title</div>
@@ -762,12 +813,35 @@ export default function FacilitatorToolsPanel({
               </div>
             ) : null}
           </div>
+  );
 
-          {msg ? (
-            <div className="notice px-3 py-2 text-sm font-semibold">
-              {msg}
-            </div>
-          ) : null}
+  const messageBlock = msg ? (
+    <div className="notice px-3 py-2 text-sm font-semibold">
+      {msg}
+    </div>
+  ) : null;
+
+  const content = compact ? (
+    <div className="grid gap-3.5 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
+      <div className="space-y-3.5">
+        {metaBlock}
+        {lifecycleBlock}
+      </div>
+      <div className="space-y-3.5">
+        {engineBlock}
+        {injectBlock}
+        {quickMessageBlock}
+        {messageBlock}
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-4">
+      {metaBlock}
+      {lifecycleBlock}
+      {engineBlock}
+      {injectBlock}
+      {quickMessageBlock}
+      {messageBlock}
     </div>
   );
 
@@ -781,7 +855,7 @@ export default function FacilitatorToolsPanel({
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Facilitator tools</CardTitle>
           <CardDescription className="text-sm">
-            Session control, inject release, and live intervention tools.
+            Release injects, steer the run, and manage runtime pressure.
           </CardDescription>
         </CardHeader>
 

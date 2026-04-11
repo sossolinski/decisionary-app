@@ -19,7 +19,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             "transition-[box-shadow,border-color,background-color] duration-150",
             "hover:border-[var(--studio-border-strong)]",
             "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-            "disabled:cursor-not-allowed disabled:opacity-50",
+            "disabled:cursor-not-allowed disabled:opacity-65 disabled:bg-secondary/70 disabled:text-muted-foreground",
           ].join(" "),
           className
         )}

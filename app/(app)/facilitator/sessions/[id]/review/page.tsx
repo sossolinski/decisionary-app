@@ -86,10 +86,8 @@ function fmt(dt?: string | null) {
 
 function SessionInfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-        {label}
-      </div>
+    <div className="ui-metric-card rounded-[14px] px-4 py-3">
+      <div className="ui-metric-label">{label}</div>
       <div className="mt-1 text-sm font-medium">{value}</div>
     </div>
   );
@@ -326,7 +324,7 @@ export default function FacilitatorSessionReviewPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+          <div className="ui-eyebrow">
             <ClipboardList className="h-3.5 w-3.5" />
             After Action Review
           </div>
@@ -472,14 +470,11 @@ export default function FacilitatorSessionReviewPage() {
           ) : (
             <div className="space-y-3">
               {groupedActions.map((group) => (
-                <div
-                  key={group.key}
-                  className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4"
-                >
+                <div key={group.key} className="ui-list-card rounded-[16px] px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">{group.title}</div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                      <div className="ui-helper-text mt-1 flex flex-wrap items-center gap-2">
                         {group.channel ? <span>{group.channel}</span> : null}
                         {group.severity ? <span>{group.severity}</span> : null}
                         <span>{group.items.length} action{group.items.length === 1 ? "" : "s"}</span>
@@ -492,16 +487,13 @@ export default function FacilitatorSessionReviewPage() {
 
                   <div className="mt-4 space-y-3">
                     {group.items.map((action) => (
-                      <div
-                        key={action.id}
-                        className="rounded-[14px] border border-[var(--studio-border)]/80 bg-white/40 px-3 py-3"
-                      >
+                      <div key={action.id} className="rounded-[14px] border border-[var(--studio-border)]/80 bg-[color:var(--studio-surface)] px-3 py-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-                            <span className="rounded-full border border-[var(--studio-border)] px-2.5 py-1 text-[11px] uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+                            <span className="ui-section-label rounded-full border border-[var(--studio-border)] px-2.5 py-1">
                               {action.source}
                             </span>
-                            <span>{action.action_type.toUpperCase()}</span>
+                            <span className="capitalize">{action.action_type}</span>
                           </div>
                           <div className="text-xs text-[color:var(--studio-muted2)]">
                             {fmt(action.created_at)}

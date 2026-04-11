@@ -43,6 +43,7 @@
 
     --studio-bg: hsl(var(--background));
     --studio-text: hsl(var(--foreground));
+    --studio-ink: hsl(var(--foreground));
 
     /* Minimal surfaces: less "glassy", fewer borders */
     --studio-surface: hsl(var(--card) / 0.90);
@@ -117,6 +118,9 @@
 
     --studio-surface: hsl(var(--card) / 0.86);
     --studio-surface2: hsl(var(--card) / 0.92);
+
+    --studio-muted: hsl(var(--foreground) / 0.76);
+    --studio-muted2: hsl(var(--foreground) / 0.62);
 
     --studio-border: hsl(220 10% 22% / 0.45);
     --studio-border-strong: hsl(220 10% 26% / 0.55);
@@ -217,7 +221,7 @@
 
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.34);
     border-radius: calc(var(--radius) - 6px);
   }
 
@@ -256,6 +260,50 @@
 }
 
 @layer utilities {
+  .ui-eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-[color:var(--studio-border)] px-3 py-1 text-[11px] font-semibold tracking-[0.08em] text-[color:var(--studio-muted)];
+    background: hsl(var(--background) / 0.8);
+  }
+
+  .ui-section-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)];
+  }
+
+  .ui-helper-text {
+    @apply text-sm leading-6 text-[color:var(--studio-muted)];
+  }
+
+  .ui-form-label {
+    @apply mb-2 block text-sm font-semibold leading-6 text-[color:var(--studio-text)];
+  }
+
+  .ui-metric-card {
+    @apply rounded-[16px] border border-[var(--studio-border)] px-4 py-4;
+    background: hsl(var(--card) / 0.96);
+    box-shadow: var(--studio-shadow);
+  }
+
+  .ui-metric-label {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)];
+  }
+
+  .ui-list-card {
+    @apply rounded-[18px] border border-[var(--studio-border)];
+    background: hsl(var(--card) / 0.88);
+    box-shadow: 0 10px 24px hsl(220 20% 20% / 0.03);
+  }
+
+  .ui-empty-state {
+    @apply rounded-[16px] border border-dashed border-[var(--studio-border)] px-4 py-5 text-sm;
+    background: hsl(var(--card) / 0.84);
+    color: hsl(var(--foreground) / 0.54);
+  }
+
+  .ui-subtle-panel {
+    @apply rounded-[16px] border border-[var(--studio-border)] px-4 py-4;
+    background: hsl(var(--card) / 0.92);
+  }
+
   .bg-grid {
     background-image: radial-gradient(
       hsl(var(--foreground) / 0.05) 1px,
@@ -287,12 +335,12 @@
   }
 
   .surface-solid {
-    background: hsl(var(--card) / 0.98);
+    background: hsl(var(--card));
     border: 1px solid var(--studio-border-strong);
   }
 
   .popover-solid {
-    background: hsl(var(--popover) / 0.98);
+    background: hsl(var(--popover));
     border: 1px solid var(--studio-border-strong);
   }
 
@@ -314,7 +362,19 @@
   .notice-success {
     border-color: hsl(152 55% 42% / 0.24);
     background: hsl(152 55% 42% / 0.09);
-    color: hsl(152 55% 28%);
+    color: hsl(152 55% 32%);
+  }
+
+  .dark .notice-success {
+    border-color: hsl(152 55% 52% / 0.28);
+    background: hsl(152 55% 52% / 0.12);
+    color: hsl(152 70% 76%);
+  }
+
+  .dark .notice-error {
+    border-color: hsl(var(--destructive) / 0.34);
+    background: hsl(var(--destructive) / 0.12);
+    color: hsl(0 100% 86%);
   }
 
   .panel-subtle {

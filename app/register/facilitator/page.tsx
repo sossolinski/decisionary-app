@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -32,6 +32,8 @@ function FacilitatorRegistrationInner() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const emailId = useId();
+  const passwordId = useId();
 
   useEffect(() => {
     if (!token) {
@@ -129,13 +131,13 @@ function FacilitatorRegistrationInner() {
 
               <CardContent className="space-y-4">
                 {!token ? (
-                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <div role="alert" aria-live="assertive" className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     Missing invite token in the URL.
                   </div>
                 ) : null}
 
                 {invite ? (
-                  <div className="rounded-[14px] border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 text-sm">
+                  <div className="ui-subtle-panel text-sm">
                     <div>
                       Invited email: <b>{invite.email}</b>
                     </div>
@@ -144,37 +146,41 @@ function FacilitatorRegistrationInner() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <div role="alert" aria-live="assertive" className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     Invite not found.
                   </div>
                 )}
 
-                {msg ? (
-                  <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                    {msg}
-                  </div>
-                ) : null}
+                {msg ? <div role="status" aria-live="polite" className="notice notice-success">{msg}</div> : null}
 
                 {err ? (
-                  <div className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <div role="alert" aria-live="assertive" className="rounded-[14px] border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                     {err}
                   </div>
                 ) : null}
 
                 <div className="space-y-3">
-                  <Input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Work email"
-                    autoComplete="email"
-                  />
-                  <Input
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create your password"
-                    autoComplete="new-password"
-                    type="password"
-                  />
+                  <div>
+                    <label htmlFor={emailId} className="ui-form-label">Work email</label>
+                    <Input
+                      id={emailId}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Work email"
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor={passwordId} className="ui-form-label">Create your password</label>
+                    <Input
+                      id={passwordId}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Create your password"
+                      autoComplete="new-password"
+                      type="password"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">

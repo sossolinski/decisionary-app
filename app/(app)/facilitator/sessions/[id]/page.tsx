@@ -38,7 +38,7 @@ export default function FacilitatorSessionPage() {
 
         if (!valid) {
           setStatus("error");
-          setErr("Invalid session id (expected UUID).");
+          setErr("This session link is not valid.");
           return;
         }
 

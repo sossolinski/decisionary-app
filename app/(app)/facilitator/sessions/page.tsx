@@ -1,8 +1,9 @@
 // app/(app)/facilitator/sessions/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import {
   listSessions,
@@ -18,6 +19,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { normalizeSessionStatus, type SessionStatus } from "@/lib/sessionStatus";
 import { validateSessionTitle } from "@/lib/validators";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 
 import {
   Card,
@@ -31,7 +33,6 @@ import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   CalendarPlus,
-  RefreshCw,
   Play,
   Users,
   ClipboardList,
@@ -80,16 +81,22 @@ function StatusPill({ status }: { status?: SessionStatus | null }) {
 }
 
 function Select({
+  id,
+  inputRef,
   value,
   onChange,
   children,
 }: {
+  id?: string;
+  inputRef?: React.RefObject<HTMLSelectElement | null>;
   value: string;
   onChange: (v: string) => void;
   children: React.ReactNode;
 }) {
   return (
     <select
+      id={id}
+      ref={inputRef}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={[
@@ -161,6 +168,9 @@ function CopyButton({
 export default function FacilitatorSessionsPage() {
   const router = useRouter();
   const { loading: roleLoading, canFacilitate } = useRoleContext();
+  const ids = useId();
+  const scenarioSelectRef = useRef<HTMLSelectElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -178,6 +188,104 @@ export default function FacilitatorSessionsPage() {
 
   // UI: minimal actions toggle per-row
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
+  const [menuPanelPosition, setMenuPanelPosition] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    function isEditableTarget(target: EventTarget | null) {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName.toLowerCase();
+      return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setOpenMenuId(null);
+        return;
+      }
+
+      if (isEditableTarget(e.target)) return;
+
+      if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+        return;
+      }
+
+      if (e.key.toLowerCase() === "n" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        scenarioSelectRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const openId = openMenuId;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMenuId(null);
+    }
+
+    function onPointerDown(e: MouseEvent) {
+      const panel = menuPanelRef.current;
+      const button = menuButtonRefs.current[openId];
+      if (!(e.target instanceof Node)) return;
+      if (panel?.contains(e.target) || button?.contains(e.target)) return;
+      setOpenMenuId(null);
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [openMenuId]);
+
+  useLayoutEffect(() => {
+    if (!openMenuId) return;
+    const openId = openMenuId;
+    const gap = 10;
+    const viewportPadding = 16;
+
+    function placePanel() {
+      const button = menuButtonRefs.current[openId];
+      const panel = menuPanelRef.current;
+      if (!button || !panel) return;
+
+      const anchor = button.getBoundingClientRect();
+      const panelWidth = panel.offsetWidth;
+      const panelHeight = panel.offsetHeight;
+
+      let nextLeft = anchor.right - panelWidth;
+      let nextTop = anchor.bottom + gap;
+
+      if (nextTop + panelHeight > window.innerHeight - viewportPadding) {
+        nextTop = Math.max(viewportPadding, anchor.top - panelHeight - gap);
+      }
+
+      if (nextLeft < viewportPadding) nextLeft = viewportPadding;
+      if (nextLeft + panelWidth > window.innerWidth - viewportPadding) {
+        nextLeft = window.innerWidth - panelWidth - viewportPadding;
+      }
+
+      setMenuPanelPosition({ top: nextTop, left: nextLeft });
+    }
+
+    placePanel();
+    window.addEventListener("resize", placePanel);
+    window.addEventListener("scroll", placePanel, true);
+    return () => {
+      window.removeEventListener("resize", placePanel);
+      window.removeEventListener("scroll", placePanel, true);
+    };
+  }, [openMenuId]);
 
   async function load() {
     setLoading(true);
@@ -198,6 +306,13 @@ export default function FacilitatorSessionsPage() {
     void load();
   }, [roleLoading, canFacilitate]);
 
+  useAutoRefresh(
+    async () => {
+      await load();
+    },
+    { enabled: !roleLoading && canFacilitate, intervalMs: 30000 }
+  );
+
   const scenarioTitleById = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const s of scenarios) m.set(s.id, s.title ?? null);
@@ -210,10 +325,6 @@ export default function FacilitatorSessionsPage() {
 
   const endedCount = useMemo(() => {
     return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "ended").length;
-  }, [sessions]);
-
-  const draftCount = useMemo(() => {
-    return sessions.filter((s) => normalizeSessionStatus(s.status) === "draft").length;
   }, [sessions]);
 
   const filteredSessions = useMemo(() => {
@@ -316,59 +427,62 @@ export default function FacilitatorSessionsPage() {
           <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--studio-border)] bg-background/80 px-3 py-1 text-xs font-semibold text-[color:var(--studio-muted)]">
+              <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
                 Session control
+                <HintTooltip
+                  text="Create sessions from scenarios, distribute join codes, and manage the exercise lifecycle without leaving the operations surface."
+                  side="right"
+                />
               </div>
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Move cleanly from planning into live exercise runs.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Create sessions from scenarios, distribute join codes, and manage the exercise lifecycle without leaving the operations surface.
-                </p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" onClick={load} className="gap-2">
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh
-                </Button>
-              </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+              <div className="ui-metric-card">
+                <div className="ui-metric-label">
                   Total
                 </div>
                 <div className="mt-2 text-3xl font-semibold">{sessions.length}</div>
               </div>
 
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-                  Draft
-                </div>
-                <div className="mt-2 text-3xl font-semibold">{draftCount}</div>
-              </div>
-
-              <div className="surface2 rounded-[16px] px-4 py-4 shadow-soft">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
+              <div className="ui-metric-card">
+                <div className="ui-metric-label">
                   Live
                 </div>
                 <div className="mt-2 text-3xl font-semibold">{activeCount}</div>
+              </div>
+
+              <div className="ui-metric-card">
+                <div className="ui-metric-label">
+                  Ended
+                </div>
+                <div className="mt-2 text-3xl font-semibold">{endedCount}</div>
               </div>
             </div>
           </div>
         </div>
 
         <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
-          <div className="space-y-2">
-            <div className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--studio-muted2)]">
-              Create session
+          <div id="create-session" className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="ui-section-label">
+                  Create session
+                </div>
+                <HintTooltip
+                  text="Start from a scenario, then open the live run immediately."
+                  side="right"
+                />
+              </div>
             </div>
-            <div className="grid gap-3 md:grid-cols-12">
-              <div className="md:col-span-7">
-                <Select value={scenarioId} onChange={setScenarioId}>
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(220px,0.75fr)_auto] xl:items-center">
+              <div>
+                <Select id={`${ids}-scenario`} inputRef={scenarioSelectRef} value={scenarioId} onChange={setScenarioId}>
                   <option value="">Select scenario…</option>
                   {scenarios.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -378,21 +492,32 @@ export default function FacilitatorSessionsPage() {
                 </Select>
               </div>
 
-              <div className="md:col-span-5">
+              <div>
                 <Input
+                  id={`${ids}-title`}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="New session"
                 />
               </div>
+
+              <div className="flex items-center gap-2">
+                <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2 xl:w-auto">
+                  <Play className="h-4 w-4" />
+                  {busyId === "create" ? "…" : "Create & open"}
+                </Button>
+                <HintTooltip
+                  text="Create a run here, then share the join code with participants."
+                  side="left"
+                />
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2">
-                <Play className="h-4 w-4" />
-                {busyId === "create" ? "…" : "Create & open"}
-              </Button>
-              <HintTooltip text="Create a run here, then share the join code with participants." />
-            </div>
+
+            {scenarios.length === 0 ? (
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+                You do not have any scenarios yet. Create one first so this workspace can launch a session.
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -405,8 +530,8 @@ export default function FacilitatorSessionsPage() {
       {/* Sessions list */}
       <Card className="surface shadow-soft border border-[var(--studio-border)] overflow-visible">
         <CardHeader className="pb-4">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 xl:flex xl:min-h-10 xl:items-center">
               <CardTitle className="flex items-center gap-2">
                 <ClipboardList className="h-5 w-5 opacity-80" />
                 Session library
@@ -418,6 +543,7 @@ export default function FacilitatorSessionsPage() {
               <div className="relative w-full sm:w-[300px]">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  ref={searchInputRef}
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Search sessions…"
@@ -449,9 +575,43 @@ export default function FacilitatorSessionsPage() {
           ) : null}
 
           {filteredSessions.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No sessions matching current filters.
-            </div>
+            q.trim() || statusFilter !== "all" ? (
+              <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4">
+                <div className="text-sm font-medium text-foreground">No sessions match the current filters.</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Clear the search or status filter to get back to the full session library.
+                </div>
+                <div className="mt-3">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setQ("");
+                      setStatusFilter("all");
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4">
+                <div className="text-sm font-medium text-foreground">No sessions yet.</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  Launch your first exercise run from a scenario above, then come back here to manage it.
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => scenarioSelectRef.current?.focus()}
+                    disabled={scenarios.length === 0}
+                  >
+                    Create first session
+                  </Button>
+                  <Button variant="outline" onClick={() => router.push("/facilitator/scenarios")}>
+                    Open scenarios
+                  </Button>
+                </div>
+              </div>
+            )
           ) : (
             filteredSessions.map((s) => {
               const isBusy = busyId === s.id;
@@ -481,9 +641,11 @@ export default function FacilitatorSessionsPage() {
                       <div className="mt-2 text-sm leading-6 text-muted-foreground">
                         <span className="font-medium text-foreground">Scenario:</span>{" "}
                         {scenarioTitle}
-                        <span className="mx-2 text-muted-foreground/70">•</span>
+                      </div>
+
+                      <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
                         <span className="font-medium text-foreground">Join code:</span>{" "}
-                        <span className="font-mono">{joinCode}</span>
+                        <span className="font-mono tracking-[0.08em]">{joinCode}</span>
                       </div>
 
                       <div className="mt-3 text-xs text-muted-foreground">
@@ -527,22 +689,46 @@ export default function FacilitatorSessionsPage() {
                       <CopyButton value={joinCode} label="Join code" />
 
                       {/* More (minimize button spam) */}
-                      <div className={openMenuId === s.id ? "relative z-20" : "relative"}>
+                      <div className="relative">
                         <Button
+                          ref={(node) => {
+                            menuButtonRefs.current[s.id] = node;
+                          }}
                           variant="outline"
                           onClick={() => setOpenMenuId((v) => (v === s.id ? null : s.id))}
                           className="gap-2"
                           disabled={isBusy}
+                          aria-haspopup="dialog"
+                          aria-expanded={openMenuId === s.id}
+                          aria-controls={openMenuId === s.id ? `session-actions-${s.id}` : undefined}
                         >
                           More <ChevronDown className="h-4 w-4 opacity-70" />
                         </Button>
 
-                        {openMenuId === s.id ? (
-                          <div className="absolute right-0 mt-2 w-[220px] popover-solid rounded-[14px] shadow-soft overflow-hidden z-50">
-                            <div className="p-2 space-y-1">
+                        {openMenuId === s.id && typeof document !== "undefined"
+                          ? createPortal(
+                          <div
+                            id={`session-actions-${s.id}`}
+                            ref={menuPanelRef}
+                            role="dialog"
+                            aria-label={`Actions for session ${s.title}`}
+                            className="fixed z-[110] w-[220px] rounded-[16px] border border-[var(--studio-border-strong)] bg-[hsl(var(--popover)/0.98)] p-1.5 shadow-[0_16px_40px_hsl(220_20%_20%/0.14)] backdrop-blur-sm"
+                            style={
+                              menuPanelPosition
+                                ? {
+                                    top: `${menuPanelPosition.top}px`,
+                                    left: `${menuPanelPosition.left}px`,
+                                  }
+                                : {
+                                    top: "-9999px",
+                                    left: "-9999px",
+                                  }
+                            }
+                          >
+                            <div className="space-y-1">
                               <Button
-                                variant="outline"
-                                className="w-full justify-start gap-2"
+                                variant="ghost"
+                                className="w-full justify-start gap-2 rounded-[12px] border border-transparent px-3"
                                 onClick={() => {
                                   setOpenMenuId(null);
                                   onEnd(s.id);
@@ -555,8 +741,8 @@ export default function FacilitatorSessionsPage() {
                               </Button>
 
                               <Button
-                                variant="outline"
-                                className="w-full justify-start gap-2"
+                                variant="ghost"
+                                className="w-full justify-start gap-2 rounded-[12px] border border-transparent px-3"
                                 onClick={() => {
                                   setOpenMenuId(null);
                                   onRestart(s.id);
@@ -570,7 +756,7 @@ export default function FacilitatorSessionsPage() {
 
                               <Button
                                 variant="destructive"
-                                className="w-full justify-start gap-2"
+                                className="w-full justify-start gap-2 rounded-[12px] px-3"
                                 onClick={() => {
                                   setOpenMenuId(null);
                                   onDelete(s.id);
@@ -582,7 +768,8 @@ export default function FacilitatorSessionsPage() {
                                 Delete
                               </Button>
                             </div>
-                          </div>
+                          </div>,
+                          document.body
                         ) : null}
                       </div>
                     </div>

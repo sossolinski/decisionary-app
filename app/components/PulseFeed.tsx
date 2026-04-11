@@ -25,6 +25,10 @@ function clampText(s: string, max = 160) {
   return clean.slice(0, max - 1) + "…";
 }
 
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
 function fmtTime(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -85,6 +89,20 @@ function badge(kind: "state" | "severity", value: string) {
   if (v === "medium") return `${base} bg-yellow-500/10 text-yellow-700 dark:text-yellow-300`;
   if (v === "low") return `${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`;
   return `${base} bg-secondary/60 text-foreground`;
+}
+
+function emphasisClass(severity: string, unread: boolean) {
+  if (severity === "critical") {
+    return unread
+      ? "border-red-500/35 bg-red-500/[0.06]"
+      : "border-red-500/20 bg-red-500/[0.04]";
+  }
+  if (severity === "high") {
+    return unread
+      ? "border-orange-500/30 bg-orange-500/[0.05]"
+      : "border-orange-500/18 bg-orange-500/[0.035]";
+  }
+  return unread ? "border-primary/18 bg-primary/[0.03]" : "";
 }
 
 export default function PulseFeed({
@@ -277,16 +295,16 @@ export default function PulseFeed({
     <div className="space-y-2">
       {err ? <div className="notice notice-error p-3 text-xs font-semibold">{err}</div> : null}
 
-      <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-white/70 shadow-sm">
+      <div className="overflow-hidden rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] shadow-sm">
         <div className="max-h-[65vh] overflow-auto p-2.5">
           {loading ? (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3 text-xs font-semibold text-muted-foreground">
+            <div className="ui-subtle-panel p-3 text-xs font-semibold text-muted-foreground">
               Loading…
             </div>
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3 text-xs font-semibold text-muted-foreground">
+            <div className="ui-empty-state p-3 text-xs font-semibold text-muted-foreground">
               No pulse items matching filters.
             </div>
           ) : null}
@@ -319,59 +337,77 @@ export default function PulseFeed({
                     onSelect(item);
                   }}
                   className={[
-                    "w-full text-left rounded-[16px] border px-3.5 py-3.5 transition-all",
+                    "w-full text-left rounded-[18px] border px-4 py-4 transition-all",
                     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                     active
-                      ? "border-primary/20 bg-primary/5 shadow-[0_12px_28px_hsl(220_20%_20%/0.05)]"
-                      : "border-[var(--studio-border)] bg-white/80 hover:bg-[color:var(--studio-surface2)]",
-                    flash ? "ring-2 ring-foreground/10" : "",
+                      ? "border-primary/25 bg-primary/10 shadow-[0_16px_36px_hsl(220_20%_20%/0.06)]"
+                      : [
+                          "border-[var(--studio-border)] bg-[color:var(--studio-surface2)]",
+                          emphasisClass(sv, unread),
+                          "hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
+                        ].join(" "),
+                    flash ? "ring-1 ring-primary/20" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex items-start gap-2">
-                      <div className="mt-0.5 shrink-0 opacity-80">
+                    <div className="min-w-0 flex items-start gap-3">
+                      <div
+                        className={[
+                          "mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
+                          active
+                            ? "border-primary/20 bg-primary/10 text-primary"
+                            : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+                        ].join(" ")}
+                      >
                         <Radio className="h-4 w-4" />
                       </div>
 
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-[color:var(--studio-ink)]">
-                          {title}
+                        <div className="flex items-center gap-2">
+                          {unread ? (
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                          ) : null}
+                          <div className="truncate text-sm font-semibold text-[color:var(--studio-ink)]">
+                            {title}
+                          </div>
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2">
-                          {unread ? (
-                            <span className={badge("state", "unread")}>
-                              <Radio className="h-3.5 w-3.5" />
-                              UNREAD
-                            </span>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                          {active ? (
+                            <span className={badge("state", "selected")}>Selected</span>
                           ) : null}
-
+                          {unread && !flash ? (
+                            <span className={badge("state", "unread")}>Unread</span>
+                          ) : null}
                           {flash ? (
                             <span className={badge("state", "new")}>
                               <Radio className="h-3.5 w-3.5" />
-                              NEW
+                              New
                             </span>
                           ) : null}
 
                           {sevTag ? (
                             <span className={badge("severity", sevTag)}>
                               {severityIcon(sv)}
-                              {sevTag}
+                              {titleCase(sevTag)}
                             </span>
                           ) : null}
                         </div>
                       </div>
                     </div>
 
-                    <div className="shrink-0 text-[11px] font-semibold text-muted-foreground">{time}</div>
+                    <div className="shrink-0 pt-0.5 text-[11px] font-medium text-muted-foreground">{time}</div>
                   </div>
 
-                  <div className="mt-2 text-xs leading-6 text-muted-foreground">
+                  <div className="mt-3 text-[13px] leading-6 text-[color:var(--studio-muted)]">
                     {preview ? preview : "(no content)"}
                   </div>
 
-                  <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
                     {metaLeft}
+                    <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                      Pulse
+                    </span>
                   </div>
                 </button>
               );
@@ -380,8 +416,8 @@ export default function PulseFeed({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between gap-2 pt-1">
-        <div className="text-xs font-semibold text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 px-1 pt-1">
+        <div className="text-xs font-medium text-muted-foreground">
           Page {page} / {totalPages}
         </div>
 
