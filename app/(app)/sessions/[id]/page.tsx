@@ -42,36 +42,38 @@ import {
   type SessionTask,
 } from "@/lib/sessionEngine";
 
-import SituationCard from "@/app/components/SituationCard";
-import MessageDetail from "@/app/components/MessageDetail";
-import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
-import Inbox from "@/app/components/Inbox";
-import PulseFeed from "@/app/components/PulseFeed";
 import HintTooltip from "@/app/components/HintTooltip";
+import SessionFeedAndDetail from "@/app/components/session-runtime/SessionFeedAndDetail";
+import SessionHeaderPanel from "@/app/components/session-runtime/SessionHeaderPanel";
+import SessionParticipantBoards from "@/app/components/session-runtime/SessionParticipantBoards";
+import {
+  Badge,
+  Chip,
+  consequenceImpactLabel,
+  consequenceSeverityTone,
+  consequenceTypeLabel,
+  fmt,
+  humanActionLabel,
+  humanDecisionLabel,
+  isEditableTarget,
+  isUuid,
+  RuntimeMetric,
+  Select,
+  taskPriorityTone,
+  taskStatusTone,
+  useMediaQuery,
+} from "@/app/components/session-runtime/sessionRuntimeUi";
 
 import { Button } from "@/app/components/ui/button";
-import { Input } from "@/app/components/ui/input";
 import {
-  X,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  SlidersHorizontal,
-  LayoutDashboard,
-  MessagesSquare,
   Radio,
   Sparkles,
-  FileText,
   ListChecks,
   CheckSquare,
-  Wrench,
 } from "lucide-react";
-
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    v
-  );
-}
 
 type SelectedSource = "inbox" | "pulse";
 type StreamTab = "inbox" | "pulse";
@@ -88,126 +90,6 @@ type TimelineRefs = {
   taskId?: string | null;
   sourceActionId?: string | null;
 };
-
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(false);
-  useEffect(() => {
-    const m = window.matchMedia(query);
-    const onChange = () => setMatches(m.matches);
-    onChange();
-    m.addEventListener?.("change", onChange);
-    return () => m.removeEventListener?.("change", onChange);
-  }, [query]);
-  return matches;
-}
-
-function fmt(dt?: string | null) {
-  if (!dt) return "—";
-  try {
-    return new Date(dt).toLocaleString();
-  } catch {
-    return dt;
-  }
-}
-
-function Select({
-  value,
-  onChange,
-  children,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className={[
-        "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
-        "border border-[var(--studio-border)]",
-        "bg-[var(--studio-surface2)] text-foreground",
-        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
-        "hover:border-[var(--studio-border-strong)]",
-        "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
-        "transition-[box-shadow,border-color,background-color] duration-150",
-      ].join(" ")}
-    >
-      {children}
-    </select>
-  );
-}
-
-function Chip({
-  label,
-  onClear,
-  title,
-}: {
-  label: string;
-  onClear: () => void;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClear}
-      title={title}
-      className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-medium hover:bg-secondary/60 transition"
-    >
-      <span className="truncate max-w-[220px]">{label}</span>
-      <X className="h-3.5 w-3.5 opacity-70" />
-    </button>
-  );
-}
-
-function Badge({ n }: { n: number }) {
-  if (!n) return null;
-  return (
-    <span className="ml-2 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] leading-none px-2 h-5">
-      {n > 99 ? "99+" : n}
-    </span>
-  );
-}
-
-function RuntimeMetric({
-  label,
-  value,
-  icon,
-  compact = false,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={[
-        "ui-metric-card shadow-[0_10px_30px_hsl(220_20%_20%/0.04)]",
-        compact ? "px-3.5 py-2.5" : "px-4 py-3",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="ui-metric-label">
-            {label}
-          </div>
-          <div className={compact ? "mt-0.5 text-lg font-semibold tracking-tight" : "mt-1 text-xl font-semibold tracking-tight"}>
-            {value}
-          </div>
-        </div>
-        <div
-          className={[
-            "flex items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-ink)]",
-            compact ? "h-8 w-8" : "h-9 w-9",
-          ].join(" ")}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function lsKey(sessionId: string, kind: "inbox" | "pulse") {
   return `decisionary.seen.${kind}.${sessionId}`;
@@ -240,41 +122,6 @@ type SessionMetaPayloadRow = {
   ended_at?: string | null;
 };
 
-function taskPriorityTone(priority: SessionTask["priority"]) {
-  if (priority === "critical") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
-  if (priority === "high") return "text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/20";
-  if (priority === "medium") return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
-  return "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20";
-}
-
-function consequenceSeverityTone(severity: SessionConsequence["severity"]) {
-  if (severity === "critical") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
-  if (severity === "high") return "text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/20";
-  if (severity === "medium") return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
-  return "text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/20";
-}
-
-function taskStatusTone(status: SessionTask["status"]) {
-  if (status === "done") return "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/20";
-  if (status === "in_progress") return "text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/20";
-  if (status === "blocked") return "text-red-600 dark:text-red-300 bg-red-500/10 border-red-500/20";
-  if (status === "cancelled") return "text-slate-600 dark:text-slate-300 bg-slate-500/10 border-slate-500/20";
-  return "text-yellow-700 dark:text-yellow-300 bg-yellow-500/10 border-yellow-500/20";
-}
-
-function consequenceTypeLabel(item: SessionConsequence) {
-  if (item.consequence_type === "decision_recorded") return "Decision rule";
-  if (item.consequence_type === "inject_released") return "Inject rule";
-  if (item.consequence_type === "task_overdue") return "Overdue rule";
-  return item.consequence_type;
-}
-
-function consequenceImpactLabel(item: SessionConsequence) {
-  if (item.task_id) return "Created or updated follow-up";
-  if (item.decision_id) return "Changed decision pressure";
-  if (item.session_inject_id) return "Changed update chain";
-  return "Added session pressure";
-}
 
 function eventTone(kind: "inject" | "action" | "decision" | "task" | "consequence") {
   if (kind === "inject") return "border-sky-500/20 bg-sky-500/10 text-sky-800 dark:text-sky-300";
@@ -308,28 +155,6 @@ function compactLabel(value: string | null | undefined, fallback: string) {
 function compactId(value: string | null | undefined, prefix: string) {
   if (!value) return prefix;
   return `${prefix} ${value.slice(0, 8)}`;
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName.toLowerCase();
-  return tag === "input" || tag === "textarea" || tag === "select" || target.isContentEditable;
-}
-
-function humanActionLabel(actionType: string | null | undefined) {
-  if (actionType === "ignore") return "Monitoring update";
-  if (actionType === "escalate") return "Escalation";
-  if (actionType === "act") return "Action taken";
-  return "Team response";
-}
-
-function humanDecisionLabel(decisionType: string | null | undefined) {
-  if (decisionType === "ignore") return "Decision to monitor";
-  if (decisionType === "escalate") return "Decision to escalate";
-  if (decisionType === "act") return "Decision to act";
-  if (decisionType === "confirm") return "Confirmed update";
-  if (decisionType === "deny") return "Dismissed update";
-  return "Team decision";
 }
 
 function timelineConnectorLabel(
@@ -1596,668 +1421,95 @@ export default function SessionParticipantPage() {
   return (
     <div className="space-y-5">
       {runtimeNotice ? <div className="notice notice-success">{runtimeNotice}</div> : null}
-      {/* Header */}
-      <div className="relative z-20 surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
-        <div className="relative overflow-visible rounded-[var(--studio-radius)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-12 rounded-t-[var(--studio-radius)] bg-[linear-gradient(180deg,hsl(220_22%_96%/0.62),transparent_78%)] dark:bg-[linear-gradient(180deg,hsl(225_20%_18%/0.24),transparent_80%)]" />
+      <SessionHeaderPanel
+        copPanelId={copPanelId}
+        toolsPanelId={toolsPanelId}
+        heroEyebrow={heroEyebrow}
+        heroHint={heroHint}
+        startedAt={startedAt}
+        sessionTitle={sessionTitle}
+        heroSummary={heroSummary}
+        sessionMode={sessionMode}
+        sessionParticipantLimit={sessionParticipantLimit}
+        copOpen={copOpen}
+        setCopOpen={setCopOpen}
+        roleLoading={roleLoading}
+        isFacilitator={isFacilitator}
+        toolsOpen={toolsOpen}
+        setToolsOpen={setToolsOpen}
+        exerciseClock={exerciseClock}
+        scenario={scenario}
+        situation={situation}
+        validSessionId={validSessionId}
+        sessionId={sessionId}
+        onUpdateCasualties={async (p) => {
+          const s = await updateCasualties({
+            sessionId,
+            injured: p.injured,
+            fatalities: p.fatalities,
+            uninjured: p.uninjured,
+            unknown: p.unknown,
+          });
+          setSituation(s);
+        }}
+        applySessionMeta={applySessionMeta}
+      />
 
-          <div className="relative px-5 py-3.5 sm:px-6 sm:py-4">
-            <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.58fr)_220px] xl:items-start">
-              <div className="min-w-0">
-                <div className="ui-eyebrow">
-                  <Radio className="h-3.5 w-3.5" />
-                  {heroEyebrow}
-                  {heroHint ? <HintTooltip text={heroHint} side="right" /> : null}
-                </div>
+      <SessionFeedAndDetail
+        isMobile={isMobile}
+        sessionId={sessionId}
+        streamTab={streamTab}
+        setStreamTab={setStreamTab}
+        selectedItem={selectedItem}
+        setSelectedItem={setSelectedItem}
+        selectedSource={selectedSource}
+        setSelectedSource={setSelectedSource}
+        setFocusedThreadId={setFocusedThreadId}
+        unseenInbox={unseenInbox}
+        unseenPulse={unseenPulse}
+        markSeen={markSeen}
+        refreshUnseen={refreshUnseen}
+        filtersOpen={filtersOpen}
+        setFiltersOpen={setFiltersOpen}
+        filtersWrapRef={filtersWrapRef}
+        filtersButtonRef={filtersButtonRef}
+        filtersPanelRef={filtersPanelRef}
+        filtersPanelPosition={filtersPanelPosition}
+        filtersPanelId={filtersPanelId}
+        inboxSearch={inboxSearch}
+        setInboxSearch={setInboxSearch}
+        inboxSeverity={inboxSeverity}
+        setInboxSeverity={setInboxSeverity}
+        inboxChannel={inboxChannel}
+        setInboxChannel={setInboxChannel}
+        pulseSearch={pulseSearch}
+        setPulseSearch={setPulseSearch}
+        pulseSeverity={pulseSeverity}
+        setPulseSeverity={setPulseSeverity}
+        clearInboxFilters={clearInboxFilters}
+        clearPulseFilters={clearPulseFilters}
+        inboxFiltersActive={inboxFiltersActive}
+        pulseFiltersActive={pulseFiltersActive}
+        isFacilitator={isFacilitator}
+        selectedActionsCount={selectedActions.length}
+        actionsLoading={actionsLoading}
+        comment={comment}
+        setComment={setComment}
+        doAction={doAction}
+        doPulseDecision={doPulseDecision}
+      />
 
-                <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">
-                  Started {fmt(startedAt)}
-                </div>
-                <h1 className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[1.68rem]">
-                  {sessionTitle}
-                </h1>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
-                  {heroSummary}
-                </p>
-                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
-                  {sessionMode === "rehearsal"
-                    ? "Rehearsal mode · single participant only · invitations disabled"
-                    : `Live exercise${sessionParticipantLimit ? ` · participant cap ${sessionParticipantLimit}` : ""}`}
-                </div>
-
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button
-                    variant={copOpen ? "secondary" : "outline"}
-                    onClick={() => setCopOpen((v) => !v)}
-                    className="gap-2"
-                    title="Toggle COP"
-                    aria-expanded={copOpen}
-                    aria-controls={copPanelId}
-                  >
-                    <LayoutDashboard className="h-4 w-4 opacity-80" />
-                    {copOpen ? "Hide COP" : "Open COP"}
-                    <ChevronDown
-                      className={[
-                        "h-4 w-4 opacity-70 transition-transform",
-                        copOpen ? "rotate-180" : "",
-                      ].join(" ")}
-                    />
-                  </Button>
-
-                  {roleLoading ? (
-                    <div className="px-2 text-xs text-[color:var(--studio-muted2)]">
-                      Loading role…
-                    </div>
-                  ) : isFacilitator ? (
-                    <Button
-                      variant={toolsOpen ? "secondary" : "outline"}
-                      onClick={() => setToolsOpen((v) => !v)}
-                      className="gap-2"
-                      aria-expanded={toolsOpen}
-                      aria-controls={toolsPanelId}
-                    >
-                      <Wrench className="h-4 w-4" />
-                      {toolsOpen ? "Hide tools" : "Facilitator tools"}
-                      <ChevronDown
-                        className={[
-                          "h-4 w-4 opacity-70 transition-transform",
-                          toolsOpen ? "rotate-180" : "",
-                        ].join(" ")}
-                      />
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid gap-2.5">
-                <RuntimeMetric
-                  label="Exercise clock"
-                  value={exerciseClock}
-                  icon={<Radio className="h-4 w-4" />}
-                  compact
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* COP collapsible */}
-        {copOpen ? (
-          <div id={copPanelId} className="border-t border-[var(--studio-border)]">
-            <div className="px-5 py-4">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <LayoutDashboard className="h-4 w-4 opacity-80" />
-                    COP
-                    <HintTooltip
-                      side="right"
-                      text="Keep the shared situation picture current: event details, location, timing, and casualty counts."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <SituationCard
-                scenario={scenario}
-                situation={situation}
-                onUpdateCasualties={async (p) => {
-                  if (!validSessionId) return;
-                  const s = await updateCasualties({
-                    sessionId,
-                    injured: p.injured,
-                    fatalities: p.fatalities,
-                    uninjured: p.uninjured,
-                    unknown: p.unknown,
-                  });
-                  setSituation(s);
-                }}
-              />
-            </div>
-          </div>
-        ) : null}
-
-        {isFacilitator && toolsOpen ? (
-          <div id={toolsPanelId} className="border-t border-[var(--studio-border)]">
-            <div className="px-5 py-4">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Wrench className="h-4 w-4 opacity-80" />
-                    Facilitator tools
-                    <HintTooltip
-                      side="right"
-                      text="Release injects, manage runtime pressure, and steer the live run from one place."
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <FacilitatorToolsPanel
-                sessionId={sessionId}
-                scenarioId={scenario?.id ?? null}
-                compact
-                onSessionMetaChange={(meta) =>
-                  applySessionMeta(meta as SessionMetaPayloadRow | null)
-                }
-              />
-            </div>
-          </div>
-        ) : null}
-      </div>
-
-      {/* Streams + Detail */}
-      <div
-        className={
-          isMobile
-            ? "relative z-0 grid grid-cols-1 gap-4"
-            : "relative z-0 grid grid-cols-12 gap-4"
-        }
-      >
-        {/* STREAMS */}
-        <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between gap-3 border-b border-[var(--studio-border)] px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <MessagesSquare className="h-4 w-4 opacity-80" />
-                  Incoming updates
-                  <HintTooltip text="Watch the latest messages here and switch between Inbox and Pulse depending on what you need to review." />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={[
-                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
-                    streamTab === "inbox"
-                      ? "bg-primary/10 border-primary/25"
-                      : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
-                  ].join(" ")}
-                  onClick={() => {
-                    setStreamTab("inbox");
-                    setSelectedSource("inbox");
-                    markSeen("inbox");
-                    refreshUnseen();
-                  }}
-                  aria-pressed={streamTab === "inbox"}
-                >
-                  <MessagesSquare className="h-4 w-4 opacity-75" />
-                  Inbox <Badge n={unseenInbox} />
-                </button>
-
-                <button
-                  type="button"
-                  className={[
-                    "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
-                    streamTab === "pulse"
-                      ? "bg-primary/10 border-primary/25"
-                      : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
-                  ].join(" ")}
-                  onClick={() => {
-                    setStreamTab("pulse");
-                    setSelectedSource("pulse");
-                    markSeen("pulse");
-                    refreshUnseen();
-                  }}
-                  aria-pressed={streamTab === "pulse"}
-                >
-                  <Radio className="h-4 w-4 opacity-75" />
-                  Pulse <Badge n={unseenPulse} />
-                </button>
-
-                <div className="relative overflow-visible" ref={filtersWrapRef}>
-                  <Button
-                    ref={filtersButtonRef}
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setFiltersOpen((v) => !v)}
-                    title="Filters"
-                    aria-label={`Open ${streamTab === "inbox" ? "inbox" : "pulse"} filters`}
-                    aria-expanded={filtersOpen}
-                    aria-controls={filtersPanelId}
-                    className={
-                      streamTab === "inbox"
-                        ? inboxFiltersActive
-                          ? "border-primary/25"
-                          : ""
-                        : pulseFiltersActive
-                        ? "border-primary/25"
-                        : ""
-                    }
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                  </Button>
-
-                  {filtersOpen && typeof document !== "undefined"
-                    ? createPortal(
-                    <div
-                      id={filtersPanelId}
-                      ref={filtersPanelRef}
-                      role="dialog"
-                      aria-label={streamTab === "inbox" ? "Inbox filters" : "Pulse filters"}
-                      className="fixed z-[110] w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden"
-                      style={
-                        filtersPanelPosition
-                          ? {
-                              top: `${filtersPanelPosition.top}px`,
-                              left: `${filtersPanelPosition.left}px`,
-                            }
-                          : {
-                              top: "-9999px",
-                              left: "-9999px",
-                            }
-                      }
-                    >
-                      <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-                          <div className="text-sm font-semibold">
-                            {streamTab === "inbox"
-                            ? "Filter inbox"
-                            : "Filter pulse"}
-                          </div>
-                        <Button
-                          variant="outline"
-                          onClick={() => setFiltersOpen(false)}
-                        >
-                          Close
-                        </Button>
-                      </div>
-
-                      <div className="p-4 space-y-3">
-                        {streamTab === "inbox" ? (
-                          <>
-                            <Input
-                              value={inboxSearch}
-                              onChange={(e) => setInboxSearch(e.target.value)}
-                              placeholder="Search updates..."
-                            />
-
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                              <Select
-                                value={inboxSeverity ?? ""}
-                                onChange={(v) =>
-                                  setInboxSeverity(v ? v : null)
-                                }
-                              >
-                                <option value="">Urgency: All</option>
-                                <option value="low">LOW</option>
-                                <option value="medium">MEDIUM</option>
-                                <option value="high">HIGH</option>
-                                <option value="critical">CRITICAL</option>
-                              </Select>
-
-                              <Select
-                                value={inboxChannel ?? ""}
-                                onChange={(v) => setInboxChannel(v ? v : null)}
-                              >
-                                <option value="">Channel: All</option>
-                                <option value="ops">OPS</option>
-                                <option value="media">MEDIA</option>
-                                <option value="social">SOCIAL</option>
-                              </Select>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <Button
-                                variant="secondary"
-                                className="flex-1"
-                                onClick={clearInboxFilters}
-                              >
-                                Clear
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => {
-                                  markSeen("inbox");
-                                  refreshUnseen();
-                                }}
-                                title="Mark current inbox items as read"
-                                aria-label="Mark current inbox items as read"
-                              >
-                                Mark read
-                              </Button>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              {inboxSearch.trim() ? (
-                                <Chip
-                                  label={`Search: ${inboxSearch.trim()}`}
-                                  onClear={() => setInboxSearch("")}
-                                />
-                              ) : null}
-                              {inboxSeverity ? (
-                                <Chip
-                                  label={`Urgency: ${inboxSeverity}`}
-                                  onClear={() => setInboxSeverity(null)}
-                                />
-                              ) : null}
-                              {inboxChannel ? (
-                                <Chip
-                                  label={`Channel: ${inboxChannel}`}
-                                  onClear={() => setInboxChannel(null)}
-                                />
-                              ) : null}
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <Input
-                              value={pulseSearch}
-                              onChange={(e) => setPulseSearch(e.target.value)}
-                              placeholder="Search pulse updates..."
-                            />
-
-                            <Select
-                              value={pulseSeverity ?? ""}
-                              onChange={(v) =>
-                                setPulseSeverity(v ? v : null)
-                              }
-                            >
-                              <option value="">Urgency: All</option>
-                              <option value="low">LOW</option>
-                              <option value="medium">MEDIUM</option>
-                              <option value="high">HIGH</option>
-                              <option value="critical">CRITICAL</option>
-                            </Select>
-
-                            <div className="flex gap-2">
-                              <Button
-                                variant="secondary"
-                                className="flex-1"
-                                onClick={clearPulseFilters}
-                              >
-                                Clear
-                              </Button>
-                              <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => {
-                                  markSeen("pulse");
-                                  refreshUnseen();
-                                }}
-                                title="Mark current pulse items as read"
-                                aria-label="Mark current pulse items as read"
-                              >
-                                Mark read
-                              </Button>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2">
-                              {pulseSearch.trim() ? (
-                                <Chip
-                                  label={`Search: ${pulseSearch.trim()}`}
-                                  onClear={() => setPulseSearch("")}
-                                />
-                              ) : null}
-                              {pulseSeverity ? (
-                                <Chip
-                                  label={`Urgency: ${pulseSeverity}`}
-                                  onClear={() => setPulseSeverity(null)}
-                                />
-                              ) : null}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>,
-                    document.body
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3">
-              <div className="mb-3 flex flex-wrap gap-2 px-1">
-                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                  <kbd className="font-semibold text-foreground">i</kbd> Inbox
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                  <kbd className="font-semibold text-foreground">p</kbd> Pulse
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                  <kbd className="font-semibold text-foreground">f</kbd> Filters
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                  <kbd className="font-semibold text-foreground">d</kbd> Details
-                </span>
-                {isFacilitator ? (
-                  <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                    <kbd className="font-semibold text-foreground">t</kbd> Tools
-                  </span>
-                ) : null}
-              </div>
-              {streamTab === "inbox" ? (
-                <Inbox
-                  sessionId={sessionId}
-                  selectedId={selectedItem?.id ?? null}
-                  onSelect={(item) => {
-                    setSelectedItem(item);
-                    setFocusedThreadId(item.id);
-                    setSelectedSource("inbox");
-                  }}
-                  channel={inboxChannel}
-                  severity={inboxSeverity}
-                  search={inboxSearch}
-                />
-              ) : (
-                <PulseFeed
-                  sessionId={sessionId}
-                  selectedId={selectedItem?.id ?? null}
-                  onSelect={(item) => {
-                    setSelectedItem(item);
-                    setFocusedThreadId(item.id);
-                    setSelectedSource("pulse");
-                  }}
-                  severity={pulseSeverity}
-                  search={pulseSearch}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* DETAIL */}
-        <div className={isMobile ? "" : "col-span-8"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <FileText className="h-4 w-4 opacity-80" />
-                  Selected update
-                  <HintTooltip text="Read the selected update here and record the response you want the team to take." />
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                {selectedItem
-                  ? `Responses saved: ${actionsLoading ? "…" : selectedActions.length}`
-                  : "Nothing selected"}
-              </div>
-            </div>
-
-            <div className="p-5">
-              <MessageDetail
-                item={selectedItem}
-                activeTab={selectedSource}
-                comment={comment}
-                setComment={setComment}
-                onIgnore={() => doAction("ignore")}
-                onEscalate={() => doAction("escalate")}
-                onAct={() => doAction("act")}
-                onConfirm={() => doPulseDecision("confirm")}
-                onDeny={() => doPulseDecision("deny")}
-              />
-              {!selectedItem ? (
-                <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
-                  Start with the update feed on the left, then pick one message to review and respond from here.
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
-          <div className={isMobile ? "" : "col-span-4"}>
-            <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-              <div className="border-b border-[var(--studio-border)] px-4 py-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <Sparkles className="h-4 w-4 opacity-80" />
-                  What matters now
-                </div>
-                <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                  A short read on the most important thing to address next.
-                </div>
-              </div>
-              <div className="p-5">
-                <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
-                  <div className="text-sm leading-7 text-[color:var(--studio-muted)]">
-                    {overdueTaskCount > 0
-                      ? "There are overdue follow-ups waiting. Start with the oldest open task and close the loop before moving on."
-                      : openTasks.length > 0
-                      ? participantFocusText
-                      : selectedItem
-                      ? "No follow-up has been assigned yet. Review this update and record the response that best fits the situation."
-                      : "Choose an update from the left to continue the exercise."}
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[color:var(--studio-muted2)]">
-                    {overdueTaskCount > 0 ? (
-                      <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-1 font-semibold text-orange-800 dark:text-orange-300">
-                        Suggested next move: clear overdue follow-ups
-                      </span>
-                    ) : selectedItem ? (
-                      <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 font-semibold text-[color:var(--studio-ink)]">
-                        Suggested next move: record a response for the selected update
-                      </span>
-                    ) : (
-                      <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2.5 py-1 font-semibold">
-                        Suggested next move: choose one update chain to focus
-                      </span>
-                    )}
-                  </div>
-                  {latestConsequence?.description ? (
-                    <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-3 text-sm text-[color:var(--studio-muted)]">
-                      <div className="ui-section-label">
-                        Latest change
-                      </div>
-                      <div className="mt-1 font-medium text-[color:var(--studio-ink)]">
-                        {latestConsequence.title}
-                      </div>
-                      <div className="mt-1">{latestConsequence.description}</div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className={isMobile ? "" : "col-span-8"}>
-            <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-              <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                    <CheckSquare className="h-4 w-4 opacity-80" />
-                    Current follow-ups
-                  </div>
-                  <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                    The actions that currently need attention during the exercise.
-                  </div>
-                </div>
-                <div className="text-xs text-[color:var(--studio-muted2)]">
-                  {`${participantVisibleTasks.length} shown`}
-                </div>
-              </div>
-
-              <div className="p-5">
-                <div className="space-y-3">
-                  {participantVisibleTasks.length === 0 ? (
-                    <div className="rounded-[18px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                      No follow-ups are assigned right now.
-                    </div>
-                  ) : (
-                    participantVisibleTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex items-start gap-3">
-                            <div
-                              className={[
-                                "mt-0.5 h-5 w-5 shrink-0 rounded-full border-2",
-                                task.status === "done"
-                                  ? "border-emerald-500 bg-emerald-500"
-                                  : task.status === "in_progress"
-                                  ? "border-sky-500 bg-sky-500/15"
-                                  : "border-[var(--studio-border-strong)] bg-transparent",
-                              ].join(" ")}
-                              aria-hidden="true"
-                            />
-                            <div className="min-w-0">
-                              <div className="font-medium text-[color:var(--studio-ink)]">{task.title}</div>
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--studio-muted2)]">
-                                <span
-                                  className={[
-                                    "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                                    taskStatusTone(task.status),
-                                  ].join(" ")}
-                                >
-                                  {task.status.replaceAll("_", " ")}
-                                </span>
-                                <span>{task.due_at ? `Due ${fmt(task.due_at)}` : "No deadline"}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <span
-                            className={[
-                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                              taskPriorityTone(task.priority),
-                            ].join(" ")}
-                          >
-                            {task.priority}
-                          </span>
-                        </div>
-                        {task.description ? (
-                          <div className="mt-3 pl-8 text-sm leading-6 text-[color:var(--studio-muted)]">
-                            {task.description}
-                          </div>
-                        ) : null}
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--studio-border)] pt-3 pl-8">
-                          <div className="text-xs text-[color:var(--studio-muted2)]">
-                            {task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {task.status !== "in_progress" && task.status !== "done" ? (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={taskBusyId === task.id}
-                                onClick={() => handleTaskStatus(task.id, "in_progress")}
-                              >
-                                Start
-                              </Button>
-                            ) : null}
-                            {task.status !== "done" ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                disabled={taskBusyId === task.id}
-                                onClick={() => handleTaskStatus(task.id, "done")}
-                              >
-                                Mark done
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <SessionParticipantBoards
+        isMobile={isMobile}
+        overdueTaskCount={overdueTaskCount}
+        openTasks={openTasks}
+        selectedItemExists={Boolean(selectedItem)}
+        participantFocusText={participantFocusText}
+        latestConsequence={latestConsequence}
+        participantVisibleTasks={participantVisibleTasks}
+        taskBusyId={taskBusyId}
+        handleTaskStatus={handleTaskStatus}
+      />
 
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
         <button
