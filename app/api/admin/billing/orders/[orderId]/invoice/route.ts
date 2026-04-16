@@ -121,6 +121,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create Stripe invoice.";
+    console.error("[admin.billing.invoice]", error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
