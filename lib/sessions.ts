@@ -197,7 +197,7 @@ export async function createSessionFromScenario(params: {
   scenarioId: string;
   title: string;
 }): Promise<string> {
-  const { data, error } = await supabase.rpc("create_session_from_scenario", {
+  const { data, error } = await supabase.rpc("create_rehearsal_session_from_scenario", {
     p_scenario_id: params.scenarioId,
     p_title: params.title,
   });

@@ -219,6 +219,8 @@ type SessionMetaRow = {
   scenarioId?: string | null;
   started_at?: string | null;
   created_by?: string | null;
+  session_mode?: string | null;
+  participant_limit?: number | null;
 };
 
 type SessionRoleRow = {
@@ -375,6 +377,8 @@ export default function SessionParticipantPage() {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [sessionOwnerId, setSessionOwnerId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
+  const [sessionMode, setSessionMode] = useState<"rehearsal" | "live">("live");
+  const [sessionParticipantLimit, setSessionParticipantLimit] = useState<number | null>(null);
   const [exerciseClock, setExerciseClock] = useState("T=—");
 
   // role gating
@@ -524,7 +528,7 @@ export default function SessionParticipantPage() {
     try {
       const { data: sess, error: sessErr } = await supabase
         .from("sessions")
-        .select("scenario_id, started_at, created_by")
+        .select("scenario_id, started_at, created_by, session_mode, participant_limit")
         .eq("id", sessionId)
         .maybeSingle();
 
@@ -535,7 +539,18 @@ export default function SessionParticipantPage() {
         sessRow?.scenario_id ?? sessRow?.scenario ?? sessRow?.scenarioId ?? null;
       const ownerId = sessRow?.created_by ?? null;
       const sa = sessRow?.started_at ?? null;
+      const modeValue =
+        "session_mode" in (sessRow ?? {}) && (sessRow as { session_mode?: string | null }).session_mode === "rehearsal"
+          ? "rehearsal"
+          : "live";
+      const limitValue =
+        "participant_limit" in (sessRow ?? {}) &&
+        typeof (sessRow as { participant_limit?: number | null }).participant_limit === "number"
+          ? (sessRow as { participant_limit?: number | null }).participant_limit ?? null
+          : null;
       setStartedAt(typeof sa === "string" && sa ? sa : null);
+      setSessionMode(modeValue);
+      setSessionParticipantLimit(limitValue);
       setSessionOwnerId(
         typeof ownerId === "string" && ownerId ? ownerId : null
       );
@@ -903,7 +918,14 @@ export default function SessionParticipantPage() {
   }, [openTasks]);
 
   const latestConsequence = consequences[0] ?? null;
-  const heroEyebrow = isFacilitator ? "Live session control" : "Live session";
+  const heroEyebrow =
+    sessionMode === "rehearsal"
+      ? isFacilitator
+        ? "Rehearsal control"
+        : "Rehearsal mode"
+      : isFacilitator
+      ? "Live session control"
+      : "Live session";
   const heroHint =
     isFacilitator && totalWaitingUpdates > 0 && overdueTaskCount === 0
       ? "Watch the feed and decide when to introduce the next turn."
@@ -1597,6 +1619,11 @@ export default function SessionParticipantPage() {
                 <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
                   {heroSummary}
                 </p>
+                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
+                  {sessionMode === "rehearsal"
+                    ? "Rehearsal mode · single participant only · invitations disabled"
+                    : `Live exercise${sessionParticipantLimit ? ` · participant cap ${sessionParticipantLimit}` : ""}`}
+                </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Button

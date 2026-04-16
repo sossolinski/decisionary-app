@@ -2,19 +2,22 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 
 import {
   listSessions,
   listScenarios,
-  createSessionFromScenario,
+  createRehearsalSessionFromScenario,
+  createLiveSessionFromScenario,
   setSessionStatus,
   restartSession,
   deleteSession,
   type Session,
   type ScenarioListItem,
+  type LiveExerciseAccess,
 } from "@/lib/sessionsRuntime";
+import { getBillingInfraMessage, listMyLiveExerciseAccess } from "@/lib/billing";
 import { getErrorMessage } from "@/lib/errors";
 import { normalizeSessionStatus, type SessionStatus } from "@/lib/sessionStatus";
 import { validateSessionTitle } from "@/lib/validators";
@@ -78,6 +81,23 @@ function StatusPill({ status }: { status?: SessionStatus | null }) {
   const base =
     "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide";
   return <span className={`${base} ${statusTone(s)}`}>{s.toUpperCase()}</span>;
+}
+
+function ModePill({
+  mode,
+}: {
+  mode: "rehearsal" | "live";
+}) {
+  const cls =
+    mode === "rehearsal"
+      ? "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+      : "border-violet-500/25 bg-violet-500/10 text-violet-700 dark:text-violet-300";
+
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold tracking-wide ${cls}`}>
+      {mode === "rehearsal" ? "REHEARSAL" : "LIVE EXERCISE"}
+    </span>
+  );
 }
 
 function Select({
@@ -167,6 +187,7 @@ function CopyButton({
 
 export default function FacilitatorSessionsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { loading: roleLoading, canFacilitate } = useRoleContext();
   const ids = useId();
   const scenarioSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -178,9 +199,12 @@ export default function FacilitatorSessionsPage() {
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scenarios, setScenarios] = useState<ScenarioListItem[]>([]);
+  const [liveAccess, setLiveAccess] = useState<LiveExerciseAccess[]>([]);
 
   const [scenarioId, setScenarioId] = useState("");
   const [title, setTitle] = useState("New session");
+  const [createMode, setCreateMode] = useState<"rehearsal" | "live">("rehearsal");
+  const [participantTier, setParticipantTier] = useState("5");
 
   // UI: quick filters
   const [q, setQ] = useState("");
@@ -291,9 +315,24 @@ export default function FacilitatorSessionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [ses, scs] = await Promise.all([listSessions(), listScenarios()]);
-      setSessions((ses ?? []) as Session[]);
-      setScenarios((scs ?? []) as ScenarioListItem[]);
+      const [sesResult, scsResult, accessResult] = await Promise.allSettled([
+        listSessions(),
+        listScenarios(),
+        listMyLiveExerciseAccess(),
+      ]);
+      const billingInfraMessage =
+        accessResult.status === "rejected" ? getBillingInfraMessage(accessResult.reason) : null;
+
+      if (sesResult.status === "rejected") throw sesResult.reason;
+      if (scsResult.status === "rejected") throw scsResult.reason;
+
+      setSessions((sesResult.value ?? []) as Session[]);
+      setScenarios((scsResult.value ?? []) as ScenarioListItem[]);
+      setLiveAccess(accessResult.status === "fulfilled" ? ((accessResult.value ?? []) as LiveExerciseAccess[]) : []);
+
+      if (billingInfraMessage) {
+        setError(billingInfraMessage);
+      }
     } catch (e: unknown) {
       setError(getErrorMessage(e, "Failed to load sessions."));
     } finally {
@@ -305,6 +344,16 @@ export default function FacilitatorSessionsPage() {
     if (roleLoading || !canFacilitate) return;
     void load();
   }, [roleLoading, canFacilitate]);
+
+  useEffect(() => {
+    const nextScenarioId = searchParams.get("scenario");
+    const nextMode = searchParams.get("mode");
+    const nextTier = searchParams.get("tier");
+
+    if (nextScenarioId) setScenarioId(nextScenarioId);
+    if (nextMode === "live" || nextMode === "rehearsal") setCreateMode(nextMode);
+    if (nextTier === "5" || nextTier === "10" || nextTier === "15") setParticipantTier(nextTier);
+  }, [searchParams]);
 
   useAutoRefresh(
     async () => {
@@ -326,6 +375,22 @@ export default function FacilitatorSessionsPage() {
   const endedCount = useMemo(() => {
     return sessions.filter((s) => String(s.status ?? "").toLowerCase() === "ended").length;
   }, [sessions]);
+
+  const availableLiveTiers = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const item of liveAccess) {
+      if (item.status !== "active" || item.remaining_quantity <= 0) continue;
+      map.set(item.participant_limit, (map.get(item.participant_limit) ?? 0) + item.remaining_quantity);
+    }
+    return map;
+  }, [liveAccess]);
+
+  const requestedTier = Number(participantTier);
+  const canCreateLive =
+    [5, 10, 15].includes(requestedTier) &&
+    Array.from(availableLiveTiers.entries()).some(
+      ([limit, remaining]) => remaining > 0 && limit >= requestedTier
+    );
 
   const filteredSessions = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -361,10 +426,17 @@ export default function FacilitatorSessionsPage() {
     setBusyId("create");
     setError(null);
     try {
-      const id = await createSessionFromScenario({
-        scenarioId,
-        title: validTitle.value,
-      });
+      const id =
+        createMode === "rehearsal"
+          ? await createRehearsalSessionFromScenario({
+              scenarioId,
+              title: validTitle.value,
+            })
+          : await createLiveSessionFromScenario({
+              scenarioId,
+              title: validTitle.value,
+              participantLimit: requestedTier,
+            });
       await load();
       router.push(`/sessions/${id}`);
     } catch (e: unknown) {
@@ -475,10 +547,26 @@ export default function FacilitatorSessionsPage() {
                   Create session
                 </div>
                 <HintTooltip
-                  text="Start from a scenario, then open the live run immediately."
+                  text="Use rehearsal for a solo dry run, or start a paid live exercise when your organization has access."
                   side="right"
                 />
               </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={createMode === "rehearsal" ? "default" : "outline"}
+                onClick={() => setCreateMode("rehearsal")}
+              >
+                Rehearsal
+              </Button>
+              <Button
+                type="button"
+                variant={createMode === "live" ? "default" : "outline"}
+                onClick={() => setCreateMode("live")}
+              >
+                Live exercise
+              </Button>
             </div>
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(220px,0.75fr)_auto] xl:items-center">
               <div>
@@ -493,25 +581,73 @@ export default function FacilitatorSessionsPage() {
               </div>
 
               <div>
-                <Input
-                  id={`${ids}-title`}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="New session"
-                />
+                {createMode === "rehearsal" ? (
+                  <Input
+                    id={`${ids}-title`}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="New rehearsal"
+                  />
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+                    <Input
+                      id={`${ids}-title`}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder="New live exercise"
+                    />
+                    <Select value={participantTier} onChange={setParticipantTier}>
+                      <option value="5">Up to 5</option>
+                      <option value="10">Up to 10</option>
+                      <option value="15">Up to 15</option>
+                    </Select>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
-                <Button onClick={onCreate} disabled={busyId === "create"} className="gap-2 xl:w-auto">
+                <Button
+                  onClick={onCreate}
+                  disabled={busyId === "create" || (createMode === "live" && !canCreateLive)}
+                  className="gap-2 xl:w-auto"
+                >
                   <Play className="h-4 w-4" />
-                  {busyId === "create" ? "…" : "Create & open"}
+                  {busyId === "create" ? "…" : createMode === "rehearsal" ? "Create rehearsal" : "Create live"}
                 </Button>
                 <HintTooltip
-                  text="Create a run here, then share the join code with participants."
+                  text={
+                    createMode === "rehearsal"
+                      ? "Rehearsal mode is free and limited to the creator only."
+                      : "Live exercise creation consumes one eligible organization entitlement and unlocks participant joins up to the purchased tier."
+                  }
                   side="left"
                 />
               </div>
             </div>
+
+            {createMode === "live" ? (
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+                {canCreateLive ? (
+                  <span>
+                    Live access available. Matching entitlements:
+                    {" "}
+                    {[5, 10, 15]
+                      .filter((limit) => (availableLiveTiers.get(limit) ?? 0) > 0)
+                      .map((limit) => `${limit}p x${availableLiveTiers.get(limit) ?? 0}`)
+                      .join(" • ")}
+                  </span>
+                ) : (
+                  <span>
+                    This organization does not currently have a live exercise entitlement for the selected participant tier.
+                    Ask an admin to grant access or create a billing order first.
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+                Rehearsal mode runs the full session flow, but only the creator can join and participant invitations stay disabled.
+              </div>
+            )}
 
             {scenarios.length === 0 ? (
               <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
@@ -635,6 +771,7 @@ export default function FacilitatorSessionsPage() {
                         <div className="text-lg font-semibold tracking-tight truncate">
                           {s.title ?? "Untitled session"}
                         </div>
+                        <ModePill mode={s.session_mode} />
                         <StatusPill status={status} />
                       </div>
 
@@ -643,10 +780,19 @@ export default function FacilitatorSessionsPage() {
                         {scenarioTitle}
                       </div>
 
-                      <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                        <span className="font-medium text-foreground">Join code:</span>{" "}
-                        <span className="font-mono tracking-[0.08em]">{joinCode}</span>
-                      </div>
+                      {s.session_mode === "live" ? (
+                        <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                          <span className="font-medium text-foreground">Join code:</span>{" "}
+                          <span className="font-mono tracking-[0.08em]">{joinCode}</span>
+                          {typeof s.participant_limit === "number" ? (
+                            <span className="ml-2">· participant cap {s.participant_limit}</span>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                          <span className="font-medium text-foreground">Access:</span> Rehearsal mode · creator only
+                        </div>
+                      )}
 
                       <div className="mt-3 text-xs text-muted-foreground">
                         Created: {fmt(s.created_at)} <span className="mx-2">•</span>
@@ -686,7 +832,7 @@ export default function FacilitatorSessionsPage() {
                         Review
                       </Button>
 
-                      <CopyButton value={joinCode} label="Join code" />
+                      {s.session_mode === "live" ? <CopyButton value={joinCode} label="Join code" /> : null}
 
                       {/* More (minimize button spam) */}
                       <div className="relative">

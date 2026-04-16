@@ -16,6 +16,7 @@ import {
   Shield,
   Building2,
   Users,
+  CreditCard,
 } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
@@ -257,6 +258,16 @@ export default function AppSidebar({
                   href="/admin/users"
                   label="People"
                   icon={<Users className="h-5 w-5" />}
+                  pathname={pathname ?? ""}
+                  collapsed={collapsed}
+                  itemBase={itemBase}
+                  itemCollapsed={itemCollapsed}
+                  itemExpanded={itemExpanded}
+                />
+                <NavItem
+                  href="/admin/billing"
+                  label="Billing"
+                  icon={<CreditCard className="h-5 w-5" />}
                   pathname={pathname ?? ""}
                   collapsed={collapsed}
                   itemBase={itemBase}

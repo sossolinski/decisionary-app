@@ -24,11 +24,15 @@ export type Session = {
   id: string;
   title: string | null;
   scenario_id: string | null;
+  org_id: string | null;
 
   scenario: SessionScenarioLite | null;
 
   join_code: string;
   status: SessionStatus;
+  session_mode: "rehearsal" | "live";
+  participant_limit: number | null;
+  source_entitlement_id: string | null;
 
   created_at: string | null;
   created_by: string | null;
@@ -74,11 +78,23 @@ export type ParticipantSession = {
   title: string | null;
   join_code: string;
   status: SessionStatus;
+  session_mode?: "rehearsal" | "live";
+  participant_limit?: number | null;
   joined_at: string | null;
   created_at: string | null;
   started_at: string | null;
   ended_at: string | null;
   my_role_key: string | null;
+};
+
+export type LiveExerciseAccess = {
+  entitlement_id: string;
+  org_id: string;
+  title: string;
+  participant_limit: number;
+  remaining_quantity: number;
+  expires_at: string | null;
+  status: "pending" | "active" | "consumed" | "expired" | "revoked";
 };
 
 /* =========================
@@ -157,7 +173,7 @@ export async function listSessions(): Promise<Session[]> {
   const { data, error } = await supabase
     .from("sessions")
     .select(
-      "id,title,scenario_id,join_code,status,created_at,created_by,started_at,ended_at"
+      "id,title,scenario_id,org_id,join_code,status,session_mode,participant_limit,source_entitlement_id,created_at,created_by,started_at,ended_at"
     )
     .order("created_at", { ascending: false });
 
@@ -167,8 +183,12 @@ export async function listSessions(): Promise<Session[]> {
     id: string;
     title: string | null;
     scenario_id: string | null;
+    org_id: string | null;
     join_code: string;
     status: string;
+    session_mode: "rehearsal" | "live" | string;
+    participant_limit: number | null;
+    source_entitlement_id: string | null;
     created_at: string | null;
     created_by: string | null;
     started_at: string | null;
@@ -185,9 +205,13 @@ export async function listSessions(): Promise<Session[]> {
       id: r.id,
       title: r.title ?? null,
       scenario_id: sid,
+      org_id: r.org_id ?? null,
       scenario,
       join_code: r.join_code,
       status: normalizeSessionStatus(r.status),
+      session_mode: r.session_mode === "rehearsal" ? "rehearsal" : "live",
+      participant_limit: typeof r.participant_limit === "number" ? r.participant_limit : null,
+      source_entitlement_id: r.source_entitlement_id ?? null,
       created_at: r.created_at ?? null,
       created_by: r.created_by ?? null,
       started_at: r.started_at ?? null,
@@ -216,6 +240,8 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
         title,
         join_code,
         status,
+        session_mode,
+        participant_limit,
         created_at,
         started_at,
         ended_at
@@ -235,6 +261,8 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
             title: string | null;
             join_code: string;
             status: string;
+            session_mode?: "rehearsal" | "live" | string | null;
+            participant_limit?: number | null;
             created_at: string | null;
             started_at: string | null;
             ended_at: string | null;
@@ -244,6 +272,8 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
             title: string | null;
             join_code: string;
             status: string;
+            session_mode?: "rehearsal" | "live" | string | null;
+            participant_limit?: number | null;
             created_at: string | null;
             started_at: string | null;
             ended_at: string | null;
@@ -262,6 +292,8 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
           title: s.title ?? null,
           join_code: s.join_code,
           status: normalizeSessionStatus(s.status),
+          session_mode: s.session_mode === "rehearsal" ? "rehearsal" : "live",
+          participant_limit: typeof s.participant_limit === "number" ? s.participant_limit : null,
           joined_at: r.assigned_at ?? null,
           created_at: s.created_at ?? null,
           started_at: s.started_at ?? null,
@@ -291,7 +323,7 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
 
   const { data: sessions, error: e3 } = await supabase
     .from("sessions")
-    .select("id,title,join_code,status,created_at,started_at,ended_at")
+    .select("id,title,join_code,status,session_mode,participant_limit,created_at,started_at,ended_at")
     .in("id", sessionIds);
 
   if (e3) throw e3;
@@ -314,6 +346,8 @@ export async function listMyParticipantSessions(): Promise<ParticipantSession[]>
       title: s.title ?? null,
       join_code: s.join_code,
       status: normalizeSessionStatus(s.status),
+      session_mode: s.session_mode === "rehearsal" ? "rehearsal" : "live",
+      participant_limit: typeof s.participant_limit === "number" ? s.participant_limit : null,
       joined_at: assignment?.joinedAt ?? null,
       created_at: s.created_at ?? null,
       started_at: s.started_at ?? null,
@@ -331,9 +365,16 @@ export async function createSessionFromScenario(params: {
   scenarioId: string;
   title: string;
 }): Promise<string> {
+  return createRehearsalSessionFromScenario(params);
+}
+
+export async function createRehearsalSessionFromScenario(params: {
+  scenarioId: string;
+  title: string;
+}): Promise<string> {
   await requireUserId();
 
-  const { data, error } = await supabase.rpc("create_session_from_scenario", {
+  const { data, error } = await supabase.rpc("create_rehearsal_session_from_scenario", {
     p_scenario_id: params.scenarioId,
     p_title: params.title,
   });
@@ -357,6 +398,48 @@ export async function createSessionFromScenario(params: {
   }
 
   return sessionId;
+}
+
+export async function createLiveSessionFromScenario(params: {
+  scenarioId: string;
+  title: string;
+  participantLimit: number;
+}): Promise<string> {
+  await requireUserId();
+
+  const { data, error } = await supabase.rpc("create_live_session_from_scenario", {
+    p_scenario_id: params.scenarioId,
+    p_title: params.title,
+    p_requested_participant_limit: params.participantLimit,
+  });
+
+  if (error) throw error;
+
+  const sessionId = data as string;
+
+  const granted = await tryRpc("grant_session_role", {
+    p_session_id: sessionId,
+    p_role_key: "facilitator",
+    p_user_id: null,
+  });
+
+  if (granted === null) {
+    await supabase.from("session_role_assignments").insert({
+      session_id: sessionId,
+      user_id: await requireUserId(),
+      role_key: "facilitator",
+    });
+  }
+
+  return sessionId;
+}
+
+export async function listMyLiveExerciseAccess(): Promise<LiveExerciseAccess[]> {
+  await requireUserId();
+
+  const { data, error } = await supabase.rpc("list_my_live_exercise_access");
+  if (error) throw error;
+  return (data ?? []) as LiveExerciseAccess[];
 }
 
 /* =========================

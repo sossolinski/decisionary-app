@@ -43,6 +43,8 @@ import {
   X,
   Sparkles,
   Library,
+  PlayCircle,
+  Radio,
 } from "lucide-react";
 
 function fmt(dt?: string | null) {
@@ -658,6 +660,26 @@ export default function FacilitatorScenariosPage() {
                           <div className="p-4 space-y-4">
                             {/* Quick actions */}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <Button
+                                variant="outline"
+                                className="justify-start gap-2"
+                                onClick={() => router.push(`/facilitator/sessions?scenario=${s.id}&mode=rehearsal`)}
+                                title="Start a solo rehearsal from this scenario"
+                              >
+                                <Radio className="h-4 w-4" />
+                                Rehearse
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                className="justify-start gap-2"
+                                onClick={() => router.push(`/facilitator/sessions?scenario=${s.id}&mode=live&tier=5`)}
+                                title="Start a live exercise from this scenario"
+                              >
+                                <PlayCircle className="h-4 w-4" />
+                                Live exercise
+                              </Button>
+
                               <Button
                                 variant="outline"
                                 className="justify-start gap-2"

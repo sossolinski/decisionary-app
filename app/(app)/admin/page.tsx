@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Building2, BellRing, Sparkles, Users } from "lucide-react";
+import { Building2, BellRing, CreditCard, Sparkles, Users } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -16,6 +16,7 @@ type DashboardState = {
   allOrganizations: Organization[];
   accounts: number;
   announcements: number;
+  pendingOrders: number;
 };
 
 export default function AdminOverviewPage() {
@@ -24,6 +25,7 @@ export default function AdminOverviewPage() {
     allOrganizations: [],
     accounts: 0,
     announcements: 0,
+    pendingOrders: 0,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,20 +35,26 @@ export default function AdminOverviewPage() {
     setError(null);
 
     try {
-      const [orgs, accountsResult, announcements] = await Promise.all([
+      const [orgs, accountsResult, announcements, pendingOrdersResult] = await Promise.all([
         listAllOrganizationsForAdmin(),
         supabase.from("profiles").select("user_id", { count: "exact", head: true }),
         listNotificationAnnouncements(null),
+        supabase.from("billing_orders").select("id", { count: "exact", head: true }).eq("status", "payment_pending"),
       ]);
 
       if (accountsResult.error) {
         throw accountsResult.error;
       }
 
+      if (pendingOrdersResult.error) {
+        throw pendingOrdersResult.error;
+      }
+
       setState({
         allOrganizations: orgs,
         accounts: accountsResult.count ?? 0,
         announcements: announcements.length,
+        pendingOrders: pendingOrdersResult.count ?? 0,
       });
     } catch (err: unknown) {
       logClientError("AdminOverviewPage.load", err);
@@ -133,7 +141,7 @@ export default function AdminOverviewPage() {
 
       {error ? <div className="notice notice-error">{error}</div> : null}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <Card className="h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -165,6 +173,22 @@ export default function AdminOverviewPage() {
             <div className="text-sm text-[color:var(--studio-muted)]">{state.accounts} visible accounts</div>
             <Button asChild className="w-full" variant="secondary">
               <Link href="/admin/users">Open people directory</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 opacity-80" />
+              Billing
+            </CardTitle>
+            <CardDescription>Create orders, open Stripe invoice flows, and grant entitlements manually.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-sm text-[color:var(--studio-muted)]">{state.pendingOrders} payment requests waiting</div>
+            <Button asChild className="w-full" variant="secondary">
+              <Link href="/admin/billing">Open billing workspace</Link>
             </Button>
           </CardContent>
         </Card>
