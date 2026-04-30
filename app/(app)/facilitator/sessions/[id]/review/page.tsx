@@ -17,8 +17,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { getSessionActions, type SessionAction } from "@/lib/sessions";
 import { getErrorMessage } from "@/lib/errors";
 import { copyTextToClipboard } from "@/lib/clientClipboard";
+import { attachSignedUrlsToInjects, type InjectMedia } from "@/lib/injectMedia";
 import { normalizeSessionStatus } from "@/lib/sessionStatus";
 import { useRoleContext } from "@/app/components/useRoleContext";
+import InjectMediaGallery from "@/app/components/InjectMediaGallery";
 import { Button } from "@/app/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -39,22 +41,28 @@ type SessionInjectReviewRow = {
   injects:
     | {
         title: string | null;
+        body: string | null;
         channel: string | null;
         severity: string | null;
+        media?: InjectMedia[] | null;
       }
     | {
         title: string | null;
+        body: string | null;
         channel: string | null;
         severity: string | null;
+        media?: InjectMedia[] | null;
       }[]
     | null;
 };
 
 type ReviewAction = SessionAction & {
   inject_title: string | null;
+  inject_body: string | null;
   inject_channel: string | null;
   inject_severity: string | null;
   inject_delivered_at: string | null;
+  inject_media: InjectMedia[];
 };
 
 type SourceFilter = "all" | "inbox" | "pulse";
@@ -62,11 +70,14 @@ type ActionFilter = "all" | "ignore" | "escalate" | "act";
 
 function normalizeInjectMeta(row: SessionInjectReviewRow | null | undefined) {
   const inject = Array.isArray(row?.injects) ? (row?.injects[0] ?? null) : row?.injects ?? null;
+  const stream = inject?.channel === "pulse" ? "Pulse" : inject?.channel ? "Inbox" : null;
   return {
     title: inject?.title ?? null,
-    channel: inject?.channel ?? null,
+    body: inject?.body ?? null,
+    channel: stream,
     severity: inject?.severity ?? null,
     deliveredAt: row?.delivered_at ?? null,
+    media: inject?.media ?? [],
   };
 }
 
@@ -138,13 +149,55 @@ export default function FacilitatorSessionReviewPage() {
         if (injectIds.length > 0) {
           const { data: injectRows, error: injectError } = await supabase
             .from("session_injects")
-            .select("id, delivered_at, injects:inject_id(title, channel, severity)")
+            .select(`
+              id,
+              delivered_at,
+              injects:inject_id(
+                id,
+                title,
+                body,
+                channel,
+                severity,
+                media:inject_media(
+                  id,
+                  inject_id,
+                  storage_path,
+                  mime_type,
+                  width,
+                  height,
+                  alt_text,
+                  sort_order,
+                  created_at
+                )
+              )
+            `)
             .in("id", injectIds);
 
           if (injectError) throw injectError;
 
+          const hydratedInjectRows = await attachSignedUrlsToInjects(
+            ((injectRows ?? []) as SessionInjectReviewRow[]).map((row) => {
+              const inject = Array.isArray(row.injects) ? (row.injects[0] ?? null) : row.injects ?? null;
+              return {
+                id: row.id,
+                media: inject?.media ?? [],
+              };
+            })
+          );
+
+          const mediaBySessionInjectId = new Map(
+            hydratedInjectRows.map((row) => [row.id, row.media ?? []] as const)
+          );
+
           for (const row of (injectRows ?? []) as SessionInjectReviewRow[]) {
             injectLookup.set(row.id, normalizeInjectMeta(row));
+            const normalized = injectLookup.get(row.id);
+            if (normalized) {
+              injectLookup.set(row.id, {
+                ...normalized,
+                media: mediaBySessionInjectId.get(row.id) ?? normalized.media ?? [],
+              });
+            }
           }
         }
 
@@ -158,9 +211,11 @@ export default function FacilitatorSessionReviewPage() {
             return {
               ...action,
               inject_title: injectMeta?.title ?? null,
+              inject_body: injectMeta?.body ?? null,
               inject_channel: injectMeta?.channel ?? null,
               inject_severity: injectMeta?.severity ?? null,
               inject_delivered_at: injectMeta?.deliveredAt ?? null,
+              inject_media: injectMeta?.media ?? [],
             };
           })
         );
@@ -210,9 +265,11 @@ export default function FacilitatorSessionReviewPage() {
       {
         key: string;
         title: string;
+        body: string | null;
         deliveredAt: string | null;
         channel: string | null;
         severity: string | null;
+        media: InjectMedia[];
         items: ReviewAction[];
       }
     >();
@@ -228,9 +285,11 @@ export default function FacilitatorSessionReviewPage() {
       groups.set(key, {
         key,
         title: action.inject_title ?? `Session-level ${action.source}`,
+        body: action.inject_body ?? null,
         deliveredAt: action.inject_delivered_at ?? null,
         channel: action.inject_channel ?? null,
         severity: action.inject_severity ?? null,
+        media: action.inject_media ?? [],
         items: [action],
       });
     }
@@ -367,6 +426,28 @@ export default function FacilitatorSessionReviewPage() {
       {notice ? <div className="notice notice-success">{notice}</div> : null}
       {error ? <div className="notice notice-error">{error}</div> : null}
 
+      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-foreground">Not sure how to read this review?</div>
+            <div className="text-sm leading-6 text-[color:var(--studio-muted)]">
+              Start with grouped injects, then filter by source or action type. The guide explains what to look for after rehearsal and after a live run.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/facilitator/guide#review">
+                Open review guide
+                <ArrowLeft className="h-4 w-4 rotate-180" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/facilitator/guide#pitfalls">Common pitfalls</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-4">
         <SessionInfoRow label="Status" value={normalizeSessionStatus(meta?.status)} />
         <SessionInfoRow label="Join code" value={meta?.join_code ?? "—"} />
@@ -484,6 +565,16 @@ export default function FacilitatorSessionReviewPage() {
                       {group.deliveredAt ? `Delivered ${fmt(group.deliveredAt)}` : "Session-level"}
                     </div>
                   </div>
+
+                  {group.body?.trim() ? (
+                    <div className="mt-3 rounded-[14px] border border-[var(--studio-border)]/80 bg-[color:var(--studio-surface)] px-3 py-3 text-sm leading-6 text-[color:var(--studio-muted)]">
+                      {group.body.trim()}
+                    </div>
+                  ) : null}
+
+                  {group.media.length > 0 ? (
+                    <InjectMediaGallery media={group.media} title="Attached images" />
+                  ) : null}
 
                   <div className="mt-4 space-y-3">
                     {group.items.map((action) => (

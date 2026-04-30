@@ -1,7 +1,7 @@
 // app/components/AppTopbar.tsx
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -136,11 +136,11 @@ export default function AppTopbar({
   const preferencesHydratedRef = useRef(false);
   const pendingGoToRef = useRef<number | null>(null);
   const notificationsDebounceRef = useRef<number | null>(null);
-  const accountMenuId = useId();
-  const notificationsMenuId = useId();
-  const shortcutsDialogId = useId();
-  const languageFieldId = useId();
-  const themeFieldId = useId();
+  const accountMenuId = "app-topbar-account-menu";
+  const notificationsMenuId = "app-topbar-notifications-menu";
+  const shortcutsDialogId = "app-topbar-shortcuts-dialog";
+  const languageFieldId = "app-topbar-language-field";
+  const themeFieldId = "app-topbar-theme-field";
 
   const allNotifications = useMemo(
     () => [...sessionNotifications, ...systemNotifications, ...productNotifications].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime()),
@@ -1001,11 +1001,11 @@ export default function AppTopbar({
                       <div className="mt-2 text-xs text-destructive">Account disabled</div>
                     ) : null}
                   </div>
-                  <div className="border-b border-[color:var(--studio-border)] px-5 py-4 space-y-4">
-                    <div className="space-y-2">
+                  <div className="border-b border-[color:var(--studio-border)] px-5 py-4 space-y-5">
+                    <div>
                       <label
                         htmlFor={languageFieldId}
-                        className="text-xs font-medium text-[color:var(--studio-muted)]"
+                        className="mb-2 block text-xs font-medium text-[color:var(--studio-muted)]"
                       >
                         Language
                       </label>
@@ -1020,10 +1020,10 @@ export default function AppTopbar({
                       </select>
                     </div>
 
-                    <div className="space-y-2">
+                    <div>
                       <label
                         htmlFor={themeFieldId}
-                        className="text-xs font-medium text-[color:var(--studio-muted)]"
+                        className="mb-2 block text-xs font-medium text-[color:var(--studio-muted)]"
                       >
                         Theme
                       </label>

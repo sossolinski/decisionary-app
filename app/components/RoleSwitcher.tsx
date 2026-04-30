@@ -28,6 +28,10 @@ export default function RoleSwitcher() {
     return "/facilitator";
   }
 
+  function isSessionView(path: string) {
+    return path.startsWith("/sessions/");
+  }
+
   function pathMatchesRole(role: Role, path: string) {
     if (role === "admin") return path.startsWith("/admin");
     if (role === "participant") return path.startsWith("/participant");
@@ -43,7 +47,7 @@ export default function RoleSwitcher() {
       return;
     }
     await refresh();
-    if (!pathMatchesRole(r, pathname ?? "")) {
+    if (!isSessionView(pathname ?? "") && !pathMatchesRole(r, pathname ?? "")) {
       router.push(defaultPathForRole(r));
     }
     setBusy(null);

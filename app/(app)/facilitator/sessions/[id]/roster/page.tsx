@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { listSessionRoster, kickFromSession, type SessionRosterRow } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
@@ -50,6 +51,14 @@ function RolePill({ role }: { role?: string | null }) {
   );
 }
 
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
+
 export default function FacilitatorRosterPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -61,6 +70,7 @@ export default function FacilitatorRosterPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<SessionRosterRow[]>([]);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   const load = useCallback(async () => {
     if (!valid) {
@@ -114,8 +124,16 @@ export default function FacilitatorRosterPage() {
     if (busyId) return;
 
     const label = displayName?.trim() ? displayName.trim() : shortParticipantId(participantId);
-    if (!confirm(`Remove "${label}" from this session?`)) return;
+    setPendingConfirm({
+      title: "Remove participant?",
+      description: `This removes "${label}" from the current session roster. They will no longer be able to participate in this run.`,
+      confirmLabel: "Remove participant",
+      tone: "destructive",
+      onConfirm: () => kickNow(participantId),
+    });
+  }
 
+  async function kickNow(participantId: string) {
     setBusyId(participantId);
     setError(null);
     try {
@@ -140,7 +158,6 @@ export default function FacilitatorRosterPage() {
       {/* Header */}
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative flex flex-wrap items-end justify-between gap-4">
             <div className="space-y-2 min-w-0">
               <div className="ui-eyebrow">
@@ -246,6 +263,20 @@ export default function FacilitatorRosterPage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
+      />
     </div>
   );
 }

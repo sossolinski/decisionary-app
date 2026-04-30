@@ -22,10 +22,19 @@ import {
   type Inject,
   type ScenarioRuleTemplate,
 } from "@/lib/scenarios";
+import {
+  deleteInjectMedia,
+  reorderInjectMedia,
+  updateInjectMediaMetadata,
+  uploadInjectMediaFiles,
+  type InjectMedia,
+  type PendingInjectMedia,
+} from "@/lib/injectMedia";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import ScenarioDetailsSection from "@/app/components/facilitator-scenarios/ScenarioDetailsSection";
 import ScenarioInjectsSection from "@/app/components/facilitator-scenarios/ScenarioInjectsSection";
 import ScenarioRulesSection from "@/app/components/facilitator-scenarios/ScenarioRulesSection";
@@ -35,12 +44,19 @@ import {
   asInt,
   errMessage,
   fmt,
-  fromDatetimeLocal,
   parseJsonConfig,
   presetRuleKey,
 } from "@/app/components/facilitator-scenarios/scenarioEditorUi";
 
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
+
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
 
 export default function FacilitatorScenarioEditorPage() {
   const router = useRouter();
@@ -73,11 +89,11 @@ export default function FacilitatorScenarioEditorPage() {
 
   const [niTitle, setNiTitle] = useState("");
   const [niBody, setNiBody] = useState("");
-  const [niChannel, setNiChannel] = useState("ops");
+  const [niChannel, setNiChannel] = useState("inbox");
   const [niSeverity, setNiSeverity] = useState<string>("");
   const [niSenderName, setNiSenderName] = useState<string>("Facilitator");
   const [niSenderOrg, setNiSenderOrg] = useState<string>("Decisionary");
-  const [niScheduledLocal, setNiScheduledLocal] = useState<string>("");
+  const [niReleaseOffsetMinutes, setNiReleaseOffsetMinutes] = useState<string>("");
   const [niInjectKind, setNiInjectKind] = useState<NonNullable<Inject["inject_kind"]>>("operational");
   const [niSourceType, setNiSourceType] = useState<NonNullable<Inject["source_type"]>>("manual");
   const [niEntityScope, setNiEntityScope] = useState("");
@@ -85,11 +101,13 @@ export default function FacilitatorScenarioEditorPage() {
   const [niDecisionTemplateKey, setNiDecisionTemplateKey] = useState("");
   const [niVisibilityScope, setNiVisibilityScope] = useState<"all" | "facilitator_only" | "role_specific">("all");
   const [niBranchKey, setNiBranchKey] = useState("");
+  const [niMediaFiles, setNiMediaFiles] = useState<PendingInjectMedia[]>([]);
 
   const [openSiId, setOpenSiId] = useState<string | null>(null);
   const [newInjectOpen, setNewInjectOpen] = useState(false);
   const [openRuleId, setOpenRuleId] = useState<string | null>(null);
   const [newRuleOpen, setNewRuleOpen] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   const [nrRuleKey, setNrRuleKey] = useState("");
   const [nrRuleName, setNrRuleName] = useState("");
@@ -225,11 +243,11 @@ export default function FacilitatorScenarioEditorPage() {
   function clearNewInjectDraft() {
     setNiTitle("");
     setNiBody("");
-    setNiChannel("ops");
+    setNiChannel("inbox");
     setNiSeverity("");
     setNiSenderName("Facilitator");
     setNiSenderOrg("Decisionary");
-    setNiScheduledLocal("");
+    setNiReleaseOffsetMinutes("");
     setNiInjectKind("operational");
     setNiSourceType("manual");
     setNiEntityScope("");
@@ -237,6 +255,7 @@ export default function FacilitatorScenarioEditorPage() {
     setNiDecisionTemplateKey("");
     setNiVisibilityScope("all");
     setNiBranchKey("");
+    setNiMediaFiles([]);
   }
 
   function clearNewRuleDraft() {
@@ -248,6 +267,13 @@ export default function FacilitatorScenarioEditorPage() {
     setNrConditionConfig("{}");
     setNrEffectConfig('{\n  "create_consequence": true,\n  "severity": "medium"\n}');
     setNrEnabled(true);
+  }
+
+  function parseReleaseOffsetMinutes(value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
   }
 
   async function onSaveScenario() {
@@ -300,12 +326,13 @@ export default function FacilitatorScenarioEditorPage() {
 
     setBusyKey("create-inject");
     setError(null);
+    let createdInjectId: string | null = null;
 
     try {
       const inject = await createInject({
         title: niTitle.trim(),
         body: niBody.trim(),
-        channel: niChannel.trim() || "ops",
+        channel: niChannel === "pulse" ? "pulse" : "inbox",
         severity: niSeverity.trim() || null,
         sender_name: niSenderName.trim() || null,
         sender_org: niSenderOrg.trim() || null,
@@ -317,17 +344,30 @@ export default function FacilitatorScenarioEditorPage() {
         visibility_scope: niVisibilityScope,
         branch_key: niBranchKey.trim() || null,
       });
+      createdInjectId = inject.id;
+
+      if (niMediaFiles.length > 0) {
+        await uploadInjectMediaFiles({
+          injectId: inject.id,
+          files: niMediaFiles,
+          altTextBase: niTitle.trim(),
+        });
+      }
 
       await attachInjectToScenario({
         scenarioId: id,
         injectId: inject.id,
-        scheduled_at: fromDatetimeLocal(niScheduledLocal),
+        scheduled_at: null,
+        release_offset_minutes: parseReleaseOffsetMinutes(niReleaseOffsetMinutes),
       });
 
       clearNewInjectDraft();
       setNewInjectOpen(false);
       await load();
     } catch (e: unknown) {
+      if (createdInjectId) {
+        await supabase.from("injects").delete().eq("id", createdInjectId);
+      }
       setError(errMessage(e, "Failed to create inject."));
     } finally {
       setBusyKey(null);
@@ -335,7 +375,16 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   async function onDetach(siId: string) {
-    if (!confirm("Detach this inject from scenario?")) return;
+    const scenarioInject = injects.find((item) => item.id === siId);
+    setPendingConfirm({
+      title: "Detach inject?",
+      description: `This removes "${scenarioInject?.injects?.title ?? "Untitled inject"}" from this scenario, but keeps the inject in the library.`,
+      confirmLabel: "Detach inject",
+      onConfirm: () => detachNow(siId),
+    });
+  }
+
+  async function detachNow(siId: string) {
     setBusyKey(`detach:${siId}`);
     setError(null);
     try {
@@ -349,7 +398,17 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   async function onDeleteInject(injectId: string) {
-    if (!confirm("Delete this inject (from injects table)? This may affect other scenarios.")) return;
+    const scenarioInject = injects.find((item) => item.injects?.id === injectId || item.inject_id === injectId);
+    setPendingConfirm({
+      title: "Delete inject?",
+      description: `This permanently deletes "${scenarioInject?.injects?.title ?? "Untitled inject"}" from the inject library and may affect other scenarios using it.`,
+      confirmLabel: "Delete inject",
+      tone: "destructive",
+      onConfirm: () => deleteInjectNow(injectId),
+    });
+  }
+
+  async function deleteInjectNow(injectId: string) {
     setBusyKey(`delinj:${injectId}`);
     setError(null);
     try {
@@ -377,13 +436,75 @@ export default function FacilitatorScenarioEditorPage() {
     }
   }
 
-  async function onReschedule(siId: string, scheduledLocal: string) {
+  async function onUploadInjectMedia(injectId: string, files: File[]) {
+    setBusyKey(`media:${injectId}`);
+    setError(null);
+    try {
+      await uploadInjectMediaFiles({ injectId, files });
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to upload inject images."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onDeleteInjectMedia(injectId: string, media: InjectMedia) {
+    setBusyKey(`media:${injectId}`);
+    setError(null);
+    try {
+      await deleteInjectMedia(media);
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to delete inject image."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onUpdateInjectMediaAlt(injectId: string, media: InjectMedia, altText: string) {
+    setBusyKey(`media:${injectId}`);
+    setError(null);
+    try {
+      await updateInjectMediaMetadata(media.id, { alt_text: altText });
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to update image description."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onReorderInjectMedia(injectId: string, fromId: string, toId: string) {
+    const scenarioInject = injects.find((item) => item.inject_id === injectId || item.injects?.id === injectId);
+    const media = [...(scenarioInject?.injects?.media ?? [])];
+    const fromIndex = media.findIndex((item) => item.id === fromId);
+    const toIndex = media.findIndex((item) => item.id === toId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+
+    setBusyKey(`media:${injectId}`);
+    setError(null);
+    try {
+      const next = [...media];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      await reorderInjectMedia(injectId, next);
+      await load();
+    } catch (e: unknown) {
+      setError(errMessage(e, "Failed to reorder images."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onReschedule(siId: string, releaseOffsetMinutes: string) {
     setBusyKey(`sched:${siId}`);
     setError(null);
     try {
       await updateScenarioInject({
         id: siId,
-        scheduled_at: fromDatetimeLocal(scheduledLocal),
+        scheduled_at: null,
+        release_offset_minutes: parseReleaseOffsetMinutes(releaseOffsetMinutes),
       });
       await load();
     } catch (e: unknown) {
@@ -475,7 +596,17 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   async function onDeleteRuleTemplate(ruleId: string) {
-    if (!confirm("Delete this rule template?")) return;
+    const rule = rules.find((item) => item.id === ruleId);
+    setPendingConfirm({
+      title: "Delete rule?",
+      description: `This removes "${rule?.rule_name ?? "Untitled rule"}" from the scenario rule set. Existing session history will remain unchanged.`,
+      confirmLabel: "Delete rule",
+      tone: "destructive",
+      onConfirm: () => deleteRuleTemplateNow(ruleId),
+    });
+  }
+
+  async function deleteRuleTemplateNow(ruleId: string) {
     setBusyKey(`delrule:${ruleId}`);
     setError(null);
     try {
@@ -520,7 +651,6 @@ export default function FacilitatorScenarioEditorPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-3">
               <div className="ui-eyebrow">
@@ -625,6 +755,10 @@ export default function FacilitatorScenarioEditorPage() {
         onDetach={onDetach}
         onDeleteInject={onDeleteInject}
         onUpdateInject={onUpdateInject}
+        onUploadInjectMedia={onUploadInjectMedia}
+        onDeleteInjectMedia={onDeleteInjectMedia}
+        onUpdateInjectMediaAlt={onUpdateInjectMediaAlt}
+        onReorderInjectMedia={onReorderInjectMedia}
         onReschedule={onReschedule}
         onMove={onMove}
         clearNewInjectDraft={clearNewInjectDraft}
@@ -640,8 +774,8 @@ export default function FacilitatorScenarioEditorPage() {
         setNiSenderName={setNiSenderName}
         niSenderOrg={niSenderOrg}
         setNiSenderOrg={setNiSenderOrg}
-        niScheduledLocal={niScheduledLocal}
-        setNiScheduledLocal={setNiScheduledLocal}
+        niReleaseOffsetMinutes={niReleaseOffsetMinutes}
+        setNiReleaseOffsetMinutes={setNiReleaseOffsetMinutes}
         niInjectKind={niInjectKind}
         setNiInjectKind={setNiInjectKind}
         niSourceType={niSourceType}
@@ -656,6 +790,8 @@ export default function FacilitatorScenarioEditorPage() {
         setNiVisibilityScope={setNiVisibilityScope}
         niBranchKey={niBranchKey}
         setNiBranchKey={setNiBranchKey}
+        niMediaFiles={niMediaFiles}
+        setNiMediaFiles={setNiMediaFiles}
       />
 
       <ScenarioRulesSection
@@ -697,6 +833,20 @@ export default function FacilitatorScenarioEditorPage() {
         applyRulePreset={applyRulePreset}
         clearNewRuleDraft={clearNewRuleDraft}
         setError={setError}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
       />
     </div>
   );

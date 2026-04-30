@@ -3,6 +3,14 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/server/supabaseAdmin";
 import { getStripe, getStripeWebhookSecret } from "@/lib/server/stripe";
 
+async function ensureNoSupabaseError<T extends { error?: { message?: string } | null }>(
+  operation: PromiseLike<T> | T
+) {
+  const result = await operation;
+  if (result.error) throw result.error;
+  return result;
+}
+
 async function markWebhookProcessed(eventId: string, eventType: string, payload: unknown) {
   const adminClient = createSupabaseAdminClient();
 
@@ -32,15 +40,16 @@ async function markWebhookProcessed(eventId: string, eventType: string, payload:
 async function provisionOrderFromInvoice(invoice: { id: string; payment_intent?: string | null; metadata?: Record<string, string> | null }) {
   const adminClient = createSupabaseAdminClient();
 
-  let orderId = invoice.metadata?.order_id ?? null;
-  let orderQuery = adminClient
+  const orderId = invoice.metadata?.order_id ?? null;
+  const orderQuery = adminClient
     .from("billing_orders")
     .select("*")
     .eq("stripe_invoice_id", invoice.id)
     .maybeSingle();
 
-  let { data: order, error: orderError } = await orderQuery;
-  if (orderError) throw orderError;
+  const orderResult = await orderQuery;
+  if (orderResult.error) throw orderResult.error;
+  let order = orderResult.data;
 
   if (!order && orderId) {
     const fallback = await adminClient
@@ -56,15 +65,17 @@ async function provisionOrderFromInvoice(invoice: { id: string; payment_intent?:
 
   const nowIso = new Date().toISOString();
 
-  await adminClient
-    .from("billing_orders")
-    .update({
-      status: "paid",
-      paid_at: order.paid_at ?? nowIso,
-      stripe_invoice_id: order.stripe_invoice_id ?? invoice.id,
-      stripe_payment_intent_id: order.stripe_payment_intent_id ?? invoice.payment_intent ?? null,
-    })
-    .eq("id", order.id);
+  await ensureNoSupabaseError(
+    adminClient
+      .from("billing_orders")
+      .update({
+        status: "paid",
+        paid_at: order.paid_at ?? nowIso,
+        stripe_invoice_id: order.stripe_invoice_id ?? invoice.id,
+        stripe_payment_intent_id: order.stripe_payment_intent_id ?? invoice.payment_intent ?? null,
+      })
+      .eq("id", order.id)
+  );
 
   const { data: items, error: itemsError } = await adminClient
     .from("billing_order_items")
@@ -84,34 +95,38 @@ async function provisionOrderFromInvoice(invoice: { id: string; payment_intent?:
     if (existingError) throw existingError;
     if (existingEntitlement) continue;
 
-    await adminClient.from("billing_entitlements").insert({
-      org_id: order.org_id,
-      source_order_id: order.id,
-      source_order_item_id: item.id,
-      entitlement_type: item.item_type,
-      scenario_source: item.scenario_source,
-      title: item.title,
-      participant_limit: item.participant_limit,
-      quantity: item.quantity,
-      remaining_quantity: item.quantity,
-      status: "active",
-      activate_at: nowIso,
-      granted_manually: false,
-      created_by: order.created_by,
-      updated_by: order.created_by,
-    });
+    await ensureNoSupabaseError(
+      adminClient.from("billing_entitlements").insert({
+        org_id: order.org_id,
+        source_order_id: order.id,
+        source_order_item_id: item.id,
+        entitlement_type: item.item_type,
+        scenario_source: item.scenario_source,
+        title: item.title,
+        participant_limit: item.participant_limit,
+        quantity: item.quantity,
+        remaining_quantity: item.quantity,
+        status: "active",
+        activate_at: nowIso,
+        granted_manually: false,
+        created_by: order.created_by,
+        updated_by: order.created_by,
+      })
+    );
   }
 
-  await adminClient
-    .from("billing_orders")
-    .update({
-      status: "paid",
-      paid_at: order.paid_at ?? nowIso,
-      provisioned_at: nowIso,
-      stripe_invoice_id: order.stripe_invoice_id ?? invoice.id,
-      stripe_payment_intent_id: order.stripe_payment_intent_id ?? invoice.payment_intent ?? null,
-    })
-    .eq("id", order.id);
+  await ensureNoSupabaseError(
+    adminClient
+      .from("billing_orders")
+      .update({
+        status: "paid",
+        paid_at: order.paid_at ?? nowIso,
+        provisioned_at: nowIso,
+        stripe_invoice_id: order.stripe_invoice_id ?? invoice.id,
+        stripe_payment_intent_id: order.stripe_payment_intent_id ?? invoice.payment_intent ?? null,
+      })
+      .eq("id", order.id)
+  );
 }
 
 export async function POST(request: Request) {
@@ -143,12 +158,14 @@ export async function POST(request: Request) {
     if (event.type === "invoice.payment_failed" || event.type === "invoice.voided") {
       const invoice = event.data.object as { id: string };
       const adminClient = createSupabaseAdminClient();
-      await adminClient
-        .from("billing_orders")
-        .update({
-          status: event.type === "invoice.voided" ? "cancelled" : "failed",
-        })
-        .eq("stripe_invoice_id", invoice.id);
+      await ensureNoSupabaseError(
+        adminClient
+          .from("billing_orders")
+          .update({
+            status: event.type === "invoice.voided" ? "cancelled" : "failed",
+          })
+          .eq("stripe_invoice_id", invoice.id)
+      );
     }
 
     return NextResponse.json({ received: true });

@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { SessionSituation } from "@/lib/sessions";
 import type { Scenario } from "@/lib/scenarios";
+import { supabase } from "@/lib/supabaseClient";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -79,6 +80,15 @@ function numOr(prev: number, raw: string) {
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
+}
+
+function formatProfileLabel(profile: { full_name: string | null; email: string | null } | null, fallbackId: string | null) {
+  if (profile?.full_name?.trim()) return profile.full_name.trim();
+  if (profile?.email?.trim()) {
+    const local = profile.email.split("@")[0] ?? "";
+    return local.trim() || profile.email;
+  }
+  return fallbackId;
 }
 
 /**
@@ -198,6 +208,7 @@ export default function SituationCard({
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [updatedByLabel, setUpdatedByLabel] = useState<string | null>(null);
 
   const [injured, setInjured] = useState("");
   const [fatalities, setFatalities] = useState("");
@@ -229,6 +240,41 @@ export default function SituationCard({
     scenario?.uninjured,
     scenario?.unknown,
   ]);
+
+  useEffect(() => {
+    const updatedBy = situation?.updated_by?.trim() ?? null;
+    if (!updatedBy) {
+      setUpdatedByLabel(null);
+      return;
+    }
+
+    let alive = true;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name,email")
+        .eq("user_id", updatedBy)
+        .maybeSingle();
+
+      if (!alive) return;
+      if (error) {
+        setUpdatedByLabel(updatedBy);
+        return;
+      }
+
+      setUpdatedByLabel(
+        formatProfileLabel(
+          (data as { full_name: string | null; email: string | null } | null) ?? null,
+          updatedBy
+        )
+      );
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [situation?.updated_by]);
 
   const hasScenarioFallback = useMemo(() => {
     return Boolean(
@@ -270,7 +316,7 @@ export default function SituationCard({
   const unknownVal = typeof s?.unknown === "number" ? s?.unknown : scenario?.unknown;
 
   const updatedAt = s?.updated_at ? new Date(s.updated_at).toLocaleString() : null;
-  const updatedBy = s?.updated_by ? String(s.updated_by) : null;
+  const updatedBy = updatedByLabel ?? (s?.updated_by ? String(s.updated_by) : null);
 
   async function onSave() {
     if (!onUpdateCasualties) return;

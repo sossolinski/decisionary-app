@@ -1,5 +1,11 @@
 // lib/sessions.ts
 import { supabase } from "./supabaseClient";
+import {
+  attachSignedUrlsToInjects,
+  type InjectMedia,
+  type PendingInjectMedia,
+  uploadInjectMediaFiles,
+} from "./injectMedia";
 
 /* =========================
    TYPES
@@ -40,6 +46,7 @@ export type Inject = {
   decision_template_key?: string | null;
   visibility_scope?: string | null;
   branch_key?: string | null;
+  media?: InjectMedia[] | null;
   created_at?: string;
 };
 
@@ -61,6 +68,9 @@ export type SessionAction = {
   action_type: "ignore" | "escalate" | "act";
   comment: string | null;
   created_at: string;
+  inject_title?: string | null;
+  inject_channel?: string | null;
+  inject_sender_name?: string | null;
 };
 
 export type PagedResult<T> = {
@@ -90,6 +100,19 @@ function normalizeSessionInjectRow(
   };
 }
 
+async function hydrateSessionInjectMedia(rows: SessionInject[]): Promise<SessionInject[]> {
+  const injects = rows.map((row) => row.injects).filter(Boolean) as Inject[];
+  if (injects.length === 0) return rows;
+
+  const hydrated = await attachSignedUrlsToInjects(injects);
+  const injectById = new Map(hydrated.map((inject) => [inject.id, inject]));
+
+  return rows.map((row) => ({
+    ...row,
+    injects: row.injects ? injectById.get(row.injects.id) ?? row.injects : null,
+  }));
+}
+
 async function getSessionInjectById(id: string): Promise<SessionInject | null> {
   const { data, error } = await supabase
     .from("session_injects")
@@ -99,7 +122,7 @@ async function getSessionInjectById(id: string): Promise<SessionInject | null> {
         session_id,
         delivered_at,
         inject_id,
-        injects:inject_id (
+        injects:inject_id!inner (
           id,
           title,
           body,
@@ -113,7 +136,18 @@ async function getSessionInjectById(id: string): Promise<SessionInject | null> {
           requires_decision,
           decision_template_key,
           visibility_scope,
-          branch_key
+          branch_key,
+          media:inject_media (
+            id,
+            inject_id,
+            storage_path,
+            mime_type,
+            width,
+            height,
+            alt_text,
+            sort_order,
+            created_at
+          )
         )
       `
     )
@@ -121,7 +155,75 @@ async function getSessionInjectById(id: string): Promise<SessionInject | null> {
     .maybeSingle();
 
   if (error) throw error;
-  return data ? normalizeSessionInjectRow(data as Omit<SessionInject, "injects"> & { injects: unknown }) : null;
+  if (!data) return null;
+  const [row] = await hydrateSessionInjectMedia([
+    normalizeSessionInjectRow(data as Omit<SessionInject, "injects"> & { injects: unknown }),
+  ]);
+  return row;
+}
+
+function normalizeSessionActionRow(
+  row: SessionAction & {
+    session_injects?: {
+      injects?: {
+        title?: string | null;
+        channel?: string | null;
+        sender_name?: string | null;
+      } | null;
+    } | null;
+  }
+): SessionAction {
+  return {
+    id: row.id,
+    session_id: row.session_id,
+    session_inject_id: row.session_inject_id,
+    source: row.source,
+    action_type: row.action_type,
+    comment: row.comment,
+    created_at: row.created_at,
+    inject_title: row.session_injects?.injects?.title ?? null,
+    inject_channel: row.session_injects?.injects?.channel ?? null,
+    inject_sender_name: row.session_injects?.injects?.sender_name ?? null,
+  };
+}
+
+async function getSessionActionById(id: string): Promise<SessionAction | null> {
+  const { data, error } = await supabase
+    .from("session_actions")
+    .select(
+      `
+        id,
+        session_id,
+        session_inject_id,
+        source,
+        action_type,
+        comment,
+        created_at,
+        session_injects:session_inject_id (
+          injects:inject_id (
+            title,
+            channel,
+            sender_name
+          )
+        )
+      `
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+  return normalizeSessionActionRow(
+    data as SessionAction & {
+      session_injects?: {
+        injects?: {
+          title?: string | null;
+          channel?: string | null;
+          sender_name?: string | null;
+        } | null;
+      } | null;
+    }
+  );
 }
 
 function safeRemoveChannel(ch: unknown) {
@@ -217,7 +319,12 @@ type InboxOpts = {
   channel?: string | null; // eq filter (injects.channel = ...)
   channelNot?: string | null; // neq filter (injects.channel <> ...)
   severity?: string | null; // eq filter (injects.severity = ...)
+  search?: string | null;
 };
+
+function escapeIlikeTerm(value: string) {
+  return value.replace(/[%_]/g, "\\$&").trim();
+}
 
 function selectSessionInjects() {
   // alias injects:inject_id must match FK on session_injects.inject_id -> injects.id
@@ -229,7 +336,7 @@ function selectSessionInjects() {
         session_id,
         delivered_at,
         inject_id,
-        injects:inject_id (
+        injects:inject_id!inner (
           id,
           title,
           body,
@@ -243,7 +350,18 @@ function selectSessionInjects() {
           requires_decision,
           decision_template_key,
           visibility_scope,
-          branch_key
+          branch_key,
+          media:inject_media (
+            id,
+            inject_id,
+            storage_path,
+            mime_type,
+            width,
+            height,
+            alt_text,
+            sort_order,
+            created_at
+          )
         )
       `,
       { count: "exact" }
@@ -263,18 +381,35 @@ export async function getSessionInbox(
     .eq("session_id", sessionId)
     .order("delivered_at", { ascending: false });
 
+  // Feeds should show incoming content, not internal/system follow-ups.
+  q = q
+    .neq("injects.source_type", "conditional")
+    .neq("injects.source_type", "consequence");
+
   // Server-side filters on embedded resource
   if (opts.channel) q = q.eq("injects.channel", opts.channel);
   else if (opts.channelNot) q = q.neq("injects.channel", opts.channelNot);
 
   if (opts.severity) q = q.eq("injects.severity", opts.severity);
 
+  if (opts.search?.trim()) {
+    const term = escapeIlikeTerm(opts.search);
+    if (term) {
+      q = q.or(
+        `title.ilike.%${term}%,body.ilike.%${term}%,sender_name.ilike.%${term}%,sender_org.ilike.%${term}%`,
+        { foreignTable: "injects" }
+      );
+    }
+  }
+
   const { data, error, count } = await q.range(from, to);
 
   if (error) throw error;
 
+  const rows = await hydrateSessionInjectMedia((data ?? []).map(normalizeSessionInjectRow) as SessionInject[]);
+
   return {
-    items: (data ?? []).map(normalizeSessionInjectRow) as SessionInject[],
+    items: rows,
     total: count ?? 0,
     page,
   };
@@ -315,13 +450,14 @@ export function subscribeInbox(sessionId: string, cb: () => void, debounceMs = 2
 
 export async function getSessionPulse(
   sessionId: string,
-  opts: { page?: number; pageSize?: number; severity?: string | null } = {}
+  opts: { page?: number; pageSize?: number; severity?: string | null; search?: string | null } = {}
 ): Promise<PagedResult<PulseItem>> {
   return getSessionInbox(sessionId, {
     page: opts.page ?? 1,
     pageSize: opts.pageSize ?? 5,
     channel: "pulse",
     severity: opts.severity ?? null,
+    search: opts.search ?? null,
   });
 }
 
@@ -386,13 +522,40 @@ export function subscribeSessionInjectsPayload(
 export async function getSessionActions(sessionId: string, limit = 50) {
   const { data, error } = await supabase
     .from("session_actions")
-    .select("*")
+    .select(
+      `
+        id,
+        session_id,
+        session_inject_id,
+        source,
+        action_type,
+        comment,
+        created_at,
+        session_injects:session_inject_id (
+          injects:inject_id (
+            title,
+            channel,
+            sender_name
+          )
+        )
+      `
+    )
     .eq("session_id", sessionId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
   if (error) throw error;
-  return (data ?? []) as SessionAction[];
+  return ((data ?? []) as Array<
+    SessionAction & {
+      session_injects?: {
+        injects?: {
+          title?: string | null;
+          channel?: string | null;
+          sender_name?: string | null;
+        } | null;
+      } | null;
+    }
+  >).map(normalizeSessionActionRow);
 }
 
 export async function addSessionAction(params: {
@@ -404,17 +567,13 @@ export async function addSessionAction(params: {
 }) {
   const { sessionId, sessionInjectId, source, actionType, comment } = params;
 
-  const { data, error } = await supabase
-    .from("session_actions")
-    .insert({
-      session_id: sessionId,
-      session_inject_id: sessionInjectId,
-      source,
-      action_type: actionType,
-      comment,
-    })
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("record_session_action", {
+    p_session_id: sessionId,
+    p_session_inject_id: sessionInjectId,
+    p_source: source,
+    p_action_type: actionType,
+    p_comment: comment,
+  });
 
   if (error) throw error;
   return data as SessionAction;
@@ -429,7 +588,7 @@ export async function sendInjectToSession(
   title: string,
   body: string,
   opts?: {
-    channel?: string; // default "ops"
+    channel?: string; // default "inbox"
     severity?: string | null;
     sender_name?: string | null;
     sender_org?: string | null;
@@ -440,43 +599,59 @@ export async function sendInjectToSession(
     decision_template_key?: string | null;
     visibility_scope?: string | null;
     branch_key?: string | null;
+    media_files?: PendingInjectMedia[];
   }
 ) {
-  const channel = opts?.channel ?? "ops";
+  const channel = opts?.channel === "pulse" ? "pulse" : "inbox";
+  let injectId: string | null = null;
 
-  // 1) create inject
-  const { data: inj, error: injErr } = await supabase
-    .from("injects")
-    .insert({
-      title,
-      body,
-      channel,
-      severity: opts?.severity ?? null,
-      sender_name: opts?.sender_name ?? "System",
-      sender_org: opts?.sender_org ?? "Decisionary",
-      inject_kind: opts?.inject_kind ?? "system",
-      source_type: opts?.source_type ?? "consequence",
-      entity_scope: opts?.entity_scope ?? null,
-      requires_decision: opts?.requires_decision ?? false,
-      decision_template_key: opts?.decision_template_key ?? null,
-      visibility_scope: opts?.visibility_scope ?? "all",
-      branch_key: opts?.branch_key ?? null,
-    })
-    .select("id")
-    .single();
+  try {
+    const { data: inj, error: injErr } = await supabase
+      .from("injects")
+      .insert({
+        title,
+        body,
+        channel,
+        severity: opts?.severity ?? null,
+        sender_name: opts?.sender_name ?? "System",
+        sender_org: opts?.sender_org ?? "Decisionary",
+        inject_kind: opts?.inject_kind ?? "system",
+        source_type: opts?.source_type ?? "manual",
+        entity_scope: opts?.entity_scope ?? null,
+        requires_decision: opts?.requires_decision ?? false,
+        decision_template_key: opts?.decision_template_key ?? null,
+        visibility_scope: opts?.visibility_scope ?? "all",
+        branch_key: opts?.branch_key ?? null,
+      })
+      .select("id")
+      .single();
 
-  if (injErr) throw injErr;
+    if (injErr) throw injErr;
+    injectId = (inj as { id: string }).id;
 
-  // 2) attach to session
-  const { error: linkErr } = await supabase.from("session_injects").insert({
-    session_id: sessionId,
-    inject_id: (inj as { id: string }).id,
-    delivered_at: new Date().toISOString(),
-  });
+    if ((opts?.media_files?.length ?? 0) > 0) {
+      await uploadInjectMediaFiles({
+        injectId,
+        files: opts?.media_files ?? [],
+        altTextBase: title,
+      });
+    }
 
-  if (linkErr) throw linkErr;
+    const { error: linkErr } = await supabase.rpc("release_session_inject", {
+      p_session_id: sessionId,
+      p_inject_id: injectId,
+      p_delivered_at: new Date().toISOString(),
+    });
 
-  return (inj as { id: string }).id;
+    if (linkErr) throw linkErr;
+
+    return injectId;
+  } catch (error) {
+    if (injectId) {
+      await supabase.from("injects").delete().eq("id", injectId);
+    }
+    throw error;
+  }
 }
 
 /* =========================
@@ -486,25 +661,43 @@ export async function sendInjectToSession(
 export async function deliverDueInjects(sessionId: string): Promise<{ delivered: number }> {
   const { data: sess, error: sessErr } = await supabase
     .from("sessions")
-    .select("id, scenario_id")
+    .select("id, scenario_id, status, started_at")
     .eq("id", sessionId)
     .single();
 
   if (sessErr) throw sessErr;
 
   const scenarioId = (sess as { scenario_id?: string | null } | null)?.scenario_id;
-  if (!scenarioId) return { delivered: 0 };
+  const sessionStatus = (sess as { status?: string | null } | null)?.status;
+  const sessionStartedAt = (sess as { started_at?: string | null } | null)?.started_at;
+  if (!scenarioId || sessionStatus !== "live" || !sessionStartedAt) return { delivered: 0 };
 
   const { data: due, error: dueErr } = await supabase
     .from("scenario_injects")
-    .select("id, scenario_id, inject_id, scheduled_at")
+    .select("id, scenario_id, inject_id, scheduled_at, release_offset_minutes")
     .eq("scenario_id", scenarioId)
-    .lte("scheduled_at", new Date().toISOString())
-    .order("scheduled_at", { ascending: true });
+    .order("order_index", { ascending: true });
 
   if (dueErr) throw dueErr;
 
-  const dueRows = (due ?? []) as Array<{ inject_id: string }>;
+  const startedAtMs = new Date(sessionStartedAt).getTime();
+  const nowMs = Date.now();
+  const dueRows = ((due ?? []) as Array<{
+    inject_id: string;
+    scheduled_at?: string | null;
+    release_offset_minutes?: number | null;
+  }>).filter((row) => {
+    if (typeof row.release_offset_minutes === "number") {
+      return startedAtMs + row.release_offset_minutes * 60_000 <= nowMs;
+    }
+
+    if (row.scheduled_at) {
+      const scheduledAtMs = new Date(row.scheduled_at).getTime();
+      return Number.isFinite(scheduledAtMs) && scheduledAtMs <= nowMs;
+    }
+
+    return true;
+  });
   if (dueRows.length === 0) return { delivered: 0 };
 
   const injectIds = Array.from(new Set(dueRows.map((r) => r.inject_id)));
@@ -523,14 +716,14 @@ export async function deliverDueInjects(sessionId: string): Promise<{ delivered:
   if (toDeliver.length === 0) return { delivered: 0 };
 
   const nowIso = new Date().toISOString();
-  const inserts = toDeliver.map((r) => ({
-    session_id: sessionId,
-    inject_id: r.inject_id,
-    delivered_at: nowIso,
-  }));
-
-  const { error: insErr } = await supabase.from("session_injects").insert(inserts);
-  if (insErr) throw insErr;
+  for (const row of toDeliver) {
+    const { error: releaseErr } = await supabase.rpc("release_session_inject", {
+      p_session_id: sessionId,
+      p_inject_id: row.inject_id,
+      p_delivered_at: nowIso,
+    });
+    if (releaseErr) throw releaseErr;
+  }
 
   return { delivered: toDeliver.length };
 }
@@ -548,18 +741,13 @@ export async function updateCasualties(params: {
 }) {
   const { sessionId, injured, fatalities, uninjured, unknown } = params;
 
-  const { data, error } = await supabase
-    .from("session_situation")
-    .update({
-      injured,
-      fatalities,
-      uninjured,
-      unknown,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("session_id", sessionId)
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("update_session_casualties", {
+    p_session_id: sessionId,
+    p_injured: injured,
+    p_fatalities: fatalities,
+    p_uninjured: uninjured,
+    p_unknown: unknown,
+  });
 
   if (error) throw error;
   return data as SessionSituation;
@@ -657,9 +845,10 @@ export function subscribeActionsPayload(
         table: "session_actions",
         filter: `session_id=eq.${sessionId}`,
       },
-      (payload) => {
+      async (payload) => {
         try {
-          onInsert(payload.new as SessionAction);
+          const row = await getSessionActionById((payload.new as { id: string }).id);
+          if (row) onInsert(row);
         } catch {
           // ignore handler errors
         }

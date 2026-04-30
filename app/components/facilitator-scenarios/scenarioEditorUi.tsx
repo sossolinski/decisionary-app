@@ -21,7 +21,7 @@ export const SOURCE_TYPE_OPTIONS: Array<NonNullable<Inject["source_type"]>> = [
 ];
 
 export const VISIBILITY_SCOPE_OPTIONS = ["all", "facilitator_only", "role_specific"] as const;
-export const RULE_TRIGGER_OPTIONS = ["inject_released", "decision_recorded", "task_overdue", "manual"] as const;
+export const RULE_TRIGGER_OPTIONS = ["inject_released", "decision_recorded", "task_overdue", "task_status_changed", "manual"] as const;
 export const RULE_PRESETS = [
   {
     key: "ops-escalation-after-escalate",
@@ -67,7 +67,7 @@ export const RULE_PRESETS = [
       send_inject: {
         title: "Media desk requests official line on {{inject_title}}",
         body: "External media requests a confirmed statement, spokesperson availability, and timing for the next update after {{decision_type}}.",
-        channel: "media",
+        channel: "inbox",
         severity: "high",
         inject_kind: "media",
         entity_scope: "brand",
@@ -108,7 +108,7 @@ export const RULE_PRESETS = [
       task_status: "open",
     },
     conditionConfig: {
-      task_title_includes: "",
+      task_title_excludes: "Recover overdue task:",
     },
     effectConfig: {
       consequence_type: "task_overdue",
@@ -125,11 +125,69 @@ export const RULE_PRESETS = [
       send_inject: {
         title: "Operational pressure increases around {{task_title}}",
         body: "The follow-up item {{task_title}} is overdue. Teams request direction and a revised timeline.",
-        channel: "ops",
+        channel: "inbox",
         severity: "high",
         inject_kind: "operational",
         requires_decision: true,
         decision_template_key: "overdue-task-recovery",
+      },
+    },
+  },
+  {
+    key: "blocked-task-escalation",
+    name: "Blocked task escalation",
+    description: "When a follow-up task becomes blocked, create pressure and prompt the next operational decision.",
+    triggerType: "task_status_changed",
+    triggerConfig: {
+      task_status: "blocked",
+    },
+    conditionConfig: {
+      task_title_excludes: "Unblock ",
+    },
+    effectConfig: {
+      consequence_type: "blocked_task",
+      severity: "high",
+      title: "Task blocked: {{task_title}}",
+      description: "The team marked {{task_title}} as blocked and needs intervention to unblock progress.",
+      create_task: {
+        title: "Unblock {{task_title}}",
+        description: "Identify blockers, assign support, and restore momentum for {{task_title}}.",
+        priority: "high",
+        assigned_role: "facilitator",
+        due_in_minutes: 10,
+      },
+      send_inject: {
+        title: "Leadership asks how to unblock {{task_title}}",
+        body: "The workstream tied to {{task_title}} is blocked. Teams need a decision, a workaround, or additional support right now.",
+        channel: "inbox",
+        severity: "high",
+        inject_kind: "operational",
+        requires_decision: true,
+        decision_template_key: "blocked-task-response",
+      },
+    },
+  },
+  {
+    key: "completed-task-follow-up",
+    name: "Completed task follow-up",
+    description: "When a key task is completed, generate a follow-up update to move the scenario forward.",
+    triggerType: "task_status_changed",
+    triggerConfig: {
+      task_status: "done",
+    },
+    conditionConfig: {},
+    effectConfig: {
+      consequence_type: "task_completed",
+      severity: "medium",
+      title: "Task completed: {{task_title}}",
+      description: "{{task_title}} is marked complete, so the scenario can advance to the next development.",
+      send_inject: {
+        title: "New development after {{task_title}}",
+        body: "The completion of {{task_title}} changes the operating picture. Stakeholders now want an update on the next move and downstream effects.",
+        channel: "inbox",
+        severity: "medium",
+        inject_kind: "operational",
+        requires_decision: false,
       },
     },
   },
@@ -206,6 +264,24 @@ export function toDatetimeLocal(iso: string | null | undefined) {
   } catch {
     return "";
   }
+}
+
+export function formatReleaseOffset(minutes: number | null | undefined) {
+  if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes <= 0) {
+    return "Immediate";
+  }
+
+  const totalMinutes = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(totalMinutes / 60);
+  const remainder = totalMinutes % 60;
+
+  if (hours > 0 && remainder > 0) {
+    return `T+${hours}h ${remainder}m`;
+  }
+  if (hours > 0) {
+    return `T+${hours}h`;
+  }
+  return `T+${remainder}m`;
 }
 
 export function fromDatetimeLocal(v: string) {

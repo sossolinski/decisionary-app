@@ -35,7 +35,7 @@ function errMessage(e: unknown) {
 
 export default function ParticipantPage() {
   const router = useRouter();
-  const { loading, userId, email, activeRole } = useRoleContext();
+  const { loading, userId, email, activeRole, isAnonymous, needsEmailConfirmation } = useRoleContext();
 
   const [busy, setBusy] = useState(false);
   const [items, setItems] = useState<ParticipantSession[]>([]);
@@ -102,12 +102,22 @@ export default function ParticipantPage() {
               Signed in · Current identity
             </div>
             <div className="font-medium">{label}</div>
+            {isAnonymous ? (
+              <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                Guest session active. Upgrade it to a full account if you want to keep access across devices.
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="secondary">
               <Link href="/join">Join session</Link>
             </Button>
+            {isAnonymous ? (
+              <Button asChild>
+                <Link href="/settings">Upgrade guest</Link>
+              </Button>
+            ) : null}
             <Button asChild variant="secondary">
               <Link href="/facilitator">Facilitator</Link>
             </Button>
@@ -115,11 +125,50 @@ export default function ParticipantPage() {
         </CardContent>
       </Card>
 
+      {isAnonymous ? (
+        <Card className="shadow-soft">
+          <CardHeader>
+            <CardTitle>Upgrade guest access</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <p className="max-w-[60ch] text-sm leading-6 text-[color:var(--studio-muted2)]">
+              You are currently using a guest participant session. Add an email and password to turn it into a full
+              Decisionary account without losing your joined sessions.
+            </p>
+            <Button asChild>
+              <Link href="/settings">Open settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {needsEmailConfirmation ? (
+        <Card className="shadow-soft border-amber-500/30">
+          <CardHeader>
+            <CardTitle>Confirm your email</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <p className="max-w-[60ch] text-sm leading-6 text-[color:var(--studio-muted2)]">
+              Your account is active in this browser, but the email address is not confirmed yet. Check your inbox and
+              click the confirmation link to finish setup.
+            </p>
+            <Button asChild variant="secondary">
+              <Link href="/settings">Open settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card className="shadow-soft">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <span>My sessions</span>
             <HintTooltip text="These are sessions you joined with a session code or were added to through the roster." />
+            {busy ? (
+              <span className="rounded-full border border-[var(--studio-border)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Refreshing
+              </span>
+            ) : null}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

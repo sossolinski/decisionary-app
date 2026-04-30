@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type { RefObject } from "react";
-import { Play, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronUp, Play, Sparkles } from "lucide-react";
 
+import Collapsible from "@/app/components/Collapsible";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
@@ -51,10 +53,22 @@ export default function SessionCreatePanel({
   onCreate,
   scenarioSelectRef,
 }: SessionCreatePanelProps) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsExpanded = detailsOpen || (createMode === "live" && !canCreateLive);
+
+  const detailsSummary =
+    createMode === "live"
+      ? canCreateLive
+        ? `Live access available${[5, 10, 15].some((limit) => (availableLiveTiers.get(limit) ?? 0) > 0) ? ` · ${[5, 10, 15]
+            .filter((limit) => (availableLiveTiers.get(limit) ?? 0) > 0)
+            .map((limit) => `${limit}p x${availableLiveTiers.get(limit) ?? 0}`)
+            .join(" • ")}` : ""}`
+        : "No live entitlement for this tier"
+      : "Rehearsal runs full flow for facilitator only";
+
   return (
     <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
       <div className="relative px-5 py-5 md:px-6 md:py-6">
-        <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
         <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
           <div className="space-y-4">
             <div className="ui-eyebrow">
@@ -148,7 +162,7 @@ export default function SessionCreatePanel({
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
               <Button
                 onClick={onCreate}
                 disabled={busyId === "create" || (createMode === "live" && !canCreateLive)}
@@ -168,28 +182,48 @@ export default function SessionCreatePanel({
             </div>
           </div>
 
-          {createMode === "live" ? (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
-              {canCreateLive ? (
-                <span>
-                  Live access available. Matching entitlements:{" "}
-                  {[5, 10, 15]
-                    .filter((limit) => (availableLiveTiers.get(limit) ?? 0) > 0)
-                    .map((limit) => `${limit}p x${availableLiveTiers.get(limit) ?? 0}`)
-                    .join(" • ")}
-                </span>
+          <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              aria-expanded={detailsExpanded}
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-[color:var(--studio-ink)]">Mode details</div>
+                <div className="mt-1 text-sm text-[color:var(--studio-muted)]">{detailsSummary}</div>
+              </div>
+              {detailsExpanded ? (
+                <ChevronUp className="h-4 w-4 shrink-0 opacity-70" />
               ) : (
-                <span>
-                  This organization does not currently have a live exercise entitlement for the selected participant tier.
-                  Ask an admin to grant access or create a billing order first.
-                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
               )}
-            </div>
-          ) : (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
-              Rehearsal mode runs the full session flow, but only the creator can join and participant invitations stay disabled.
-            </div>
-          )}
+            </button>
+            <Collapsible open={detailsExpanded}>
+              <div className="border-t border-[var(--studio-border)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+                {createMode === "live" ? (
+                  canCreateLive ? (
+                    <span>
+                      Live access available. Matching entitlements:{" "}
+                      {[5, 10, 15]
+                        .filter((limit) => (availableLiveTiers.get(limit) ?? 0) > 0)
+                        .map((limit) => `${limit}p x${availableLiveTiers.get(limit) ?? 0}`)
+                        .join(" • ")}
+                    </span>
+                  ) : (
+                    <span>
+                      This organization does not currently have a live exercise entitlement for the selected participant tier.
+                      Ask an admin to grant access or create a billing order first.
+                    </span>
+                  )
+                ) : (
+                  <span>
+                    Rehearsal mode runs the full session flow, but only the creator can join and participant invitations stay disabled.
+                  </span>
+                )}
+              </div>
+            </Collapsible>
+          </div>
 
           {scenarios.length === 0 ? (
             <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">

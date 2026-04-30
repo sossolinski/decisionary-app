@@ -16,12 +16,12 @@ export default function FacilitatorLayout({
     if (loading) return;
 
     if (!userId) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
 
     if (!canFacilitate) {
-      router.replace(activeRole === "participant" ? "/participant" : "/");
+      router.replace(activeRole === "participant" ? "/participant" : "/login");
     }
   }, [loading, userId, activeRole, canFacilitate, router]);
 

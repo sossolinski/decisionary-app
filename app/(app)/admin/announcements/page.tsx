@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BellRing, Sparkles } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import {
   archiveNotificationAnnouncement,
   createNotificationAnnouncement,
@@ -14,7 +15,7 @@ import {
   type NotificationAnnouncementKind,
   type NotificationAnnouncementPriority,
 } from "@/lib/organizations";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
@@ -25,6 +26,14 @@ type NoticeTone = "ok" | "err";
 function toneClass(tone: NoticeTone) {
   return tone === "ok" ? "notice notice-success" : "notice notice-error";
 }
+
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
 
 export default function AdminAnnouncementsPage() {
   const { loading, isPermAdmin, organizations, activeOrgId, activeOrg } = useRoleContext();
@@ -39,27 +48,28 @@ export default function AdminAnnouncementsPage() {
   const [linkPath, setLinkPath] = useState("");
   const [globalAnnouncements, setGlobalAnnouncements] = useState<NotificationAnnouncement[]>([]);
   const [orgAnnouncements, setOrgAnnouncements] = useState<NotificationAnnouncement[]>([]);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   const currentOrgAnnouncements = useMemo(
     () => (scope === "global" ? globalAnnouncements : orgAnnouncements),
     [globalAnnouncements, orgAnnouncements, scope]
   );
 
-  async function refreshAnnouncements() {
+  const refreshAnnouncements = useCallback(async () => {
     const [globalItems, orgItems] = await Promise.all([
       listNotificationAnnouncements(null),
       activeOrgId ? listNotificationAnnouncements(activeOrgId) : Promise.resolve([]),
     ]);
     setGlobalAnnouncements(globalItems);
     setOrgAnnouncements(orgItems);
-  }
+  }, [activeOrgId]);
 
   useEffect(() => {
     if (!isPermAdmin) return;
     void refreshAnnouncements().catch((err: unknown) => {
       setNotice({ tone: "err", text: getErrorMessage(err, "Failed to load announcements.") });
     });
-  }, [activeOrgId, isPermAdmin]);
+  }, [isPermAdmin, refreshAnnouncements]);
 
   useAutoRefresh(
     async () => {
@@ -67,6 +77,29 @@ export default function AdminAnnouncementsPage() {
     },
     { enabled: isPermAdmin, intervalMs: 30000 }
   );
+
+  function requestArchiveAnnouncement(announcement: NotificationAnnouncement) {
+    setPendingConfirm({
+      title: "Archive announcement?",
+      description: `This archives "${announcement.title}" and removes it from active notification surfaces.`,
+      confirmLabel: "Archive announcement",
+      tone: "destructive",
+      onConfirm: () => archiveAnnouncementNow(announcement.id),
+    });
+  }
+
+  async function archiveAnnouncementNow(announcementId: string) {
+    try {
+      setBusyKey(`announcement:archive:${announcementId}`);
+      await archiveNotificationAnnouncement(announcementId);
+      await refreshAnnouncements();
+      setNotice({ tone: "ok", text: "Announcement archived." });
+    } catch (err: unknown) {
+      setNotice({ tone: "err", text: getErrorMessage(err, "Failed to archive announcement.") });
+    } finally {
+      setBusyKey(null);
+    }
+  }
 
   if (loading) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -77,7 +110,6 @@ export default function AdminAnnouncementsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Access denied</CardTitle>
-          <CardDescription>This page is available only to workspace admins.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -87,7 +119,6 @@ export default function AdminAnnouncementsPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -97,9 +128,6 @@ export default function AdminAnnouncementsPage() {
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Manage shared announcements without mixing them into organization setup.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Publish global notices here or switch to the active organization scope when a message belongs to one workspace only.
-                </p>
               </div>
             </div>
 
@@ -134,10 +162,10 @@ export default function AdminAnnouncementsPage() {
       <div className="grid gap-4 xl:grid-cols-[1.15fr_1.85fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Scope</CardTitle>
-            <CardDescription>
-              Choose whether you are publishing for the whole platform or only the selected organization.
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              Scope
+              <HintTooltip text="Choose whether you are publishing for the whole platform or only the selected organization." />
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-2">
@@ -181,9 +209,6 @@ export default function AdminAnnouncementsPage() {
                   side="right"
                 />
               </CardTitle>
-              <CardDescription>
-                The notification center will surface these notices according to scope, audience, and priority.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
@@ -282,14 +307,18 @@ export default function AdminAnnouncementsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Active announcements</CardTitle>
-              <CardDescription>
-                {scope === "global"
-                  ? "Global notices visible across the workspace."
-                  : activeOrg
-                    ? `Notices currently scoped to ${activeOrg.name}.`
-                    : "No organization selected."}
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                Active announcements
+                <HintTooltip
+                  text={
+                    scope === "global"
+                      ? "Global notices visible across the workspace."
+                      : activeOrg
+                      ? `Notices currently scoped to ${activeOrg.name}.`
+                      : "Pick an active organization first to view organization-scoped notices."
+                  }
+                />
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {currentOrgAnnouncements.length === 0 ? (
@@ -324,23 +353,9 @@ export default function AdminAnnouncementsPage() {
                         size="sm"
                         variant="outline"
                         disabled={busyKey !== null}
-                        onClick={() => {
-                          if (!confirm(`Archive "${announcement.title}"?`)) return;
-                          void (async () => {
-                            try {
-                              setBusyKey(`announcement:archive:${announcement.id}`);
-                              await archiveNotificationAnnouncement(announcement.id);
-                              await refreshAnnouncements();
-                              setNotice({ tone: "ok", text: "Announcement archived." });
-                            } catch (err: unknown) {
-                              setNotice({ tone: "err", text: getErrorMessage(err, "Failed to archive announcement.") });
-                            } finally {
-                              setBusyKey(null);
-                            }
-                          })();
-                        }}
+                        onClick={() => requestArchiveAnnouncement(announcement)}
                       >
-                        Archive
+                        {busyKey === `announcement:archive:${announcement.id}` ? "…" : "Archive"}
                       </Button>
                     </div>
                   </div>
@@ -350,6 +365,20 @@ export default function AdminAnnouncementsPage() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
+      />
     </div>
   );
 }

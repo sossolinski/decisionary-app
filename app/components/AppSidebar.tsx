@@ -13,7 +13,6 @@ import {
   ChevronsLeft,
   ChevronsRight,
   User,
-  Shield,
   Building2,
   Users,
   CreditCard,
@@ -122,8 +121,7 @@ export default function AppSidebar({
 
   const isParticipantView = !loading && !isDisabled && activeRole === "participant";
   const isAdminView = !loading && !isDisabled && activeRole === "admin";
-  const viewingRole =
-    isAdminArea ? "admin" : isParticipantArea ? "participant" : isFacilitatorArea ? "facilitator" : activeRole;
+  const viewingRole = activeRole;
 
   const facilitatorNav = useMemo(
     () => [

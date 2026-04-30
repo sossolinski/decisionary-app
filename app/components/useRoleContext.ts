@@ -24,6 +24,9 @@ export type RoleContext = {
   loading: boolean;
   userId: string | null;
   email: string | null;
+  isAnonymous: boolean;
+  emailConfirmedAt: string | null;
+  needsEmailConfirmation: boolean;
 
   role: Role | null;
   activeRole: Role | null;
@@ -44,6 +47,8 @@ function useRoleContextValue(): RoleContext {
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [emailConfirmedAt, setEmailConfirmedAt] = useState<string | null>(null);
 
   const [role, setRole] = useState<Role | null>(null);
   const [activeRole, setActiveRole] = useState<Role | null>(null);
@@ -90,11 +95,15 @@ function useRoleContextValue(): RoleContext {
       const u = auth.user ?? null;
       setUserId(u?.id ?? null);
       setEmail(u?.email ?? null);
+      setIsAnonymous(!!u?.is_anonymous);
+      setEmailConfirmedAt(u?.email_confirmed_at ?? null);
 
       if (!u) {
         setRole(null);
         setActiveRole(null);
         setIsDisabled(false);
+        setIsAnonymous(false);
+        setEmailConfirmedAt(null);
         setOrganizations([]);
         setActiveOrgIdState(null);
         setLoading(false);
@@ -103,8 +112,9 @@ function useRoleContextValue(): RoleContext {
 
       // preferred: RPC (security definer)
       const { data: rpcData, error: rpcErr } = await supabase.rpc("get_my_profile");
-      if (!rpcErr && rpcData) {
-        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+      const rpcRow = Array.isArray(rpcData) ? (rpcData[0] ?? null) : rpcData;
+      if (!rpcErr && rpcRow) {
+        const row = rpcRow;
 
         const r = (row?.role ?? null) as Role | null;
         const ar = ((row?.active_role ?? row?.role) ?? null) as Role | null;
@@ -158,6 +168,7 @@ function useRoleContextValue(): RoleContext {
 
   const isPermAdmin = role === "admin" && !isDisabled;
   const canFacilitate = (activeRole === "admin" || activeRole === "facilitator") && !isDisabled;
+  const needsEmailConfirmation = !isAnonymous && !!email && !emailConfirmedAt;
   const activeOrg =
     activeOrgId && organizations.some((org) => org.id === activeOrgId)
       ? organizations.find((org) => org.id === activeOrgId) ?? null
@@ -181,6 +192,9 @@ function useRoleContextValue(): RoleContext {
     loading,
     userId,
     email,
+    isAnonymous,
+    emailConfirmedAt,
+    needsEmailConfirmation,
     role,
     activeRole,
     isDisabled,

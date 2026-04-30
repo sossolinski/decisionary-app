@@ -1,9 +1,11 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessions";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
-import { Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
+import { Radio, Circle, AlertCircle, AlertTriangle, Flame, ImageIcon } from "lucide-react";
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
@@ -27,6 +29,21 @@ function clampText(s: string, max = 160) {
 
 function titleCase(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function initials(value: string) {
+  const parts = value
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .slice(0, 2);
+  if (parts.length === 0) return "PU";
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("") || "PU";
+}
+
+function pseudoHandle(senderName?: string | null, senderOrg?: string | null) {
+  const base = senderOrg?.trim() || senderName?.trim() || "pulse";
+  return `@${base.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 20) || "pulse"}`;
 }
 
 function fmtTime(iso?: string | null) {
@@ -147,7 +164,7 @@ export default function PulseFeed({
   const pendingReloadRef = useRef(false);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  async function load(p = page) {
+  async function load(p = page, opts?: { silent?: boolean }) {
     if (!sessionId) return;
 
     if (inFlightRef.current) {
@@ -159,9 +176,9 @@ export default function PulseFeed({
 
     try {
       setErr(null);
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
 
-      const res = await getSessionPulse(sessionId, { page: p, pageSize, severity });
+      const res = await getSessionPulse(sessionId, { page: p, pageSize, severity, search });
       const next = res.items ?? [];
 
       setItems(next);
@@ -200,12 +217,12 @@ export default function PulseFeed({
     } catch (e: unknown) {
       setErr(errMessage(e, "Failed to load pulse"));
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
       inFlightRef.current = false;
 
       if (pendingReloadRef.current) {
         pendingReloadRef.current = false;
-        load(pageRef.current);
+        load(pageRef.current, { silent: true });
       }
     }
   }
@@ -214,7 +231,7 @@ export default function PulseFeed({
     if (reloadTimerRef.current) return;
     reloadTimerRef.current = setTimeout(() => {
       reloadTimerRef.current = null;
-      load(pageRef.current);
+      load(pageRef.current, { silent: true });
     }, 250);
   }
 
@@ -255,17 +272,27 @@ export default function PulseFeed({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) => {
-      const t = it.injects?.title ?? "";
-      const b = it.injects?.body ?? "";
-      const s1 = it.injects?.sender_name ?? "";
-      const s2 = it.injects?.sender_org ?? "";
-      return `${t}\n${b}\n${s1}\n${s2}`.toLowerCase().includes(q);
-    });
-  }, [items, search]);
+  useEffect(() => {
+    if (!sessionId) return;
+    setPage(1);
+    pageRef.current = 1;
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  useAutoRefresh(
+    () => {
+      if (!sessionId) return;
+      requestReload();
+    },
+    {
+      enabled: Boolean(sessionId),
+      intervalMs: 8000,
+    }
+  );
+
+  const visible = useMemo(() => items, [items]);
+  const hasActiveFilters = Boolean(search.trim() || severity);
 
   function markSeen(id: string) {
     setSeen((prev) => {
@@ -304,8 +331,15 @@ export default function PulseFeed({
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="ui-empty-state p-3 text-xs font-semibold text-muted-foreground">
-              No pulse items matching filters.
+            <div className="rounded-[16px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5">
+              <div className="text-sm font-semibold text-foreground">
+                {hasActiveFilters ? "No pulse items match the current filters." : "No pulse items yet."}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-muted-foreground">
+                {hasActiveFilters
+                  ? "Clear the filters or search to return to the full pulse stream."
+                  : "Pulse becomes useful when the exercise introduces claims, rumor pressure, or public-facing information that needs confirm or dismiss handling."}
+              </div>
             </div>
           ) : null}
 
@@ -315,10 +349,13 @@ export default function PulseFeed({
 
               const title = item.injects?.title?.trim() || "Pulse post";
               const preview = item.injects?.body ? clampText(item.injects.body, 160) : "";
+              const availableMedia = (item.injects?.media ?? []).filter((media) => Boolean(media.signed_url));
+              const firstMedia = availableMedia[0] ?? null;
+              const remainingMediaCount = Math.max(0, availableMedia.length - 1);
 
-              const metaLeft =
-                [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
-                "Unknown source";
+              const senderName = item.injects?.sender_name?.trim() || item.injects?.sender_org?.trim() || "Pulse source";
+              const senderOrg = item.injects?.sender_org?.trim() || null;
+              const handle = pseudoHandle(item.injects?.sender_name, item.injects?.sender_org);
 
               const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
               const sv = String(item.injects?.severity ?? "").toLowerCase();
@@ -337,7 +374,7 @@ export default function PulseFeed({
                     onSelect(item);
                   }}
                   className={[
-                    "w-full text-left rounded-[18px] border px-4 py-4 transition-all",
+                    "w-full text-left rounded-[20px] border px-4 py-4 transition-all",
                     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                     active
                       ? "border-primary/25 bg-primary/10 shadow-[0_16px_36px_hsl(220_20%_20%/0.06)]"
@@ -353,39 +390,38 @@ export default function PulseFeed({
                     <div className="min-w-0 flex items-start gap-3">
                       <div
                         className={[
-                          "mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
+                          "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-bold",
                           active
                             ? "border-primary/20 bg-primary/10 text-primary"
-                            : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+                            : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted)]",
                         ].join(" ")}
                       >
-                        <Radio className="h-4 w-4" />
+                        {initials(senderName)}
                       </div>
 
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          {unread ? (
-                            <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                          ) : null}
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                           <div className="truncate text-sm font-semibold text-[color:var(--studio-ink)]">
-                            {title}
+                            {senderName}
                           </div>
+                          <div className="text-[11px] text-muted-foreground">{handle}</div>
+                          {senderOrg && senderOrg !== senderName ? (
+                            <div className="text-[11px] text-muted-foreground">· {senderOrg}</div>
+                          ) : null}
                         </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                          {active ? (
-                            <span className={badge("state", "selected")}>Selected</span>
-                          ) : null}
-                          {unread && !flash ? (
-                            <span className={badge("state", "unread")}>Unread</span>
-                          ) : null}
+                          <span className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2 py-0.5 font-semibold uppercase tracking-wide">
+                            <Radio className="h-3 w-3" />
+                            Pulse
+                          </span>
+                          {unread && !flash ? <span className={badge("state", "unread")}>Unread</span> : null}
                           {flash ? (
                             <span className={badge("state", "new")}>
                               <Radio className="h-3.5 w-3.5" />
                               New
                             </span>
                           ) : null}
-
                           {sevTag ? (
                             <span className={badge("severity", sevTag)}>
                               {severityIcon(sv)}
@@ -399,15 +435,46 @@ export default function PulseFeed({
                     <div className="shrink-0 pt-0.5 text-[11px] font-medium text-muted-foreground">{time}</div>
                   </div>
 
-                  <div className="mt-3 text-[13px] leading-6 text-[color:var(--studio-muted)]">
-                    {preview ? preview : "(no content)"}
+                  <div className="mt-3 space-y-3">
+                    <div className="space-y-2">
+                      <div className="text-[15px] font-semibold leading-6 text-[color:var(--studio-ink)]">
+                        {title}
+                      </div>
+                      {preview ? (
+                        <div className="text-[13px] leading-6 text-[color:var(--studio-muted)]">
+                          {preview}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {firstMedia?.signed_url ? (
+                      <div className="relative overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+                        <img
+                          src={firstMedia.signed_url}
+                          alt={firstMedia.alt_text ?? title}
+                          className="aspect-[4/3] w-full object-cover"
+                        />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
+                        {remainingMediaCount > 0 ? (
+                          <div className="absolute bottom-3 right-3 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
+                            +{remainingMediaCount} more
+                          </div>
+                        ) : null}
+                        <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
+                          <ImageIcon className="h-3.5 w-3.5" />
+                          Image
+                        </div>
+                      </div>
+                    ) : preview ? null : (
+                      <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3 text-[12px] text-[color:var(--studio-muted2)]">
+                        No media attached.
+                      </div>
+                    )}
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
-                    {metaLeft}
-                    <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-                      Pulse
-                    </span>
+                    <span>{senderOrg ? `Source: ${senderOrg}` : "Source: pulse stream"}</span>
+                    <span>{firstMedia ? `${availableMedia.length} image${availableMedia.length === 1 ? "" : "s"}` : "Text post"}</span>
                   </div>
                 </button>
               );

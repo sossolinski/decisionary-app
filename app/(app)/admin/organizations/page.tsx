@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   addManagedParticipant,
@@ -26,8 +26,9 @@ import {
 } from "@/lib/organizations";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 import HintTooltip from "@/app/components/HintTooltip";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { copyTextToClipboard } from "@/lib/clientClipboard";
@@ -60,6 +61,14 @@ function compactIdentity(value: string) {
   return value.trim().replaceAll("@", "@\u200b");
 }
 
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
+
 export default function AdminOrganizationsPage() {
   const {
     loading,
@@ -86,6 +95,7 @@ export default function AdminOrganizationsPage() {
   const [announcements, setAnnouncements] = useState<NotificationAnnouncement[]>([]);
   const [archivedOrganizations, setArchivedOrganizations] = useState<Organization[]>([]);
   const [workspaceView, setWorkspaceView] = useState<"people" | "access">("people");
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const orgNameId = useId();
   const facilitatorEmailId = useId();
   const membershipEmailId = useId();
@@ -109,7 +119,7 @@ export default function AdminOrganizationsPage() {
     return new Date(Math.max(...timestamps)).toLocaleString();
   }, [activeOrg?.created_at, announcements, invites, memberships, participants]);
 
-  async function refreshOrgDetails(orgId: string | null) {
+  const refreshOrgDetails = useCallback(async (orgId: string | null) => {
     if (!orgId) {
       setMemberships([]);
       setInvites([]);
@@ -162,9 +172,9 @@ export default function AdminOrganizationsPage() {
           : `Failed to load ${failures.join(" and ")}.`;
       throw new Error(message);
     }
-  }
+  }, []);
 
-  async function refreshAdminState(orgId: string | null) {
+  const refreshAdminState = useCallback(async (orgId: string | null) => {
     const [allOrganizationsResult, detailsResult] = await Promise.allSettled([
       listAllOrganizationsForAdmin(),
       refreshOrgDetails(orgId),
@@ -180,7 +190,7 @@ export default function AdminOrganizationsPage() {
     if (detailsResult.status === "rejected") {
       throw detailsResult.reason;
     }
-  }
+  }, [refreshOrgDetails]);
 
   function pushNotice(tone: NoticeTone, text: string) {
     setNotice({ tone, text });
@@ -192,11 +202,140 @@ export default function AdminOrganizationsPage() {
     else pushNotice("err", "Clipboard unavailable. Copy manually.");
   }
 
+  function requestDeleteOrganization(org: Organization) {
+    setPendingConfirm({
+      title: "Delete organization permanently?",
+      description: `This permanently deletes "${org.name}" and removes remaining memberships, invites, participants, and announcements. This cannot be undone.`,
+      confirmLabel: "Delete permanently",
+      tone: "destructive",
+      onConfirm: () => deleteOrganizationNow(org),
+    });
+  }
+
+  async function deleteOrganizationNow(org: Organization) {
+    try {
+      setBusyKey(`org:delete:${org.id}`);
+      await deleteOrganization(org.id);
+      await refresh();
+      await refreshAdminState(activeOrgId);
+      pushNotice("ok", `Organization "${org.name}" deleted permanently.`);
+    } catch (err: unknown) {
+      pushNotice("err", toMessage(err, "Failed to delete organization permanently."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function requestRemoveMembership(membership: OrganizationMembership) {
+    setPendingConfirm({
+      title: "Remove membership?",
+      description: `This removes ${membershipLabel(membership)} from the active organization.`,
+      confirmLabel: "Remove membership",
+      tone: "destructive",
+      onConfirm: () => removeMembershipNow(membership.id),
+    });
+  }
+
+  async function removeMembershipNow(membershipId: string) {
+    try {
+      setBusyKey(`membership:remove:${membershipId}`);
+      await removeMembership(membershipId);
+      await refreshOrgDetails(activeOrgId);
+      pushNotice("ok", "Membership removed.");
+    } catch (err: unknown) {
+      pushNotice("err", toMessage(err, "Failed to remove membership."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function requestRevokeInvite(invite: FacilitatorInvite) {
+    setPendingConfirm({
+      title: "Revoke invite?",
+      description: `This revokes the pending facilitator invite for ${invite.email}.`,
+      confirmLabel: "Revoke invite",
+      tone: "destructive",
+      onConfirm: () => revokeInviteNow(invite.id),
+    });
+  }
+
+  async function revokeInviteNow(inviteId: string) {
+    try {
+      setBusyKey(`invite:revoke:${inviteId}`);
+      await revokeFacilitatorInvite(inviteId);
+      await refreshOrgDetails(activeOrgId);
+      pushNotice("ok", "Invite revoked.");
+    } catch (err: unknown) {
+      pushNotice("err", toMessage(err, "Failed to revoke invite."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function requestDeactivateParticipant(participant: ManagedParticipant) {
+    setPendingConfirm({
+      title: "Deactivate participant?",
+      description: `This deactivates "${participant.display_name}" and prevents this managed participant account from being used.`,
+      confirmLabel: "Deactivate participant",
+      tone: "destructive",
+      onConfirm: () => deactivateParticipantNow(participant.id),
+    });
+  }
+
+  async function deactivateParticipantNow(participantId: string) {
+    try {
+      setBusyKey(`participant:deactivate:${participantId}`);
+      await deactivateManagedParticipant(participantId);
+      await refreshOrgDetails(activeOrgId);
+      pushNotice("ok", "Participant deactivated.");
+    } catch (err: unknown) {
+      pushNotice("err", toMessage(err, "Failed to deactivate participant."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  function requestArchiveActiveOrganization() {
+    if (!activeOrgId || !activeOrg) return;
+    if (!canArchiveActiveOrg) {
+      pushNotice("err", "Create or restore another active organization before archiving this one.");
+      return;
+    }
+
+    setPendingConfirm({
+      title: "Archive organization?",
+      description: `This archives "${activeOrg.name}". It will disappear from active workspace views, but can be restored later.`,
+      confirmLabel: "Archive organization",
+      tone: "destructive",
+      onConfirm: () => archiveActiveOrganizationNow(activeOrgId, activeOrg.name),
+    });
+  }
+
+  async function archiveActiveOrganizationNow(orgId: string, orgName: string) {
+    try {
+      setBusyKey("org:archive");
+      await archiveOrganization(orgId);
+      const allOrganizations = await listAllOrganizationsForAdmin();
+      const nextOrgId =
+        allOrganizations.find((org) => !org.archived && org.id !== orgId)?.id ??
+        allOrganizations.find((org) => !org.archived)?.id ??
+        null;
+      setActiveOrgId(nextOrgId);
+      await refresh();
+      await refreshAdminState(nextOrgId);
+      pushNotice("ok", `Organization "${orgName}" archived.`);
+    } catch (err: unknown) {
+      pushNotice("err", toMessage(err, "Failed to archive organization."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   useEffect(() => {
     void refreshAdminState(activeOrgId).catch((err) => {
       pushNotice("err", toMessage(err, "Failed to load organization details."));
     });
-  }, [activeOrgId]);
+  }, [activeOrgId, refreshAdminState]);
 
   useAutoRefresh(
     async () => {
@@ -216,7 +355,6 @@ export default function AdminOrganizationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Access denied</CardTitle>
-            <CardDescription>This page is available only to workspace admins.</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -229,7 +367,6 @@ export default function AdminOrganizationsPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -239,9 +376,6 @@ export default function AdminOrganizationsPage() {
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Manage organizations without losing track of the people inside them.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Keep organization context tidy, invite facilitators, and look after the participant roster from one place.
-                </p>
               </div>
 
             </div>
@@ -280,10 +414,8 @@ export default function AdminOrganizationsPage() {
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 opacity-80" />
               Organization directory
+              <HintTooltip text="Switch the active organization here, create a new one, and restore archived workspaces when needed." />
             </CardTitle>
-            <CardDescription>
-              Switch the active organization here, create a new one, and restore archived workspaces when needed.
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-2">
@@ -404,32 +536,10 @@ export default function AdminOrganizationsPage() {
                             size="sm"
                             variant="outline"
                             disabled={busyKey !== null}
-                            onClick={() => {
-                              if (
-                                !confirm(
-                                  `Delete "${org.name}" permanently? This cannot be undone and removes its remaining memberships, invites, participants, and announcements.`
-                                )
-                              ) {
-                                return;
-                              }
-
-                              void (async () => {
-                                try {
-                                  setBusyKey(`org:delete:${org.id}`);
-                                  await deleteOrganization(org.id);
-                                  await refresh();
-                                  await refreshAdminState(activeOrgId);
-                                  pushNotice("ok", `Organization "${org.name}" deleted permanently.`);
-                                } catch (err: unknown) {
-                                  pushNotice("err", toMessage(err, "Failed to delete organization permanently."));
-                                } finally {
-                                  setBusyKey(null);
-                                }
-                              })();
-                            }}
+                            onClick={() => requestDeleteOrganization(org)}
                           >
                             <Trash2 className="h-4 w-4" />
-                            Delete permanently
+                            {busyKey === `org:delete:${org.id}` ? "…" : "Delete permanently"}
                           </Button>
                         </div>
                       </div>
@@ -444,9 +554,11 @@ export default function AdminOrganizationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>{activeOrg?.name ?? "Select organization"}</CardTitle>
-            <CardDescription>
-              {activeOrg ? `Selected workspace · ${activeOrg.slug}` : "Choose org from the list to manage memberships."}
-            </CardDescription>
+            {activeOrg ? (
+              <div className="text-sm text-muted-foreground">Selected workspace · {activeOrg.slug}</div>
+            ) : (
+              <div className="text-sm text-muted-foreground">Choose an organization from the list to manage it.</div>
+            )}
           </CardHeader>
 
           <CardContent className="space-y-6">
@@ -715,21 +827,10 @@ export default function AdminOrganizationsPage() {
                                   size="sm"
                                   variant="outline"
                                   className="w-full sm:w-auto"
-                                  onClick={() => {
-                                    if (!confirm("Remove this membership?")) return;
-                                    void (async () => {
-                                      try {
-                                        await removeMembership(m.id);
-                                        await refreshOrgDetails(activeOrgId);
-                                        pushNotice("ok", "Membership removed.");
-                                      } catch (err: unknown) {
-                                        pushNotice("err", toMessage(err, "Failed to remove membership."));
-                                      }
-                                    })();
-                                  }}
+                                  onClick={() => requestRemoveMembership(m)}
                                   disabled={busyKey !== null}
                                 >
-                                  Remove
+                                  {busyKey === `membership:remove:${m.id}` ? "…" : "Remove"}
                                 </Button>
                               </div>
                             </div>
@@ -770,21 +871,10 @@ export default function AdminOrganizationsPage() {
                                       <Button
                                         size="sm"
                                         variant="outline"
-                                        onClick={() => {
-                                          if (!confirm("Revoke this invite?")) return;
-                                          void (async () => {
-                                            try {
-                                              await revokeFacilitatorInvite(inv.id);
-                                              await refreshOrgDetails(activeOrgId);
-                                              pushNotice("ok", "Invite revoked.");
-                                            } catch (err: unknown) {
-                                              pushNotice("err", toMessage(err, "Failed to revoke invite."));
-                                            }
-                                          })();
-                                        }}
+                                        onClick={() => requestRevokeInvite(inv)}
                                         disabled={busyKey !== null}
                                       >
-                                        Revoke
+                                        {busyKey === `invite:revoke:${inv.id}` ? "…" : "Revoke"}
                                       </Button>
                                     ) : null}
                                   </div>
@@ -817,21 +907,10 @@ export default function AdminOrganizationsPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => {
-                                    if (!confirm("Deactivate this participant account?")) return;
-                                    void (async () => {
-                                      try {
-                                        await deactivateManagedParticipant(p.id);
-                                        await refreshOrgDetails(activeOrgId);
-                                        pushNotice("ok", "Participant deactivated.");
-                                      } catch (err: unknown) {
-                                        pushNotice("err", toMessage(err, "Failed to deactivate participant."));
-                                      }
-                                    })();
-                                  }}
+                                  onClick={() => requestDeactivateParticipant(p)}
                                   disabled={busyKey !== null}
                                 >
-                                  Deactivate
+                                  {busyKey === `participant:deactivate:${p.id}` ? "…" : "Deactivate"}
                                 </Button>
                               </div>
                             </div>
@@ -868,51 +947,7 @@ export default function AdminOrganizationsPage() {
                       variant="outline"
                       className="gap-2"
                       disabled={busyKey !== null || !canArchiveActiveOrg}
-                      onClick={() => {
-                        if (!activeOrgId || !activeOrg) return;
-                        if (!canArchiveActiveOrg) {
-                          pushNotice(
-                            "err",
-                            "Create or restore another active organization before archiving this one."
-                          );
-                          return;
-                        }
-                        if (
-                          !confirm(
-                            `Archive organization "${activeOrg.name}"? It will disappear from active workspace views but can still be restored later.`
-                          )
-                        ) {
-                          return;
-                        }
-
-                        try {
-                          setBusyKey("org:archive");
-                          void (async () => {
-                            try {
-                              const archivedOrgId = activeOrgId;
-                              const archivedOrgName = activeOrg.name;
-                              await archiveOrganization(archivedOrgId);
-                              const allOrganizations = await listAllOrganizationsForAdmin();
-                              const nextOrgId =
-                                allOrganizations.find((org) => !org.archived && org.id !== archivedOrgId)?.id ??
-                                allOrganizations.find((org) => !org.archived)?.id ??
-                                null;
-                              setActiveOrgId(nextOrgId);
-                              await refresh();
-                              await refreshAdminState(nextOrgId);
-
-                              pushNotice("ok", `Organization "${archivedOrgName}" archived.`);
-                            } catch (err: unknown) {
-                              pushNotice("err", toMessage(err, "Failed to archive organization."));
-                            } finally {
-                              setBusyKey(null);
-                            }
-                          })();
-                        } catch (err: unknown) {
-                          setBusyKey(null);
-                          pushNotice("err", toMessage(err, "Failed to archive organization."));
-                        }
-                      }}
+                      onClick={requestArchiveActiveOrganization}
                     >
                       <Archive className="h-4 w-4" />
                       {busyKey === "org:archive" ? "Archiving…" : "Archive organization"}
@@ -924,6 +959,20 @@ export default function AdminOrganizationsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
+      />
     </div>
   );
 }

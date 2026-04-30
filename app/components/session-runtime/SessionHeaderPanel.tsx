@@ -6,7 +6,6 @@ import type { Scenario } from "@/lib/scenarios";
 import type { SessionSituation } from "@/lib/sessions";
 
 import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
-import HintTooltip from "@/app/components/HintTooltip";
 import SituationCard from "@/app/components/SituationCard";
 import { Button } from "@/app/components/ui/button";
 
@@ -16,10 +15,10 @@ type SessionHeaderPanelProps = {
   copPanelId: string;
   toolsPanelId: string;
   heroEyebrow: string;
-  heroHint: string | null;
+  participantView: boolean;
   startedAt: string | null;
   sessionTitle: string;
-  heroSummary: string;
+  nextBestAction: string | null;
   sessionMode: "rehearsal" | "live";
   sessionParticipantLimit: number | null;
   copOpen: boolean;
@@ -41,10 +40,10 @@ export default function SessionHeaderPanel({
   copPanelId,
   toolsPanelId,
   heroEyebrow,
-  heroHint,
+  participantView,
   startedAt,
   sessionTitle,
-  heroSummary,
+  nextBestAction,
   sessionMode,
   sessionParticipantLimit,
   copOpen,
@@ -69,34 +68,44 @@ export default function SessionHeaderPanel({
         <div className="relative px-5 py-3.5 sm:px-6 sm:py-4">
           <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.58fr)_220px] xl:items-start">
             <div className="min-w-0">
-              <div className="ui-eyebrow">
-                <Radio className="h-3.5 w-3.5" />
-                {heroEyebrow}
-                {heroHint ? <HintTooltip text={heroHint} side="right" /> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="ui-eyebrow">
+                  <Radio className="h-3.5 w-3.5" />
+                  {heroEyebrow}
+                </div>
+                <div className="inline-flex items-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-medium text-[color:var(--studio-muted2)]">
+                  Started {fmt(startedAt)}
+                </div>
               </div>
-
-              <div className="mt-2 text-xs text-[color:var(--studio-muted2)]">Started {fmt(startedAt)}</div>
               <h1 className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[1.68rem]">
                 {sessionTitle}
               </h1>
-              <p className="mt-1.5 max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">{heroSummary}</p>
-              <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
-                {sessionMode === "rehearsal"
-                  ? "Rehearsal mode · single participant only · invitations disabled"
-                  : `Live exercise${sessionParticipantLimit ? ` · participant cap ${sessionParticipantLimit}` : ""}`}
-              </div>
+              {nextBestAction ? (
+                <div className="mt-2 inline-flex max-w-2xl items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-ink)]">
+                  {nextBestAction}
+                </div>
+              ) : null}
+              {sessionMode === "rehearsal" ? (
+                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
+                  Rehearsal · single participant · invitations off
+                </div>
+              ) : sessionParticipantLimit ? (
+                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
+                  Up to {sessionParticipantLimit} participants
+                </div>
+              ) : null}
 
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button
                   variant={copOpen ? "secondary" : "outline"}
                   onClick={() => setCopOpen((v) => !v)}
                   className="gap-2"
-                  title="Toggle COP"
+                  title={participantView ? "Toggle situation" : "Toggle COP"}
                   aria-expanded={copOpen}
                   aria-controls={copPanelId}
                 >
                   <LayoutDashboard className="h-4 w-4 opacity-80" />
-                  {copOpen ? "Hide COP" : "Open COP"}
+                  {participantView ? (copOpen ? "Hide situation" : "Open situation") : copOpen ? "Hide COP" : "Open COP"}
                   <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", copOpen ? "rotate-180" : ""].join(" ")} />
                 </Button>
 
@@ -130,14 +139,10 @@ export default function SessionHeaderPanel({
           <div className="px-5 py-4">
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <LayoutDashboard className="h-4 w-4 opacity-80" />
-                  COP
-                  <HintTooltip
-                    side="right"
-                    text="Keep the shared situation picture current: event details, location, timing, and casualty counts."
-                  />
-                </div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <LayoutDashboard className="h-4 w-4 opacity-80" />
+                    {participantView ? "Situation" : "COP"}
+                  </div>
               </div>
             </div>
 
@@ -156,18 +161,14 @@ export default function SessionHeaderPanel({
       {isFacilitator && toolsOpen ? (
         <div id={toolsPanelId} className="border-t border-[var(--studio-border)]">
           <div className="px-5 py-4">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Wrench className="h-4 w-4 opacity-80" />
-                  Facilitator tools
-                  <HintTooltip
-                    side="right"
-                    text="Release injects, manage runtime pressure, and steer the live run from one place."
-                  />
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Wrench className="h-4 w-4 opacity-80" />
+                    Facilitator tools
+                  </div>
                 </div>
               </div>
-            </div>
 
             <FacilitatorToolsPanel
               sessionId={sessionId}
@@ -181,4 +182,3 @@ export default function SessionHeaderPanel({
     </div>
   );
 }
-

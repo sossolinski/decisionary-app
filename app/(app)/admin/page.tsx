@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Building2, BellRing, CreditCard, Sparkles, Users } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
+import HintTooltip from "@/app/components/HintTooltip";
 import { supabase } from "@/lib/supabaseClient";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
@@ -27,11 +28,9 @@ export default function AdminOverviewPage() {
     announcements: 0,
     pendingOrders: 0,
   });
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    setBusy(true);
     setError(null);
 
     try {
@@ -59,8 +58,6 @@ export default function AdminOverviewPage() {
     } catch (err: unknown) {
       logClientError("AdminOverviewPage.load", err);
       setError(getErrorMessage(err, "Failed to load the admin overview."));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -94,7 +91,6 @@ export default function AdminOverviewPage() {
       <Card>
         <CardHeader>
           <CardTitle>Access denied</CardTitle>
-          <CardDescription>This page is available only to workspace admins.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -104,7 +100,6 @@ export default function AdminOverviewPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -114,9 +109,6 @@ export default function AdminOverviewPage() {
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Oversee the whole workspace from one place.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Keep track of organizations, people, and announcements without jumping between separate admin islands.
-                </p>
               </div>
 
             </div>
@@ -147,8 +139,8 @@ export default function AdminOverviewPage() {
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 opacity-80" />
               Organizations
+              <HintTooltip text="Review active and archived organizations, then manage one in detail." />
             </CardTitle>
-            <CardDescription>Review active and archived organizations, then manage one in detail.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2 text-sm text-[color:var(--studio-muted)]">
@@ -166,8 +158,8 @@ export default function AdminOverviewPage() {
             <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5 opacity-80" />
               People
+              <HintTooltip text="Review workspace accounts, access levels, and disabled users." />
             </CardTitle>
-            <CardDescription>Review workspace accounts, access levels, and disabled users.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-[color:var(--studio-muted)]">{state.accounts} visible accounts</div>
@@ -182,8 +174,8 @@ export default function AdminOverviewPage() {
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="h-5 w-5 opacity-80" />
               Billing
+              <HintTooltip text="Create orders, open Stripe invoice flows, and grant entitlements manually." />
             </CardTitle>
-            <CardDescription>Create orders, open Stripe invoice flows, and grant entitlements manually.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-[color:var(--studio-muted)]">{state.pendingOrders} payment requests waiting</div>
@@ -198,8 +190,8 @@ export default function AdminOverviewPage() {
             <CardTitle className="flex items-center gap-2">
               <BellRing className="h-5 w-5 opacity-80" />
               Announcements
+              <HintTooltip text="Manage workspace notices when you need shared communication across the platform." />
             </CardTitle>
-            <CardDescription>Manage workspace notices from the organization workspace when you need shared communication.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-sm text-[color:var(--studio-muted)]">{state.announcements} active global notices</div>

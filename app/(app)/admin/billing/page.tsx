@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type SelectHTMLAttributes } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SelectHTMLAttributes } from "react";
 import { CreditCard, ExternalLink, Receipt, ShieldCheck, Sparkles } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
@@ -116,8 +116,8 @@ export default function AdminBillingPage() {
   const [entitlements, setEntitlements] = useState<BillingEntitlement[]>([]);
 
   const [billingEmail, setBillingEmail] = useState("");
-  const [billingEmailOrgId, setBillingEmailOrgId] = useState<string | null>(null);
-  const [billingEmailDirty, setBillingEmailDirty] = useState(false);
+  const billingEmailDirtyRef = useRef(false);
+  const billingEmailOrgIdRef = useRef<string | null>(null);
   const [presetKey, setPresetKey] = useState(ORDER_PRESETS[0].key);
   const [quantity, setQuantity] = useState("1");
   const [unitAmount, setUnitAmount] = useState("150000");
@@ -139,15 +139,15 @@ export default function AdminBillingPage() {
   );
   const visibleOrders = useMemo(() => orders.slice(0, 8), [orders]);
 
-  async function load() {
+  const load = useCallback(async () => {
     if (!activeOrgId) {
       setBillingAccount(null);
       setOrders([]);
       setEntitlements([]);
       setOrderItemsById({});
       setBillingEmail("");
-      setBillingEmailOrgId(null);
-      setBillingEmailDirty(false);
+      billingEmailOrgIdRef.current = null;
+      billingEmailDirtyRef.current = false;
       return;
     }
 
@@ -171,10 +171,10 @@ export default function AdminBillingPage() {
       setNotice({ tone: "err", text: billingInfraMessage });
     }
 
-    if (!billingEmailDirty || billingEmailOrgId !== activeOrgId) {
+    if (!billingEmailDirtyRef.current || billingEmailOrgIdRef.current !== activeOrgId) {
       setBillingEmail(account?.billing_email ?? "");
-      setBillingEmailOrgId(activeOrgId);
-      setBillingEmailDirty(false);
+      billingEmailOrgIdRef.current = activeOrgId;
+      billingEmailDirtyRef.current = false;
     }
     setOrders(orderRows);
     setEntitlements(entitlementRows);
@@ -183,14 +183,14 @@ export default function AdminBillingPage() {
       orderRows.slice(0, 8).map(async (order) => [order.id, await listBillingOrderItems(order.id)] as const)
     );
     setOrderItemsById(Object.fromEntries(itemEntries));
-  }
+  }, [activeOrgId]);
 
   useEffect(() => {
     if (!isPermAdmin) return;
     void load().catch((error) => {
       setNotice({ tone: "err", text: getErrorMessage(error, "Failed to load billing workspace.") });
     });
-  }, [activeOrgId, isPermAdmin]);
+  }, [isPermAdmin, load]);
 
   useAutoRefresh(
     async () => {
@@ -220,7 +220,6 @@ export default function AdminBillingPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -285,7 +284,7 @@ export default function AdminBillingPage() {
                       value={billingEmail}
                       onChange={(e) => {
                         setBillingEmail(e.target.value);
-                        setBillingEmailDirty(true);
+                        billingEmailDirtyRef.current = true;
                       }}
                       placeholder="billing@client.com"
                     />
@@ -303,8 +302,8 @@ export default function AdminBillingPage() {
                         });
                         setBillingAccount(account);
                         setBillingEmail(account.billing_email ?? "");
-                        setBillingEmailOrgId(activeOrgId);
-                        setBillingEmailDirty(false);
+                        billingEmailOrgIdRef.current = activeOrgId;
+                        billingEmailDirtyRef.current = false;
                         setNotice({ tone: "ok", text: "Billing profile updated." });
                       } catch (error) {
                         setNotice({ tone: "err", text: getErrorMessage(error, "Failed to update billing profile.") });

@@ -189,7 +189,7 @@ function FacilitatorRegistrationInner() {
                   </Button>
 
                   <Button asChild variant="secondary" className="w-full">
-                    <Link href="/">Back to sign in</Link>
+                    <Link href="/login">Back to sign in</Link>
                   </Button>
                 </div>
 

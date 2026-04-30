@@ -1,7 +1,9 @@
 "use client";
 
-import { AlertTriangle, Calendar, FileText, MapPin, Users } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Calendar, ChevronDown, ChevronUp, FileText, MapPin, Users } from "lucide-react";
 
+import Collapsible from "@/app/components/Collapsible";
 import HintTooltip from "@/app/components/HintTooltip";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
@@ -83,6 +85,10 @@ export default function ScenarioDetailsSection({
   unknown,
   setUnknown,
 }: ScenarioDetailsSectionProps) {
+  const [eventOpen, setEventOpen] = useState(true);
+  const [situationOpen, setSituationOpen] = useState(false);
+  const [casualtiesOpen, setCasualtiesOpen] = useState(false);
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
@@ -113,92 +119,131 @@ export default function ScenarioDetailsSection({
 
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Calendar className="h-4 w-4 opacity-80" />
-            Event
-            <HintTooltip text="Capture when and where the scenario takes place so the setup stays grounded in context." />
-          </CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calendar className="h-4 w-4 opacity-80" />
+              Event
+              <HintTooltip text="Capture when and where the scenario takes place so the setup stays grounded in context." />
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setEventOpen((open) => !open)}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)] transition hover:border-[var(--accent)] hover:text-foreground"
+              aria-expanded={eventOpen}
+            >
+              {eventOpen ? "Hide" : "Show"}
+              {eventOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor={eventDateId} className="text-sm font-semibold">Date</label>
-            <Input id={eventDateId} value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="YYYY-MM-DD" />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={eventTimeId} className="text-sm font-semibold">Time</label>
-            <Input id={eventTimeId} value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="HH:MM" />
-          </div>
-          <div className="space-y-1 sm:col-span-2">
-            <label htmlFor={eventTimezoneId} className="text-sm font-semibold">Timezone</label>
-            <Input id={eventTimezoneId} value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g., Europe/Warsaw" />
-          </div>
-          <div className="space-y-1 sm:col-span-2">
-            <label htmlFor={eventLocationId} className="text-sm font-semibold flex items-center gap-2">
-              <MapPin className="h-4 w-4 opacity-70" />
-              Location
-            </label>
-            <Input id={eventLocationId} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Airport / city / region…" />
-          </div>
-        </CardContent>
+        <Collapsible open={eventOpen}>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor={eventDateId} className="text-sm font-semibold">Date</label>
+              <Input id={eventDateId} value={eventDate} onChange={(e) => setEventDate(e.target.value)} placeholder="YYYY-MM-DD" />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={eventTimeId} className="text-sm font-semibold">Time</label>
+              <Input id={eventTimeId} value={eventTime} onChange={(e) => setEventTime(e.target.value)} placeholder="HH:MM" />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor={eventTimezoneId} className="text-sm font-semibold">Timezone</label>
+              <Input id={eventTimezoneId} value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="e.g., Europe/Warsaw" />
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label htmlFor={eventLocationId} className="text-sm font-semibold flex items-center gap-2">
+                <MapPin className="h-4 w-4 opacity-70" />
+                Location
+              </label>
+              <Input id={eventLocationId} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Airport / city / region…" />
+            </div>
+          </CardContent>
+        </Collapsible>
       </Card>
 
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 opacity-80" />
-            Situation
-            <HintTooltip text="Describe the type of incident and summarize the operating picture at the start of the exercise." />
-          </CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 opacity-80" />
+              Situation
+              <HintTooltip text="Describe the type of incident and summarize the operating picture at the start of the exercise." />
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setSituationOpen((open) => !open)}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)] transition hover:border-[var(--accent)] hover:text-foreground"
+              aria-expanded={situationOpen}
+            >
+              {situationOpen ? "Hide" : "Show"}
+              {situationOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="space-y-1">
-            <label htmlFor={situationTypeId} className="text-sm font-semibold">Situation type</label>
-            <Input
-              id={situationTypeId}
-              value={situationType}
-              onChange={(e) => setSituationType(e.target.value)}
-              placeholder="e.g., Accident, Disruption, Security…"
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={shortDescriptionId} className="text-sm font-semibold">Short description</label>
-            <textarea
-              id={shortDescriptionId}
-              value={shortDescription}
-              onChange={(e) => setShortDescription(e.target.value)}
-              className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
-              placeholder="1–2 sentences…"
-            />
-          </div>
-        </CardContent>
+        <Collapsible open={situationOpen}>
+          <CardContent className="space-y-3">
+            <div className="space-y-1">
+              <label htmlFor={situationTypeId} className="text-sm font-semibold">Situation type</label>
+              <Input
+                id={situationTypeId}
+                value={situationType}
+                onChange={(e) => setSituationType(e.target.value)}
+                placeholder="e.g., Accident, Disruption, Security…"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={shortDescriptionId} className="text-sm font-semibold">Short description</label>
+              <textarea
+                id={shortDescriptionId}
+                value={shortDescription}
+                onChange={(e) => setShortDescription(e.target.value)}
+                className="min-h-[88px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm"
+                placeholder="1–2 sentences…"
+              />
+            </div>
+          </CardContent>
+        </Collapsible>
       </Card>
 
       <Card className="surface shadow-soft border border-[var(--studio-border)]">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4 opacity-80" />
-            Initial casualties
-            <HintTooltip text="Use these starting numbers to frame the first operational picture for the scenario." />
-          </CardTitle>
+          <div className="flex items-start justify-between gap-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4 opacity-80" />
+              Initial casualties
+              <HintTooltip text="Use these starting numbers to frame the first operational picture for the scenario." />
+            </CardTitle>
+            <button
+              type="button"
+              onClick={() => setCasualtiesOpen((open) => !open)}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)] transition hover:border-[var(--accent)] hover:text-foreground"
+              aria-expanded={casualtiesOpen}
+            >
+              {casualtiesOpen ? "Hide" : "Show"}
+              {casualtiesOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </CardHeader>
-        <CardContent className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor={injuredId} className="text-sm font-semibold">Injured</label>
-            <Input id={injuredId} value={injured} onChange={(e) => setInjured(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={fatalitiesId} className="text-sm font-semibold">Fatalities</label>
-            <Input id={fatalitiesId} value={fatalities} onChange={(e) => setFatalities(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={uninjuredId} className="text-sm font-semibold">Uninjured</label>
-            <Input id={uninjuredId} value={uninjured} onChange={(e) => setUninjured(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor={unknownId} className="text-sm font-semibold">Unknown</label>
-            <Input id={unknownId} value={unknown} onChange={(e) => setUnknown(e.target.value)} />
-          </div>
-        </CardContent>
+        <Collapsible open={casualtiesOpen}>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor={injuredId} className="text-sm font-semibold">Injured</label>
+              <Input id={injuredId} value={injured} onChange={(e) => setInjured(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={fatalitiesId} className="text-sm font-semibold">Fatalities</label>
+              <Input id={fatalitiesId} value={fatalities} onChange={(e) => setFatalities(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={uninjuredId} className="text-sm font-semibold">Uninjured</label>
+              <Input id={uninjuredId} value={uninjured} onChange={(e) => setUninjured(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor={unknownId} className="text-sm font-semibold">Unknown</label>
+              <Input id={unknownId} value={unknown} onChange={(e) => setUnknown(e.target.value)} />
+            </div>
+          </CardContent>
+        </Collapsible>
       </Card>
     </div>
   );

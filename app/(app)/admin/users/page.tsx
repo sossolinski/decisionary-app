@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getErrorMessage, logClientError } from "@/lib/errors";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
+import HintTooltip from "@/app/components/HintTooltip";
 import { Shield, Sparkles, Search, Users } from "lucide-react";
 
 type ProfileRow = {
@@ -45,7 +46,6 @@ function humanRole(value?: ProfileRow["role"] | ProfileRow["active_role"]) {
 
 export default function AdminUsersPage() {
   const [meAdmin, setMeAdmin] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +53,7 @@ export default function AdminUsersPage() {
   const [rows, setRows] = useState<ProfileRow[]>([]);
 
   async function load(withSpinner = true) {
-    if (withSpinner) setLoading(true);
+    void withSpinner;
     setError(null);
 
     // 1) check if I'm permanent admin
@@ -82,8 +82,6 @@ export default function AdminUsersPage() {
     } else {
       setRows([]);
     }
-
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -139,7 +137,6 @@ export default function AdminUsersPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -149,9 +146,6 @@ export default function AdminUsersPage() {
 
               <div className="space-y-2">
                 <h1 className="text-[28px] font-semibold tracking-tight">Manage account access without losing the human context.</h1>
-                <p className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                  Review people in the workspace, adjust their default access level, and disable accounts when needed.
-                </p>
               </div>
 
             </div>
@@ -182,7 +176,6 @@ export default function AdminUsersPage() {
         <Card>
           <CardHeader>
             <CardTitle>Access denied</CardTitle>
-            <CardDescription>This page is available only to workspace admins.</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -195,10 +188,10 @@ export default function AdminUsersPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Search people</CardTitle>
-              <CardDescription>
-                Filter by name, email, default access level, active role, or account ID.
-              </CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                Search people
+                <HintTooltip text="Filter by name, email, default access level, active role, or account ID." />
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="relative">
@@ -221,8 +214,8 @@ export default function AdminUsersPage() {
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5 opacity-80" />
                 Accounts
+                <HintTooltip text="Review visible accounts, then adjust default access level or disable an account when needed." />
               </CardTitle>
-              <CardDescription>{loading ? "Loading…" : `${filtered.length} visible accounts in the current view`}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {filtered.length === 0 ? (

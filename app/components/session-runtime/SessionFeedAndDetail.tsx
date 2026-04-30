@@ -1,14 +1,14 @@
 "use client";
 
+import { type PointerEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FileText, MessagesSquare, Radio, SlidersHorizontal } from "lucide-react";
 
 import type { SessionInject } from "@/lib/sessions";
 
 import Inbox from "@/app/components/Inbox";
-import MessageDetail from "@/app/components/MessageDetail";
+import MessageDetail, { type TaskRoleOption } from "@/app/components/MessageDetail";
 import PulseFeed from "@/app/components/PulseFeed";
-import HintTooltip from "@/app/components/HintTooltip";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
@@ -16,6 +16,7 @@ import { Badge, Chip, Select } from "./sessionRuntimeUi";
 
 type SessionFeedAndDetailProps = {
   isMobile: boolean;
+  participantView: boolean;
   sessionId: string;
   streamTab: "inbox" | "pulse";
   setStreamTab: React.Dispatch<React.SetStateAction<"inbox" | "pulse">>;
@@ -39,8 +40,6 @@ type SessionFeedAndDetailProps = {
   setInboxSearch: React.Dispatch<React.SetStateAction<string>>;
   inboxSeverity: string | null;
   setInboxSeverity: React.Dispatch<React.SetStateAction<string | null>>;
-  inboxChannel: string | null;
-  setInboxChannel: React.Dispatch<React.SetStateAction<string | null>>;
   pulseSearch: string;
   setPulseSearch: React.Dispatch<React.SetStateAction<string>>;
   pulseSeverity: string | null;
@@ -49,11 +48,14 @@ type SessionFeedAndDetailProps = {
   clearPulseFilters: () => void;
   inboxFiltersActive: boolean;
   pulseFiltersActive: boolean;
-  isFacilitator: boolean;
-  selectedActionsCount: number;
-  actionsLoading: boolean;
+  runtimeNotice: string | null;
   comment: string;
   setComment: React.Dispatch<React.SetStateAction<string>>;
+  taskOwnerRole: string;
+  setTaskOwnerRole: React.Dispatch<React.SetStateAction<string>>;
+  taskDuePreset: string;
+  setTaskDuePreset: React.Dispatch<React.SetStateAction<string>>;
+  taskRoleOptions: TaskRoleOption[];
   doAction: (actionType: "ignore" | "escalate" | "act") => void;
   doPulseDecision: (decision: "confirm" | "deny") => void;
 };
@@ -83,8 +85,6 @@ export default function SessionFeedAndDetail({
   setInboxSearch,
   inboxSeverity,
   setInboxSeverity,
-  inboxChannel,
-  setInboxChannel,
   pulseSearch,
   setPulseSearch,
   pulseSeverity,
@@ -93,24 +93,91 @@ export default function SessionFeedAndDetail({
   clearPulseFilters,
   inboxFiltersActive,
   pulseFiltersActive,
-  isFacilitator,
-  selectedActionsCount,
-  actionsLoading,
+  runtimeNotice,
   comment,
   setComment,
+  taskOwnerRole,
+  setTaskOwnerRole,
+  taskDuePreset,
+  setTaskDuePreset,
+  taskRoleOptions,
   doAction,
   doPulseDecision,
 }: SessionFeedAndDetailProps) {
+  const splitRef = useRef<HTMLDivElement | null>(null);
+  const [feedWidthPct, setFeedWidthPct] = useState(35);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = Number(window.localStorage.getItem("decisionary.sessionFeedSplit"));
+        if (Number.isFinite(saved)) setFeedWidthPct(Math.min(52, Math.max(28, saved)));
+      } catch {
+        // Ignore storage access issues; the split still works for the current session.
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const desktopGridStyle = useMemo(
+    () =>
+      isMobile
+        ? undefined
+        : {
+            gridTemplateColumns: `minmax(320px, ${feedWidthPct}%) 12px minmax(420px, 1fr)`,
+          },
+    [feedWidthPct, isMobile]
+  );
+
+  const handleDividerPointerDown = useCallback((event: PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const container = splitRef.current;
+    if (!container) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      const bounds = container.getBoundingClientRect();
+      if (bounds.width <= 0) return;
+      const next = ((moveEvent.clientX - bounds.left) / bounds.width) * 100;
+      const clamped = Math.min(52, Math.max(28, next));
+      setFeedWidthPct(clamped);
+      try {
+        window.localStorage.setItem("decisionary.sessionFeedSplit", String(Math.round(clamped)));
+      } catch {
+        // Dragging should stay functional even when storage is unavailable.
+      }
+    };
+
+    const up = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up, { once: true });
+    window.addEventListener("pointercancel", up, { once: true });
+  }, []);
+
   return (
-    <div className={isMobile ? "relative z-0 grid grid-cols-1 gap-4" : "relative z-0 grid grid-cols-12 gap-4"}>
-      <div className={isMobile ? "" : "col-span-4"}>
+    <div
+      ref={splitRef}
+      className={isMobile ? "relative z-0 grid grid-cols-1 gap-4" : "relative z-0 grid gap-0"}
+      style={desktopGridStyle}
+    >
+      <div className={isMobile ? "" : "min-w-0 pr-2"}>
         <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
           <div className="flex items-center justify-between gap-3 border-b border-[var(--studio-border)] px-4 py-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <MessagesSquare className="h-4 w-4 opacity-80" />
-                Incoming updates
-                <HintTooltip text="Watch the latest messages here and switch between Inbox and Pulse depending on what you need to review." />
+                Updates
               </div>
             </div>
 
@@ -210,20 +277,13 @@ export default function SessionFeedAndDetail({
                             <>
                               <Input value={inboxSearch} onChange={(e) => setInboxSearch(e.target.value)} placeholder="Search updates..." />
 
-                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <div className="grid grid-cols-1 gap-2">
                                 <Select value={inboxSeverity ?? ""} onChange={(v) => setInboxSeverity(v ? v : null)}>
                                   <option value="">Urgency: All</option>
                                   <option value="low">LOW</option>
                                   <option value="medium">MEDIUM</option>
                                   <option value="high">HIGH</option>
                                   <option value="critical">CRITICAL</option>
-                                </Select>
-
-                                <Select value={inboxChannel ?? ""} onChange={(v) => setInboxChannel(v ? v : null)}>
-                                  <option value="">Channel: All</option>
-                                  <option value="ops">OPS</option>
-                                  <option value="media">MEDIA</option>
-                                  <option value="social">SOCIAL</option>
                                 </Select>
                               </div>
 
@@ -248,7 +308,6 @@ export default function SessionFeedAndDetail({
                               <div className="flex flex-wrap gap-2">
                                 {inboxSearch.trim() ? <Chip label={`Search: ${inboxSearch.trim()}`} onClear={() => setInboxSearch("")} /> : null}
                                 {inboxSeverity ? <Chip label={`Urgency: ${inboxSeverity}`} onClear={() => setInboxSeverity(null)} /> : null}
-                                {inboxChannel ? <Chip label={`Channel: ${inboxChannel}`} onClear={() => setInboxChannel(null)} /> : null}
                               </div>
                             </>
                           ) : (
@@ -297,25 +356,6 @@ export default function SessionFeedAndDetail({
           </div>
 
           <div className="p-3">
-            <div className="mb-3 flex flex-wrap gap-2 px-1">
-              <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                <kbd className="font-semibold text-foreground">i</kbd> Inbox
-              </span>
-              <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                <kbd className="font-semibold text-foreground">p</kbd> Pulse
-              </span>
-              <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                <kbd className="font-semibold text-foreground">f</kbd> Filters
-              </span>
-              <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                <kbd className="font-semibold text-foreground">d</kbd> Details
-              </span>
-              {isFacilitator ? (
-                <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-[11px] text-[color:var(--studio-muted2)]">
-                  <kbd className="font-semibold text-foreground">t</kbd> Tools
-                </span>
-              ) : null}
-            </div>
             {streamTab === "inbox" ? (
               <Inbox
                 sessionId={sessionId}
@@ -325,7 +365,7 @@ export default function SessionFeedAndDetail({
                   setFocusedThreadId(item.id);
                   setSelectedSource("inbox");
                 }}
-                channel={inboxChannel}
+                channel={null}
                 severity={inboxSeverity}
                 search={inboxSearch}
               />
@@ -346,42 +386,52 @@ export default function SessionFeedAndDetail({
         </div>
       </div>
 
-      <div className={isMobile ? "" : "col-span-8"}>
+      {!isMobile ? (
+        <button
+          type="button"
+          className="group flex min-h-full cursor-col-resize items-stretch justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          onPointerDown={handleDividerPointerDown}
+          aria-label="Resize updates and selected update panels"
+          title="Resize panels"
+        >
+          <span className="my-3 w-px rounded-full bg-[var(--studio-border)] transition group-hover:bg-primary/40 group-focus-visible:bg-primary/50" />
+        </button>
+      ) : null}
+
+      <div className={isMobile ? "" : "min-w-0 pl-2"}>
         <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-          <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-            <div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                <FileText className="h-4 w-4 opacity-80" />
-                Selected update
-                <HintTooltip text="Read the selected update here and record the response you want the team to take." />
-              </div>
-            </div>
-            <div className="text-xs text-[color:var(--studio-muted2)]">
-              {selectedItem ? `Responses saved: ${actionsLoading ? "…" : selectedActionsCount}` : "Nothing selected"}
+          <div className="border-b border-[var(--studio-border)] px-4 py-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+              <FileText className="h-4 w-4 opacity-80" />
+              Selected update
             </div>
           </div>
 
-          <div className="p-5">
+          <div className="p-4">
+            {runtimeNotice ? (
+              <div className="mb-4 rounded-[14px] border border-emerald-500/15 bg-emerald-500/[0.06] px-4 py-3 text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                {runtimeNotice}
+              </div>
+            ) : null}
             <MessageDetail
               item={selectedItem}
               activeTab={selectedSource}
               comment={comment}
               setComment={setComment}
+              taskOwnerRole={taskOwnerRole}
+              setTaskOwnerRole={setTaskOwnerRole}
+              taskDuePreset={taskDuePreset}
+              setTaskDuePreset={setTaskDuePreset}
+              taskRoleOptions={taskRoleOptions}
               onIgnore={() => doAction("ignore")}
               onEscalate={() => doAction("escalate")}
               onAct={() => doAction("act")}
               onConfirm={() => doPulseDecision("confirm")}
               onDeny={() => doPulseDecision("deny")}
             />
-            {!selectedItem ? (
-              <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
-                Start with the update feed on the left, then pick one message to review and respond from here.
-              </div>
-            ) : null}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

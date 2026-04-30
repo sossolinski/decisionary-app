@@ -72,6 +72,31 @@ export type SessionConsequence = {
   created_by: string | null;
 };
 
+export type SessionRuleEvaluation = {
+  id: string;
+  session_id: string;
+  rule_template_id: string | null;
+  rule_template: {
+    rule_name: string;
+    rule_key: string;
+    description: string | null;
+    trigger_type: string;
+  } | null;
+  session_inject_id: string | null;
+  decision_id: string | null;
+  action_id: string | null;
+  task_id: string | null;
+  event_type: string;
+  matched: boolean;
+  skip_reason: string | null;
+  created_consequence_count: number;
+  created_task_count: number;
+  created_inject_count: number;
+  context: Record<string, unknown>;
+  created_at: string;
+  created_by: string | null;
+};
+
 export type RuntimeEvaluationResult = {
   created_consequences: number;
   created_tasks: number;
@@ -114,20 +139,16 @@ export async function createSessionDecision(params: {
   outcomeCode?: string | null;
   status?: SessionDecisionStatus;
 }) {
-  const { data, error } = await supabase
-    .from("session_decisions")
-    .insert({
-      session_id: params.sessionId,
-      session_inject_id: params.sessionInjectId,
-      action_id: params.actionId ?? null,
-      owner_user_id: params.ownerUserId ?? null,
-      decision_type: params.decisionType,
-      status: params.status ?? "recorded",
-      rationale: params.rationale ?? null,
-      outcome_code: params.outcomeCode ?? null,
-    })
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("record_session_decision_v2", {
+    p_session_id: params.sessionId,
+    p_session_inject_id: params.sessionInjectId,
+    p_action_id: params.actionId ?? null,
+    p_owner_user_id: params.ownerUserId ?? null,
+    p_decision_type: params.decisionType,
+    p_status: params.status ?? "recorded",
+    p_rationale: params.rationale ?? null,
+    p_outcome_code: params.outcomeCode ?? null,
+  });
 
   if (error) throw error;
   return data as SessionDecision;
@@ -158,23 +179,19 @@ export async function createSessionTask(params: {
   priority?: SessionTaskPriority;
   dueAt?: string | null;
 }) {
-  const { data, error } = await supabase
-    .from("session_tasks")
-    .insert({
-      session_id: params.sessionId,
-      session_inject_id: params.sessionInjectId ?? null,
-      decision_id: params.decisionId ?? null,
-      source_action_id: params.sourceActionId ?? null,
-      assigned_role: params.assignedRole ?? null,
-      assigned_user_id: params.assignedUserId ?? null,
-      title: params.title,
-      description: params.description ?? null,
-      status: params.status ?? "open",
-      priority: params.priority ?? "medium",
-      due_at: params.dueAt ?? null,
-    })
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("create_session_task_v2", {
+    p_session_id: params.sessionId,
+    p_session_inject_id: params.sessionInjectId ?? null,
+    p_decision_id: params.decisionId ?? null,
+    p_source_action_id: params.sourceActionId ?? null,
+    p_assigned_role: params.assignedRole ?? null,
+    p_assigned_user_id: params.assignedUserId ?? null,
+    p_title: params.title,
+    p_description: params.description ?? null,
+    p_status: params.status ?? "open",
+    p_priority: params.priority ?? "medium",
+    p_due_at: params.dueAt ?? null,
+  });
 
   if (error) throw error;
   return data as SessionTask;
@@ -184,22 +201,10 @@ export async function updateSessionTaskStatus(params: {
   taskId: string;
   status: SessionTaskStatus;
 }) {
-  const patch: Partial<SessionTask> & {
-    started_at?: string | null;
-    resolved_at?: string | null;
-  } = {
-    status: params.status,
-  };
-
-  if (params.status === "in_progress") patch.started_at = new Date().toISOString();
-  if (params.status === "done") patch.resolved_at = new Date().toISOString();
-
-  const { data, error } = await supabase
-    .from("session_tasks")
-    .update(patch)
-    .eq("id", params.taskId)
-    .select("*")
-    .single();
+  const { data, error } = await supabase.rpc("set_session_task_status", {
+    p_task_id: params.taskId,
+    p_status: params.status,
+  });
 
   if (error) throw error;
   return data as SessionTask;
@@ -215,6 +220,26 @@ export async function listSessionConsequences(sessionId: string, limit = 100) {
 
   if (error) throw error;
   return (data ?? []) as SessionConsequence[];
+}
+
+export async function listSessionRuleEvaluations(sessionId: string, limit = 50) {
+  const { data, error } = await supabase
+    .from("session_rule_evaluations")
+    .select(`
+      *,
+      rule_template:rule_template_id (
+        rule_name,
+        rule_key,
+        description,
+        trigger_type
+      )
+    `)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []) as SessionRuleEvaluation[];
 }
 
 export async function createSessionConsequenceIfMissing(params: {
@@ -283,7 +308,7 @@ export async function createSessionConsequenceIfMissing(params: {
 
 export async function evaluateSessionRules(params: {
   sessionId: string;
-  eventType: "inject_released" | "decision_recorded" | "task_overdue";
+  eventType: "inject_released" | "decision_recorded" | "task_overdue" | "task_status_changed" | "manual";
   sessionInjectId?: string | null;
   decisionId?: string | null;
   actionId?: string | null;

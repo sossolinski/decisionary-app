@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Settings2, Sparkles, Trash2 } from "lucide-react";
 
+import Collapsible from "@/app/components/Collapsible";
 import HintTooltip from "@/app/components/HintTooltip";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -97,6 +99,9 @@ export default function ScenarioRulesSection({
   clearNewRuleDraft,
   setError,
 }: ScenarioRulesSectionProps) {
+  const [presetsOpen, setPresetsOpen] = useState(true);
+  const [placeholdersOpen, setPlaceholdersOpen] = useState(false);
+
   return (
     <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
       <div className="px-5 py-4 flex items-start justify-between gap-3 border-b border-[var(--studio-border)]">
@@ -105,9 +110,6 @@ export default function ScenarioRulesSection({
             <Sparkles className="h-4 w-4 opacity-80" />
             Rules & consequences
             <HintTooltip text="Define simple scenario rules that react to injects or decisions and describe the consequence payload you want the engine to use later." />
-          </div>
-          <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-            This is the first building block for branching logic and automated follow-up effects.
           </div>
         </div>
 
@@ -125,56 +127,87 @@ export default function ScenarioRulesSection({
       </div>
 
       <div className="p-5 space-y-4">
-        <div className="space-y-3">
-          <div className="text-sm font-semibold">Quick presets</div>
-          <div className="grid gap-3 xl:grid-cols-3">
-            {RULE_PRESETS.map((preset) => (
-              <div key={preset.key} className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
-                <div className="font-medium">{preset.name}</div>
-                <div className="mt-1 text-sm text-[color:var(--studio-muted)]">{preset.description}</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <MiniBadge>{preset.triggerType}</MiniBadge>
-                  {"decision_type" in preset.triggerConfig ? (
-                    <MiniBadge tone="accent">{String(preset.triggerConfig.decision_type)}</MiniBadge>
-                  ) : null}
-                  {"inject_kind" in preset.triggerConfig ? (
-                    <MiniBadge tone="warm">{String(preset.triggerConfig.inject_kind)}</MiniBadge>
-                  ) : null}
-                </div>
-                <div className="mt-4">
-                  <Button variant="secondary" onClick={() => applyRulePreset(preset)} className="gap-2">
-                    <Sparkles className="h-4 w-4" />
-                    Use preset
-                  </Button>
-                </div>
+        <div className="overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+          <button
+            type="button"
+            onClick={() => setPresetsOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+            aria-expanded={presetsOpen}
+          >
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                Quick presets
+                <HintTooltip text="Use these when you want a fast starting point instead of writing rule JSON from scratch." />
               </div>
-            ))}
-          </div>
+            </div>
+            {presetsOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+          </button>
+          <Collapsible open={presetsOpen}>
+            <div className="border-t border-[var(--studio-border)] p-4">
+              <div className="grid gap-3 xl:grid-cols-3">
+                {RULE_PRESETS.map((preset) => (
+                  <div key={preset.key} className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)] p-4">
+                    <div className="font-medium">{preset.name}</div>
+                    <div className="mt-1 text-sm text-[color:var(--studio-muted)]">{preset.description}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <MiniBadge>{preset.triggerType}</MiniBadge>
+                      {"decision_type" in preset.triggerConfig ? (
+                        <MiniBadge tone="accent">{String(preset.triggerConfig.decision_type)}</MiniBadge>
+                      ) : null}
+                      {"inject_kind" in preset.triggerConfig ? (
+                        <MiniBadge tone="warm">{String(preset.triggerConfig.inject_kind)}</MiniBadge>
+                      ) : null}
+                    </div>
+                    <div className="mt-4">
+                      <Button variant="secondary" onClick={() => applyRulePreset(preset)} className="gap-2">
+                        <Sparkles className="h-4 w-4" />
+                        Use preset
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Collapsible>
         </div>
 
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4">
-          <div className="text-sm font-semibold">Available placeholders</div>
-          <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
-            Use these inside effect titles, descriptions, task text, and generated inject text.
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {[
-              "{{scenario_title}}",
-              "{{inject_title}}",
-              "{{inject_kind}}",
-              "{{channel}}",
-              "{{severity}}",
-              "{{decision_type}}",
-              "{{action_comment}}",
-              "{{task_title}}",
-              "{{task_due_at}}",
-              "{{task_priority}}",
-            ].map((token) => (
-              <MiniBadge key={token} tone="warm">
-                {token}
-              </MiniBadge>
-            ))}
-          </div>
+        <div className="overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+          <button
+            type="button"
+            onClick={() => setPlaceholdersOpen((value) => !value)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+            aria-expanded={placeholdersOpen}
+          >
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                Available placeholders
+                <HintTooltip text="Helpful only when you are writing dynamic text for consequences, tasks, and generated injects." />
+              </div>
+            </div>
+            {placeholdersOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+          </button>
+          <Collapsible open={placeholdersOpen}>
+            <div className="border-t border-[var(--studio-border)] p-4">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  "{{scenario_title}}",
+                  "{{inject_title}}",
+                  "{{inject_kind}}",
+                  "{{channel}}",
+                  "{{severity}}",
+                  "{{decision_type}}",
+                  "{{action_comment}}",
+                  "{{task_title}}",
+                  "{{task_due_at}}",
+                  "{{task_priority}}",
+                ].map((token) => (
+                  <MiniBadge key={token} tone="warm">
+                    {token}
+                  </MiniBadge>
+                ))}
+              </div>
+            </div>
+          </Collapsible>
         </div>
 
         {newRuleOpen ? (

@@ -32,6 +32,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
 
+    if (order.stripe_invoice_id && !order.stripe_invoice_url) {
+      const existingInvoice = await stripe.invoices.retrieve(order.stripe_invoice_id);
+
+      const { error: refreshError } = await adminClient
+        .from("billing_orders")
+        .update({
+          stripe_invoice_url: existingInvoice.hosted_invoice_url,
+          stripe_customer_id: order.stripe_customer_id ?? existingInvoice.customer?.toString() ?? null,
+        })
+        .eq("id", order.id);
+
+      if (refreshError) throw refreshError;
+
+      return NextResponse.json({
+        invoiceId: existingInvoice.id,
+        invoiceUrl: existingInvoice.hosted_invoice_url,
+      });
+    }
+
     const { data: items, error: itemsError } = await adminClient
       .from("billing_order_items")
       .select("*")
@@ -63,11 +82,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
       customerId = customer.id;
 
-      await adminClient.from("org_billing_accounts").upsert({
+      const { error: billingAccountError } = await adminClient.from("org_billing_accounts").upsert({
         org_id: order.org_id,
         billing_email: billingAccount?.billing_email ?? null,
         stripe_customer_id: customerId,
       });
+
+      if (billingAccountError) throw billingAccountError;
     }
 
     for (const item of items) {
@@ -86,7 +107,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       } as unknown as Stripe.InvoiceItemCreateParams;
 
-      await stripe.invoiceItems.create(invoiceItemParams);
+      await stripe.invoiceItems.create(invoiceItemParams, {
+        idempotencyKey: `billing-order-item:${order.id}:${item.id}`,
+      });
     }
 
     const invoice = await stripe.invoices.create({
@@ -98,17 +121,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
         order_id: order.id,
         org_id: order.org_id,
       },
+    }, {
+      idempotencyKey: `billing-order-invoice:${order.id}`,
     });
 
-    const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+    const finalized = await stripe.invoices.finalizeInvoice(
+      invoice.id,
+      { expand: ["payment_intent"] },
+      { idempotencyKey: `billing-order-finalize:${order.id}` }
+    );
+    const finalizedInvoice = await stripe.invoices.retrieve(finalized.id, {
+      expand: ["payment_intent"],
+    });
 
     const { error: updateError } = await adminClient
       .from("billing_orders")
       .update({
         status: "payment_pending",
         stripe_customer_id: customerId,
-        stripe_invoice_id: finalized.id,
-        stripe_invoice_url: finalized.hosted_invoice_url,
+        stripe_invoice_id: finalizedInvoice.id,
+        stripe_invoice_url: finalizedInvoice.hosted_invoice_url,
         payment_requested_at: new Date().toISOString(),
       })
       .eq("id", order.id);
@@ -116,8 +148,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (updateError) throw updateError;
 
     return NextResponse.json({
-      invoiceId: finalized.id,
-      invoiceUrl: finalized.hosted_invoice_url,
+      invoiceId: finalizedInvoice.id,
+      invoiceUrl: finalizedInvoice.hosted_invoice_url,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create Stripe invoice.";

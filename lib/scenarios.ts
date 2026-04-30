@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { attachSignedUrlsToInjects, type InjectMedia } from "./injectMedia";
 
 /* =========================
    TYPES
@@ -42,6 +43,7 @@ export type Inject = {
   decision_template_key?: string | null;
   visibility_scope?: string | null;
   branch_key?: string | null;
+  media?: InjectMedia[] | null;
   created_at?: string;
 };
 
@@ -50,6 +52,7 @@ export type ScenarioInject = {
   scenario_id: string;
   inject_id: string;
   scheduled_at: string | null;
+  release_offset_minutes: number | null;
   order_index: number;
   created_at: string;
   injects: Inject | null;
@@ -104,6 +107,19 @@ function normalizeScenarioInjectRow(
   };
 }
 
+async function hydrateScenarioInjectMedia(rows: ScenarioInject[]): Promise<ScenarioInject[]> {
+  const injects = rows.map((row) => row.injects).filter(Boolean) as Inject[];
+  if (injects.length === 0) return rows;
+
+  const hydrated = await attachSignedUrlsToInjects(injects);
+  const injectById = new Map(hydrated.map((inject) => [inject.id, inject]));
+
+  return rows.map((row) => ({
+    ...row,
+    injects: row.injects ? injectById.get(row.injects.id) ?? row.injects : null,
+  }));
+}
+
 /* =========================
    SCENARIO CRUD
 ========================= */
@@ -142,42 +158,119 @@ export async function updateScenario(
 export async function listScenarioInjects(
   scenarioId: string
 ): Promise<ScenarioInject[]> {
-  const { data, error } = await supabase
-    .from("scenario_injects")
-    .select(
-      `
+  const selectBase = `
+    id,
+    scenario_id,
+    inject_id,
+    scheduled_at,
+    order_index,
+    created_at,
+    injects:inject_id (
+      id,
+      title,
+      body,
+      channel,
+      severity,
+      sender_name,
+      sender_org,
+      inject_kind,
+      source_type,
+      entity_scope,
+      requires_decision,
+      decision_template_key,
+      visibility_scope,
+      branch_key,
+      media:inject_media (
         id,
-        scenario_id,
         inject_id,
-        scheduled_at,
-        order_index,
-        created_at,
-        injects:inject_id (
-          id,
-          title,
-          body,
-          channel,
-          severity,
-          sender_name,
-          sender_org,
-          inject_kind,
-          source_type,
-          entity_scope,
-          requires_decision,
-          decision_template_key,
-          visibility_scope,
-          branch_key
-        )
-      `
+        storage_path,
+        mime_type,
+        width,
+        height,
+        alt_text,
+        sort_order,
+        created_at
+      )
     )
-    .eq("scenario_id", scenarioId)
-    .order("order_index", { ascending: true })
-    .order("created_at", { ascending: true });
+  `;
+
+  const withReleaseOffset = `
+    id,
+    scenario_id,
+    inject_id,
+    scheduled_at,
+    release_offset_minutes,
+    order_index,
+    created_at,
+    injects:inject_id (
+      id,
+      title,
+      body,
+      channel,
+      severity,
+      sender_name,
+      sender_org,
+      inject_kind,
+      source_type,
+      entity_scope,
+      requires_decision,
+      decision_template_key,
+      visibility_scope,
+      branch_key,
+      media:inject_media (
+        id,
+        inject_id,
+        storage_path,
+        mime_type,
+        width,
+        height,
+        alt_text,
+        sort_order,
+        created_at
+      )
+    )
+  `;
+
+  const runQuery = async (selectClause: string) =>
+    supabase
+      .from("scenario_injects")
+      .select(selectClause)
+      .eq("scenario_id", scenarioId)
+      .order("order_index", { ascending: true })
+      .order("created_at", { ascending: true });
+
+  let { data, error } = await runQuery(withReleaseOffset);
+
+  if (error) {
+    const message = String(error.message ?? "").toLowerCase();
+    if (!message.includes("release_offset_minutes")) {
+      throw error;
+    }
+
+    const fallback = await runQuery(selectBase);
+    data = fallback.data;
+    error = fallback.error;
+
+    if (!error) {
+      const normalized = ((data ?? []) as unknown as Array<
+        Omit<ScenarioInject, "injects" | "release_offset_minutes"> & { injects: unknown }
+      >).map((row) =>
+        normalizeScenarioInjectRow({
+          ...row,
+          release_offset_minutes: null,
+        })
+      );
+      return hydrateScenarioInjectMedia(normalized);
+    }
+  }
 
   if (error) throw error;
 
-  // ✅ normalize injects embed to Inject | null (not Inject[])
-  return (data ?? []).map(normalizeScenarioInjectRow);
+  return hydrateScenarioInjectMedia(
+    ((data ?? []) as unknown as Array<Omit<ScenarioInject, "injects"> & { injects: unknown }>).map(
+      normalizeScenarioInjectRow
+    )
+  );
 }
 
 export async function createInject(params: {
@@ -200,7 +293,7 @@ export async function createInject(params: {
     .insert({
       title: params.title,
       body: params.body,
-      channel: params.channel ?? "ops",
+      channel: params.channel === "pulse" ? "pulse" : "inbox",
       severity: params.severity ?? null,
       sender_name: params.sender_name ?? "Facilitator",
       sender_org: params.sender_org ?? "Decisionary",
@@ -216,13 +309,15 @@ export async function createInject(params: {
     .single();
 
   if (error) throw error;
-  return data as Inject;
+  const [inject] = await attachSignedUrlsToInjects([data as Inject]);
+  return inject;
 }
 
 export async function attachInjectToScenario(params: {
   scenarioId: string;
   injectId: string;
   scheduled_at?: string | null;
+  release_offset_minutes?: number | null;
 }): Promise<ScenarioInject> {
   // compute next order_index
   const { data: existing, error: exErr } = await supabase
@@ -243,6 +338,7 @@ export async function attachInjectToScenario(params: {
       scenario_id: params.scenarioId,
       inject_id: params.injectId,
       scheduled_at: params.scheduled_at ?? null,
+      release_offset_minutes: params.release_offset_minutes ?? null,
       order_index: nextOrder,
     })
     .select(
@@ -251,10 +347,22 @@ export async function attachInjectToScenario(params: {
         scenario_id,
         inject_id,
         scheduled_at,
+        release_offset_minutes,
         order_index,
         created_at,
         injects:inject_id (
-          id, title, body, channel, severity, sender_name, sender_org, inject_kind, source_type, entity_scope, requires_decision, decision_template_key, visibility_scope, branch_key
+          id, title, body, channel, severity, sender_name, sender_org, inject_kind, source_type, entity_scope, requires_decision, decision_template_key, visibility_scope, branch_key,
+          media:inject_media (
+            id,
+            inject_id,
+            storage_path,
+            mime_type,
+            width,
+            height,
+            alt_text,
+            sort_order,
+            created_at
+          )
         )
       `
     )
@@ -263,7 +371,7 @@ export async function attachInjectToScenario(params: {
   if (error) throw error;
 
   // ✅ normalize injects embed
-  return normalizeScenarioInjectRow(data);
+  return hydrateScenarioInjectMedia([normalizeScenarioInjectRow(data)]).then((rows) => rows[0]);
 }
 
 export async function detachScenarioInject(scenarioInjectId: string) {
@@ -278,10 +386,12 @@ export async function detachScenarioInject(scenarioInjectId: string) {
 export async function updateScenarioInject(params: {
   id: string;
   scheduled_at?: string | null;
+  release_offset_minutes?: number | null;
   order_index?: number;
 }): Promise<void> {
   const patch: Record<string, unknown> = {};
   if ("scheduled_at" in params) patch.scheduled_at = params.scheduled_at ?? null;
+  if ("release_offset_minutes" in params) patch.release_offset_minutes = params.release_offset_minutes ?? null;
   if ("order_index" in params) patch.order_index = params.order_index;
 
   const { error } = await supabase

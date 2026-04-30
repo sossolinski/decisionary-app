@@ -9,7 +9,8 @@ import {
 } from "@/lib/organizations";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/components/ui/card";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
@@ -19,6 +20,14 @@ import { getErrorMessage } from "@/lib/errors";
 function toMessage(err: unknown, fallback: string) {
   return getErrorMessage(err, fallback);
 }
+
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
 
 export default function FacilitatorWorkspacePage() {
   const {
@@ -36,6 +45,7 @@ export default function FacilitatorWorkspacePage() {
   const [err, setErr] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [participants, setParticipants] = useState<ManagedParticipant[]>([]);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
   const participantNameId = useId();
   const participantEmailId = useId();
 
@@ -61,6 +71,30 @@ export default function FacilitatorWorkspacePage() {
     { enabled: !loading && canFacilitate && !!activeOrgId, intervalMs: 30000 }
   );
 
+  function requestDeactivateParticipant(participant: ManagedParticipant) {
+    setPendingConfirm({
+      title: "Deactivate participant?",
+      description: `This deactivates "${participant.display_name}" and prevents them from using this managed participant account.`,
+      confirmLabel: "Deactivate participant",
+      tone: "destructive",
+      onConfirm: () => deactivateParticipantNow(participant.id),
+    });
+  }
+
+  async function deactivateParticipantNow(participantId: string) {
+    try {
+      setBusyKey(`participant:deactivate:${participantId}`);
+      await deactivateManagedParticipant(participantId);
+      await refreshParticipants(activeOrgId);
+      setMsg("Participant deactivated.");
+      setErr(null);
+    } catch (e: unknown) {
+      setErr(toMessage(e, "Failed to deactivate participant."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
   if (loading) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
   }
@@ -71,7 +105,6 @@ export default function FacilitatorWorkspacePage() {
         <Card>
           <CardHeader>
             <CardTitle>Access denied</CardTitle>
-            <CardDescription>Only facilitator/admin can access this workspace view.</CardDescription>
           </CardHeader>
         </Card>
       </div>
@@ -82,9 +115,6 @@ export default function FacilitatorWorkspacePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold">Facilitator · Workspace</h1>
-        <p className="text-sm text-muted-foreground">
-          Manage the active organization context and keep the participant roster ready for new sessions.
-        </p>
       </div>
 
       {msg ? (
@@ -105,7 +135,6 @@ export default function FacilitatorWorkspacePage() {
             <span>Organization context</span>
             <HintTooltip text="Choose which organization your scenario, session, and participant work should apply to." />
           </CardTitle>
-          <CardDescription>Use one active workspace context for new scenarios, sessions, and participant actions.</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
@@ -136,7 +165,6 @@ export default function FacilitatorWorkspacePage() {
               text={`Create, copy join codes for, or deactivate participants in ${activeOrg?.name ?? "the selected organization"}.`}
             />
           </CardTitle>
-          <CardDescription>Keep a lightweight participant list ready before the next live exercise starts.</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -231,22 +259,10 @@ export default function FacilitatorWorkspacePage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            if (!confirm("Deactivate this participant account?")) return;
-                            void (async () => {
-                              try {
-                                await deactivateManagedParticipant(p.id);
-                                await refreshParticipants(activeOrgId);
-                                setMsg("Participant deactivated.");
-                                setErr(null);
-                              } catch (e: unknown) {
-                                setErr(toMessage(e, "Failed to deactivate participant."));
-                              }
-                            })();
-                          }}
+                          onClick={() => requestDeactivateParticipant(p)}
                           disabled={busyKey !== null}
                         >
-                          Deactivate
+                          {busyKey === `participant:deactivate:${p.id}` ? "…" : "Deactivate"}
                         </Button>
                       </div>
                     </div>
@@ -257,6 +273,20 @@ export default function FacilitatorWorkspacePage() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
+      />
     </div>
   );
 }

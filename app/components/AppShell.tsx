@@ -26,7 +26,7 @@ function useMediaQuery(query: string) {
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 1024px)");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   // Hide shell on login / landing routes
   const hideShell =
@@ -37,8 +37,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const v = window.localStorage.getItem(SIDEBAR_LS_KEY);
-    setSidebarCollapsed(v === "0" ? false : true);
+    const timer = window.setTimeout(() => {
+      const value = window.localStorage.getItem(SIDEBAR_LS_KEY);
+      setSidebarCollapsed(value !== "0");
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function toggleDesktopSidebar() {

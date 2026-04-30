@@ -16,7 +16,7 @@ export default function ParticipantLayout({
     if (loading) return;
 
     if (!userId) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
 

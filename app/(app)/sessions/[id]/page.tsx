@@ -1,13 +1,14 @@
 // app/(app)/sessions/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { createPortal } from "react-dom";
 
 import { supabase } from "@/lib/supabaseClient";
 import {
   type Scenario,
+  type ScenarioRole,
+  listScenarioRoles,
 } from "@/lib/scenarios";
 import { getErrorMessage } from "@/lib/errors";
 
@@ -42,13 +43,12 @@ import {
   type SessionTask,
 } from "@/lib/sessionEngine";
 
-import HintTooltip from "@/app/components/HintTooltip";
 import SessionFeedAndDetail from "@/app/components/session-runtime/SessionFeedAndDetail";
 import SessionHeaderPanel from "@/app/components/session-runtime/SessionHeaderPanel";
 import SessionParticipantBoards from "@/app/components/session-runtime/SessionParticipantBoards";
+import HintTooltip from "@/app/components/HintTooltip";
+import { useRoleContext } from "@/app/components/useRoleContext";
 import {
-  Badge,
-  Chip,
   consequenceImpactLabel,
   consequenceSeverityTone,
   consequenceTypeLabel,
@@ -57,8 +57,6 @@ import {
   humanDecisionLabel,
   isEditableTarget,
   isUuid,
-  RuntimeMetric,
-  Select,
   taskPriorityTone,
   taskStatusTone,
   useMediaQuery,
@@ -69,10 +67,10 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Radio,
   Sparkles,
   ListChecks,
   CheckSquare,
+  X,
 } from "lucide-react";
 
 type SelectedSource = "inbox" | "pulse";
@@ -93,6 +91,10 @@ type TimelineRefs = {
 
 function lsKey(sessionId: string, kind: "inbox" | "pulse") {
   return `decisionary.seen.${kind}.${sessionId}`;
+}
+
+function onboardingKey(sessionId: string) {
+  return `decisionary.onboarding.dismissed.${sessionId}`;
 }
 
 type SessionMetaRow = {
@@ -157,6 +159,47 @@ function compactId(value: string | null | undefined, prefix: string) {
   return `${prefix} ${value.slice(0, 8)}`;
 }
 
+function roleNameFromKey(value: string) {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function dueAtFromPreset(value: string) {
+  if (value === "none") return null;
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return new Date(Date.now() + minutes * 60_000).toISOString();
+}
+
+function responseTargetLabel(action: SessionAction) {
+  const stream = action.source === "pulse" ? "Pulse" : "Inbox";
+  const rawTitle = action.inject_title?.trim();
+  const title = rawTitle
+    ? rawTitle.length > 44
+      ? `${rawTitle.slice(0, 41)}...`
+      : rawTitle
+    : null;
+  if (title) return `${stream}: ${title}`;
+  return `${stream} update`;
+}
+
+function responseDecisionLabel(
+  action: SessionAction,
+  decisionType: string | null | undefined,
+  followUpCount: number
+) {
+  if (decisionType === "confirm") return "Confirmed claim";
+  if (decisionType === "deny") return "Dismissed claim";
+  if (action.action_type === "escalate") return "Escalated issue";
+  if (followUpCount > 0) return followUpCount === 1 ? "Created follow-up" : `Created ${followUpCount} follow-ups`;
+  if (action.action_type === "act") return "Recorded action";
+  if (action.action_type === "ignore") return "Monitoring only";
+  return "Recorded response";
+}
+
 function timelineConnectorLabel(
   current: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs },
   next: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs; sourceId: string } | null
@@ -189,6 +232,7 @@ export default function SessionParticipantPage() {
   const params = useParams<{ id: string }>();
   const sessionId = params?.id ?? "";
   const validSessionId = useMemo(() => isUuid(sessionId), [sessionId]);
+  const { activeRole, loading: roleContextLoading } = useRoleContext();
 
   const isMobile = useMediaQuery("(max-width: 1100px)");
   const copPanelId = useId();
@@ -230,7 +274,6 @@ export default function SessionParticipantPage() {
   // Inbox filters
   const [inboxSearch, setInboxSearch] = useState("");
   const [inboxSeverity, setInboxSeverity] = useState<string | null>(null);
-  const [inboxChannel, setInboxChannel] = useState<string | null>(null);
 
   // Pulse filters
   const [pulseSearch, setPulseSearch] = useState("");
@@ -243,6 +286,7 @@ export default function SessionParticipantPage() {
   const [decisions, setDecisions] = useState<SessionDecision[]>([]);
   const [tasks, setTasks] = useState<SessionTask[]>([]);
   const [consequences, setConsequences] = useState<SessionConsequence[]>([]);
+  const [scenarioRoles, setScenarioRoles] = useState<ScenarioRole[]>([]);
   const [taskBusyId, setTaskBusyId] = useState<string | null>(null);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
   const [selectedThreadOnly, setSelectedThreadOnly] = useState(false);
@@ -259,6 +303,9 @@ export default function SessionParticipantPage() {
   });
 
   const [comment, setComment] = useState("");
+  const [taskOwnerRole, setTaskOwnerRole] = useState("facilitator");
+  const [taskDuePreset, setTaskDuePreset] = useState("15");
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
 
   // Facilitator tools popover
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -270,6 +317,9 @@ export default function SessionParticipantPage() {
 
   const sessionTitle = scenario?.title ? scenario.title : "Session";
   const totalWaitingUpdates = unseenInbox + unseenPulse;
+  const facilitatorSessionAccess = isFacilitator;
+  const participantViewMode = !roleContextLoading && activeRole === "participant";
+  const canUseFacilitatorUi = facilitatorSessionAccess && !participantViewMode;
 
   function setRuntimeNoticeFromResult(
     result: { created_consequences: number; created_tasks: number; created_injects: number } | null
@@ -298,6 +348,19 @@ export default function SessionParticipantPage() {
 
     setRuntimeNotice(`Runtime applied: ${parts.join(", ")}.`);
   }
+
+  function hasRuntimeChanges(
+    result: { created_consequences: number; created_tasks: number; created_injects: number } | null
+  ) {
+    if (!result) return false;
+    return result.created_consequences + result.created_tasks + result.created_injects > 0;
+  }
+
+  useEffect(() => {
+    if (!runtimeNotice) return;
+    const timer = window.setTimeout(() => setRuntimeNotice(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [runtimeNotice]);
 
   function applySessionMeta(row: SessionMetaPayloadRow | null | undefined) {
     if (!row) return;
@@ -382,20 +445,29 @@ export default function SessionParticipantPage() {
 
       if (!scenarioId) {
         setScenario(null);
+        setScenarioRoles([]);
         return;
       }
 
-      const { data: sc, error: scErr } = await supabase
-        .from("scenarios")
-        .select("*")
-        .eq("id", scenarioId)
-        .maybeSingle();
+      const [
+        { data: sc, error: scErr },
+        roles,
+      ] = await Promise.all([
+        supabase
+          .from("scenarios")
+          .select("*")
+          .eq("id", scenarioId)
+          .maybeSingle(),
+        listScenarioRoles(scenarioId),
+      ]);
 
       if (scErr) throw scErr;
 
       setScenario((sc as Scenario | null) ?? null);
+      setScenarioRoles(roles);
     } catch (e: unknown) {
       setScenario(null);
+      setScenarioRoles([]);
       setError(
         (prev) =>
           prev ??
@@ -406,23 +478,23 @@ export default function SessionParticipantPage() {
     }
   }
 
-  function getSeen(kind: "inbox" | "pulse") {
+  const getSeen = useCallback((kind: "inbox" | "pulse") => {
     const raw =
       typeof window !== "undefined"
         ? localStorage.getItem(lsKey(sessionId, kind))
         : null;
     const dt = raw ? new Date(raw).getTime() : 0;
     return Number.isFinite(dt) ? dt : 0;
-  }
+  }, [sessionId]);
 
-  function markSeen(kind: "inbox" | "pulse") {
+  const markSeen = useCallback((kind: "inbox" | "pulse") => {
     const nowIso = new Date().toISOString();
     localStorage.setItem(lsKey(sessionId, kind), nowIso);
     if (kind === "inbox") setUnseenInbox(0);
     if (kind === "pulse") setUnseenPulse(0);
-  }
+  }, [sessionId]);
 
-  async function refreshUnseen() {
+  const refreshUnseen = useCallback(async () => {
     if (!validSessionId) return;
 
     const seenInbox = getSeen("inbox");
@@ -439,26 +511,41 @@ export default function SessionParticipantPage() {
 
     const { count: pulseNewForInbox } = await supabase
       .from("session_injects")
-      .select("id, injects:inject_id(channel)", { count: "exact", head: true })
+      .select("id, injects:inject_id!inner(channel)", { count: "exact", head: true })
       .eq("session_id", sessionId)
       .gte("delivered_at", inboxSince)
       .eq("injects.channel", "pulse");
 
+    const { count: internalNewForInbox } = await supabase
+      .from("session_injects")
+      .select("id, injects:inject_id!inner(source_type)", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gte("delivered_at", inboxSince)
+      .in("injects.source_type", ["conditional", "consequence"]);
+
     const inboxNew = Math.max(
       0,
-      (totalNewInbox ?? 0) - (pulseNewForInbox ?? 0)
+      (totalNewInbox ?? 0) - (pulseNewForInbox ?? 0) - (internalNewForInbox ?? 0)
     );
     setUnseenInbox(inboxNew);
 
     const { count: pulseNew } = await supabase
       .from("session_injects")
-      .select("id, injects:inject_id(channel)", { count: "exact", head: true })
+      .select("id, injects:inject_id!inner(channel, source_type)", { count: "exact", head: true })
       .eq("session_id", sessionId)
       .gte("delivered_at", pulseSince)
       .eq("injects.channel", "pulse");
 
-    setUnseenPulse(pulseNew ?? 0);
-  }
+    const { count: internalPulse } = await supabase
+      .from("session_injects")
+      .select("id, injects:inject_id!inner(channel, source_type)", { count: "exact", head: true })
+      .eq("session_id", sessionId)
+      .gte("delivered_at", pulseSince)
+      .eq("injects.channel", "pulse")
+      .in("injects.source_type", ["conditional", "consequence"]);
+
+    setUnseenPulse(Math.max(0, (pulseNew ?? 0) - (internalPulse ?? 0)));
+  }, [getSeen, sessionId, validSessionId]);
 
   // Initial load
   useEffect(() => {
@@ -471,6 +558,19 @@ export default function SessionParticipantPage() {
     refreshUnseen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !validSessionId) return;
+    setOnboardingDismissed(window.sessionStorage.getItem(onboardingKey(sessionId)) === "1");
+  }, [sessionId, validSessionId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !validSessionId) return;
+    if (actions.length > 0 && !onboardingDismissed) {
+      window.sessionStorage.setItem(onboardingKey(sessionId), "1");
+      setOnboardingDismissed(true);
+    }
+  }, [actions.length, onboardingDismissed, sessionId, validSessionId]);
 
   // Exercise clock tick
   useEffect(() => {
@@ -508,9 +608,16 @@ export default function SessionParticipantPage() {
     }
     function onDocMouseDown(e: MouseEvent) {
       if (filtersOpen) {
-        const el2 = filtersWrapRef.current;
-        if (el2 && e.target instanceof Node && !el2.contains(e.target))
+        const wrap = filtersWrapRef.current;
+        const panel = filtersPanelRef.current;
+        if (
+          e.target instanceof Node &&
+          wrap &&
+          !wrap.contains(e.target) &&
+          !(panel && panel.contains(e.target))
+        ) {
           setFiltersOpen(false);
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -603,7 +710,7 @@ export default function SessionParticipantPage() {
         return;
       }
 
-      if (key === "t" && isFacilitator) {
+      if (key === "t" && canUseFacilitatorUi) {
         e.preventDefault();
         setToolsOpen((value) => !value);
       }
@@ -611,7 +718,7 @@ export default function SessionParticipantPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isFacilitator, refreshUnseen]);
+  }, [canUseFacilitatorUi, markSeen, refreshUnseen]);
 
   // ✅ Role gating (session_role_assignments OR created_by fallback)
   useEffect(() => {
@@ -697,6 +804,9 @@ export default function SessionParticipantPage() {
             eventType: "inject_released",
             sessionInjectId: row.id,
           });
+          if (hasRuntimeChanges(result)) {
+            await refreshDecisionBoard();
+          }
           setRuntimeNoticeFromResult(result);
         } catch {
           // ignore runtime evaluation errors in realtime callback
@@ -724,11 +834,6 @@ export default function SessionParticipantPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId]);
 
-  const selectedActions = useMemo(() => {
-    if (!selectedItem) return [];
-    return actions.filter((a) => a.session_inject_id === selectedItem.id);
-  }, [actions, selectedItem]);
-
   const openTasks = useMemo(() => {
     return tasks.filter((task) => task.status !== "done" && task.status !== "cancelled");
   }, [tasks]);
@@ -745,30 +850,8 @@ export default function SessionParticipantPage() {
   const latestConsequence = consequences[0] ?? null;
   const heroEyebrow =
     sessionMode === "rehearsal"
-      ? isFacilitator
-        ? "Rehearsal control"
-        : "Rehearsal mode"
-      : isFacilitator
-      ? "Live session control"
-      : "Live session";
-  const heroHint =
-    isFacilitator && totalWaitingUpdates > 0 && overdueTaskCount === 0
-      ? "Watch the feed and decide when to introduce the next turn."
-      : null;
-  const heroSummary = isFacilitator
-    ? overdueTaskCount > 0
-      ? `Clear ${overdueTaskCount === 1 ? "the overdue follow-up" : `${overdueTaskCount} overdue follow-ups`} before the next turn.`
-      : totalWaitingUpdates > 0
-      ? "The feed is active and ready for the next facilitator move."
-      : latestConsequence
-      ? `Latest development: ${compactLabel(latestConsequence.title, "New session development")}.`
-      : "Session is stable. Use COP or Facilitator tools when you want to steer the next turn."
-    : totalWaitingUpdates > 0
-    ? `${totalWaitingUpdates} update${totalWaitingUpdates === 1 ? "" : "s"} waiting. Pick one thread and respond.`
-    : latestConsequence
-    ? `Latest development: ${compactLabel(latestConsequence.title, "New session development")}.`
-    : "Watch the feed, choose one thread, and keep the team moving.";
-
+      ? "Rehearsal"
+      : "Session";
   const runtimeGeneratedTaskIds = useMemo(() => {
     return new Set(
       tasks
@@ -823,6 +906,42 @@ export default function SessionParticipantPage() {
     [tasks]
   );
 
+  const decisionsByActionId = useMemo(() => {
+    const map = new Map<string, SessionDecision>();
+    for (const decision of visibleDecisions) {
+      if (decision.action_id) map.set(decision.action_id, decision);
+    }
+    return map;
+  }, [visibleDecisions]);
+
+  const tasksBySourceActionId = useMemo(() => {
+    const map = new Map<string, SessionTask[]>();
+    for (const task of visibleTasks) {
+      if (!task.source_action_id) continue;
+      const current = map.get(task.source_action_id) ?? [];
+      current.push(task);
+      map.set(task.source_action_id, current);
+    }
+    return map;
+  }, [visibleTasks]);
+
+  const notableActions = useMemo(() => {
+    return visibleActions.filter((action) => {
+      const linkedDecision = decisionsByActionId.get(action.id);
+      const linkedTasks = tasksBySourceActionId.get(action.id) ?? [];
+      const hasComment = Boolean(action.comment?.trim());
+      const hasMeaningfulDecision =
+        linkedDecision?.decision_type === "confirm" || linkedDecision?.decision_type === "deny";
+
+      if (action.action_type === "escalate") return true;
+      if (linkedTasks.length > 0) return true;
+      if (hasComment) return true;
+      if (hasMeaningfulDecision) return true;
+      if (action.source === "pulse" && action.action_type === "act") return true;
+      return false;
+    });
+  }, [visibleActions, decisionsByActionId, tasksBySourceActionId]);
+
   const chainEvents = useMemo(() => {
     const items: Array<{
       id: string;
@@ -845,7 +964,7 @@ export default function SessionParticipantPage() {
         title: selectedItem.injects?.title ?? "Inject released",
         detail: selectedItem.injects?.body ?? "Selected inject entered the session.",
         meta: [
-          selectedItem.injects?.channel ? `Channel ${selectedItem.injects.channel}` : "Inject",
+          selectedItem.injects?.channel === "pulse" ? "Stream Pulse" : "Stream Inbox",
           selectedItem.injects?.severity ? `Severity ${selectedItem.injects.severity}` : "No severity",
         ],
         relations: [
@@ -1150,6 +1269,9 @@ export default function SessionParticipantPage() {
       void (async () => {
         try {
           const result = await processOverdueSessionTasks(sessionId);
+          if (hasRuntimeChanges(result)) {
+            await refreshDecisionBoard();
+          }
           setRuntimeNoticeFromResult(result);
         } catch {
           // ignore periodic runtime evaluation errors
@@ -1160,6 +1282,7 @@ export default function SessionParticipantPage() {
     checkOverdueTasks();
     const intervalId = window.setInterval(checkOverdueTasks, 30_000);
     return () => window.clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, validSessionId, openTasks.length]);
 
   async function doAction(actionType: "ignore" | "escalate" | "act") {
@@ -1189,12 +1312,14 @@ export default function SessionParticipantPage() {
 
       const requiresDecision = Boolean(selectedItem.injects?.requires_decision);
       if (actionType === "escalate" || (requiresDecision && actionType === "act")) {
+        const assignedRole = actionType === "escalate" ? taskOwnerRole.trim() || null : "facilitator";
+        const dueAt = actionType === "escalate" ? dueAtFromPreset(taskDuePreset) : null;
         const task = await createSessionTask({
           sessionId,
           sessionInjectId: selectedItem.id,
           decisionId: savedDecision.id,
           sourceActionId: saved.id,
-          assignedRole: "facilitator",
+          assignedRole,
           title:
             actionType === "escalate"
               ? `Escalate: ${selectedItem.injects?.title ?? "message"}`
@@ -1206,31 +1331,18 @@ export default function SessionParticipantPage() {
               : "Track follow-up actions, updates, and stakeholder communication for this decision."),
           priority: actionType === "escalate" ? "high" : selectedSource === "pulse" ? "high" : "medium",
           status: actionType === "act" ? "in_progress" : "open",
+          dueAt,
         });
         setTasks((prev) => [task, ...prev]);
         setRuntimeNotice(
           actionType === "escalate"
-            ? "Escalation task created."
-            : "Decision recorded and follow-through task created."
+            ? `Escalation task created${assignedRole ? ` for ${roleNameFromKey(assignedRole)}` : ""}${dueAt ? `, due ${fmt(dueAt)}` : ""}.`
+            : `Decision recorded and follow-through task created${dueAt ? `, due ${fmt(dueAt)}` : ""}.`
         );
       }
 
-      if (actionType === "act") {
-        const title = `Update: action taken on "${
-          selectedItem.injects?.title ?? "message"
-        }"`;
-        const body =
-          `Decision recorded.\n\n` +
-          `Action: ACT\n` +
-          `Source: ${selectedSource.toUpperCase()}\n` +
-          `Reference message ID: ${selectedItem.id}\n` +
-          (comment.trim() ? `\nComment:\n${comment.trim()}\n` : "") +
-          `\nNext update will follow.`;
-
-        await sendInjectToSession(sessionId, title, body);
-        if (!requiresDecision) {
-          setRuntimeNotice("Decision recorded.");
-        }
+      if (actionType === "act" && !requiresDecision) {
+        setRuntimeNotice("Decision recorded.");
       }
 
       const runtimeResult = await evaluateSessionRules({
@@ -1241,6 +1353,9 @@ export default function SessionParticipantPage() {
         actionId: saved.id,
         source: selectedSource,
       });
+      if (hasRuntimeChanges(runtimeResult)) {
+        await refreshDecisionBoard();
+      }
       setRuntimeNoticeFromResult(runtimeResult);
 
       setComment("");
@@ -1310,7 +1425,9 @@ export default function SessionParticipantPage() {
         (comment.trim() ? `\n\nComment:\n${comment.trim()}` : "") +
         (pulseBody ? `\n\nQuoted content:\n${pulseBody}` : "");
 
-      await sendInjectToSession(sessionId, title, body);
+      await sendInjectToSession(sessionId, title, body, {
+        source_type: "conditional",
+      });
       const runtimeResult = await evaluateSessionRules({
         sessionId,
         eventType: "decision_recorded",
@@ -1319,6 +1436,9 @@ export default function SessionParticipantPage() {
         actionId: saved.id,
         source: "pulse",
       });
+      if (hasRuntimeChanges(runtimeResult)) {
+        await refreshDecisionBoard();
+      }
       setRuntimeNoticeFromResult(runtimeResult);
       if (!runtimeResult.created_consequences && !runtimeResult.created_tasks && !runtimeResult.created_injects) {
         setRuntimeNotice("Pulse decision recorded and communications task created.");
@@ -1334,6 +1454,17 @@ export default function SessionParticipantPage() {
       setTaskBusyId(taskId);
       const updated = await updateSessionTaskStatus({ taskId, status });
       setTasks((prev) => prev.map((task) => (task.id === taskId ? updated : task)));
+      const runtimeResult = await evaluateSessionRules({
+        sessionId,
+        eventType: "task_status_changed",
+        taskId: updated.id,
+      });
+      if (runtimeResult.created_consequences || runtimeResult.created_tasks || runtimeResult.created_injects) {
+        await refreshDecisionBoard();
+        setRuntimeNoticeFromResult(runtimeResult);
+      } else {
+        setRuntimeNotice(`Task marked as ${status.replaceAll("_", " ")}.`);
+      }
     } catch (e: unknown) {
       setActionsError(getErrorMessage(e, "Failed to update task"));
     } finally {
@@ -1369,7 +1500,6 @@ export default function SessionParticipantPage() {
   function clearInboxFilters() {
     setInboxSearch("");
     setInboxSeverity(null);
-    setInboxChannel(null);
   }
 
   function clearPulseFilters() {
@@ -1379,16 +1509,69 @@ export default function SessionParticipantPage() {
 
   const inboxFiltersActive =
     Boolean(inboxSearch.trim()) ||
-    Boolean(inboxSeverity) ||
-    Boolean(inboxChannel);
+    Boolean(inboxSeverity);
   const pulseFiltersActive =
     Boolean(pulseSearch.trim()) || Boolean(pulseSeverity);
+  const taskRoleOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    const add = (value: string, label: string) => {
+      const normalized = value.trim();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      options.push({ value: normalized, label });
+    };
+
+    add("facilitator", "Facilitator");
+    scenarioRoles.forEach((role) => {
+      add(role.role_key, role.role_name?.trim() || roleNameFromKey(role.role_key));
+    });
+
+    if (!seen.has(taskOwnerRole)) {
+      add(taskOwnerRole, roleNameFromKey(taskOwnerRole));
+    }
+
+    return options;
+  }, [scenarioRoles, taskOwnerRole]);
   const participantVisibleTasks = visibleTasks.slice(0, 5);
+  const suggestedTaskId = participantVisibleTasks[0]?.id ?? null;
   const participantFocusText = selectedItem
     ? selectedItem.injects?.requires_decision
       ? "Review the selected update and decide how your team should respond."
-      : "Review the selected update and capture the next operational step."
-    : "Choose a message from the feed to see what needs your attention.";
+      : "Review the selected update and choose the next clear step."
+    : "Choose an update from the feed to see what needs your attention.";
+  const sessionJustStarted =
+    !startedAt ||
+    (typeof startedAt === "string" &&
+      Number.isFinite(new Date(startedAt).getTime()) &&
+      Date.now() - new Date(startedAt).getTime() <= 10 * 60_000);
+  const showStartHelper =
+    canUseFacilitatorUi &&
+    !onboardingDismissed &&
+    sessionJustStarted &&
+    actions.length === 0 &&
+    openTasks.length === 0 &&
+    consequences.length === 0;
+  const nextBestAction = canUseFacilitatorUi
+    ? showStartHelper
+      ? "Release or wait for the first inject, then guide the team through one response."
+      : overdueTaskCount > 0
+      ? "Clear the oldest overdue follow-up before adding more pressure."
+      : totalWaitingUpdates > 0
+      ? "Pick one update from the feed and decide whether to monitor, escalate, or act."
+      : sessionMode === "rehearsal"
+      ? "Use facilitator tools to release the next inject and continue the dry run."
+      : null
+    : totalWaitingUpdates > 0
+    ? "Open one update from the feed and decide what your team should do next."
+    : null;
+
+  useEffect(() => {
+    if (!canUseFacilitatorUi) {
+      setToolsOpen(false);
+      setAdvancedInsightsOpen(false);
+    }
+  }, [canUseFacilitatorUi]);
 
   if (!sessionId) {
     return (
@@ -1420,21 +1603,20 @@ export default function SessionParticipantPage() {
 
   return (
     <div className="space-y-5">
-      {runtimeNotice ? <div className="notice notice-success">{runtimeNotice}</div> : null}
       <SessionHeaderPanel
         copPanelId={copPanelId}
         toolsPanelId={toolsPanelId}
         heroEyebrow={heroEyebrow}
-        heroHint={heroHint}
+        participantView={participantViewMode}
         startedAt={startedAt}
         sessionTitle={sessionTitle}
-        heroSummary={heroSummary}
+        nextBestAction={nextBestAction}
         sessionMode={sessionMode}
         sessionParticipantLimit={sessionParticipantLimit}
         copOpen={copOpen}
         setCopOpen={setCopOpen}
-        roleLoading={roleLoading}
-        isFacilitator={isFacilitator}
+        roleLoading={roleLoading || roleContextLoading}
+        isFacilitator={canUseFacilitatorUi}
         toolsOpen={toolsOpen}
         setToolsOpen={setToolsOpen}
         exerciseClock={exerciseClock}
@@ -1455,8 +1637,37 @@ export default function SessionParticipantPage() {
         applySessionMeta={applySessionMeta}
       />
 
+      {showStartHelper ? (
+        <div className="rounded-[18px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <div className="text-sm font-semibold text-[color:var(--studio-ink)]">
+                Start of session
+              </div>
+              <div className="max-w-3xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                Release or wait for the first inject, then record one clear response.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.sessionStorage.setItem(onboardingKey(sessionId), "1");
+                }
+                setOnboardingDismissed(true);
+              }}
+              className="self-start rounded-full border border-[var(--studio-border)] p-1 text-[color:var(--studio-muted2)] transition hover:text-foreground"
+              aria-label="Dismiss onboarding helper"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <SessionFeedAndDetail
         isMobile={isMobile}
+        participantView={participantViewMode}
         sessionId={sessionId}
         streamTab={streamTab}
         setStreamTab={setStreamTab}
@@ -1480,8 +1691,6 @@ export default function SessionParticipantPage() {
         setInboxSearch={setInboxSearch}
         inboxSeverity={inboxSeverity}
         setInboxSeverity={setInboxSeverity}
-        inboxChannel={inboxChannel}
-        setInboxChannel={setInboxChannel}
         pulseSearch={pulseSearch}
         setPulseSearch={setPulseSearch}
         pulseSeverity={pulseSeverity}
@@ -1490,76 +1699,71 @@ export default function SessionParticipantPage() {
         clearPulseFilters={clearPulseFilters}
         inboxFiltersActive={inboxFiltersActive}
         pulseFiltersActive={pulseFiltersActive}
-        isFacilitator={isFacilitator}
-        selectedActionsCount={selectedActions.length}
-        actionsLoading={actionsLoading}
+        runtimeNotice={runtimeNotice}
         comment={comment}
         setComment={setComment}
+        taskOwnerRole={taskOwnerRole}
+        setTaskOwnerRole={setTaskOwnerRole}
+        taskDuePreset={taskDuePreset}
+        setTaskDuePreset={setTaskDuePreset}
+        taskRoleOptions={taskRoleOptions}
         doAction={doAction}
         doPulseDecision={doPulseDecision}
       />
 
       <SessionParticipantBoards
-        isMobile={isMobile}
+        participantView={participantViewMode}
         overdueTaskCount={overdueTaskCount}
         openTasks={openTasks}
         selectedItemExists={Boolean(selectedItem)}
         participantFocusText={participantFocusText}
         latestConsequence={latestConsequence}
         participantVisibleTasks={participantVisibleTasks}
+        suggestedTaskId={suggestedTaskId}
+        canManageTasks={canUseFacilitatorUi}
         taskBusyId={taskBusyId}
         handleTaskStatus={handleTaskStatus}
       />
 
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-        <button
-          type="button"
-          onClick={() => setAdvancedInsightsOpen((value) => !value)}
-          aria-expanded={advancedInsightsOpen}
-          aria-controls={insightsPanelId}
-          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-        >
-          <div>
-            <div className="text-sm font-semibold text-[color:var(--studio-ink)]">
-              Detailed session view
+      {canUseFacilitatorUi ? (
+        <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                Detailed session view
+                <HintTooltip text="Open the deeper trace when you want to inspect linked events, follow-ups, developments, and key decisions." />
+              </div>
             </div>
-            <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-              Extra detail for facilitators, including follow-up chains, logs, and session trace.
-            </div>
+            <button
+              type="button"
+              onClick={() => setAdvancedInsightsOpen((value) => !value)}
+              aria-expanded={advancedInsightsOpen}
+              aria-controls={insightsPanelId}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)] focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
+            >
+              <ChevronDown
+                className={[
+                  "h-4 w-4 transition-transform",
+                  advancedInsightsOpen ? "rotate-180" : "",
+                ].join(" ")}
+              />
+              <span className="sr-only">
+                {advancedInsightsOpen ? "Collapse detailed session view" : "Expand detailed session view"}
+              </span>
+            </button>
           </div>
-          <ChevronDown
-            className={[
-              "h-4 w-4 shrink-0 text-[color:var(--studio-muted2)] transition-transform",
-              advancedInsightsOpen ? "rotate-180" : "",
-            ].join(" ")}
-          />
-        </button>
-      </div>
-
-      {advancedInsightsOpen ? (
-      <div className="flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
-        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
-          <kbd className="font-semibold text-foreground">c</kbd> Toggle COP
-        </span>
-        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
-          <kbd className="font-semibold text-foreground">d</kbd> Toggle detailed view
-        </span>
-        <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1">
-          <kbd className="font-semibold text-foreground">Esc</kbd> Close panels
-        </span>
-      </div>
+        </div>
       ) : null}
 
       {advancedInsightsOpen ? (
       <div id={insightsPanelId} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
         <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-              <Sparkles className="h-4 w-4 opacity-80" />
-              Session activity
-              <HintTooltip text="A compact readout of what the session is generating and where team attention is building up." />
+            <div>
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <Sparkles className="h-4 w-4 opacity-80" />
+              Overview
+              </div>
             </div>
-          </div>
           <div className="text-xs text-[color:var(--studio-muted2)]">
             {latestConsequence ? `Latest at ${fmt(latestConsequence.applied_at)}` : "Waiting for first development"}
           </div>
@@ -1568,7 +1772,7 @@ export default function SessionParticipantPage() {
         <div className="grid gap-3 p-4 lg:grid-cols-[1.2fr_0.8fr]">
           <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 shadow-[0_12px_28px_hsl(220_20%_20%/0.03)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
-              Current pressure
+              Right now
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <div>
@@ -1586,10 +1790,10 @@ export default function SessionParticipantPage() {
             </div>
             <div className="mt-4 text-sm text-[color:var(--studio-muted)]">
               {overdueTaskCount > 0
-                ? "The session is carrying overdue follow-up work. Clear the oldest tasks first to reduce repeated escalation."
+                ? "Overdue follow-up work is building up. Clear the oldest tasks first."
                 : openTasks.length > 0
-                ? "Follow-up work is active but still inside its current window."
-                : "No active pressure is building right now."}
+                ? "Follow-up work is active, but still manageable."
+                : "Nothing urgent is building up right now."}
             </div>
           </div>
 
@@ -1633,399 +1837,139 @@ export default function SessionParticipantPage() {
       ) : null}
 
       {advancedInsightsOpen ? (
-      <div className="flex flex-wrap items-center gap-2 rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-4 py-3">
-        <button
-          type="button"
-          onClick={() =>
-            setSelectedThreadOnly((value) => {
-              const next = !value;
-              if (!next) setFocusedThreadId(null);
-              else if (!focusedThreadId && selectedItem?.id) setFocusedThreadId(selectedItem.id);
-              return next;
-            })
-          }
-          aria-pressed={selectedThreadOnly}
-          className={[
-            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-            selectedThreadOnly
-              ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-              : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
-          ].join(" ")}
-        >
-          {selectedThreadOnly ? "Focused chain only" : "Show all chains"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setRuntimeTasksOnly((value) => !value)}
-          aria-pressed={runtimeTasksOnly}
-          className={[
-            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-            runtimeTasksOnly
-              ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-              : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
-          ].join(" ")}
-        >
-          {runtimeTasksOnly ? "Auto-created only" : "All follow-ups"}
-        </button>
-        <div className="text-xs text-[color:var(--studio-muted2)] sm:ml-auto">
-          {selectedThreadOnly
-            ? activeThreadId
-              ? "Focused on the update chain you selected from the feed or timeline."
-              : "Select a message or timeline event to narrow the view to one chain."
-          : "Showing the broader session picture."}
-        </div>
-      </div>
-      ) : null}
-
-      {advancedInsightsOpen ? (
-      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
-        <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <CheckSquare className="h-4 w-4 opacity-80" />
-                  Decision tracker
-                  <HintTooltip text="Responses and decisions create follow-up work here so it is easier to see what still needs attention." />
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                {`${visibleTasks.length} shown • ${visibleDecisions.length} decisions`}
-              </div>
-            </div>
-
-            <div className="p-5">
-              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleTasks.length} shown
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleTasks.filter((task) => task.status === "in_progress").length} in progress
-                </span>
-                {visibleTasks.some((task) => task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled") ? (
-                  <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 text-red-300">
-                    Overdue work needs attention
-                  </span>
-                ) : null}
-              </div>
-              <div className="space-y-3">
-                {visibleTasks.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                    No active follow-up tasks yet.
-                  </div>
-                ) : (
-                  visibleTasks.slice(0, 8).map((task) => (
-                    <div
-                      key={task.id}
-                      className={[
-                        "rounded-[18px] border bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]",
-                        task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled"
-                          ? "border-red-500/25"
-                          : "border-[var(--studio-border)]",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium">{task.title}</div>
-                          {task.description ? (
-                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
-                              {task.description}
-                            </div>
-                          ) : null}
-                        </div>
-                        <span
-                          className={[
-                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                            taskPriorityTone(task.priority),
-                          ].join(" ")}
-                        >
-                          {task.priority}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--studio-border)] pt-3">
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
-                          <span
-                            className={[
-                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                              taskStatusTone(task.status),
-                            ].join(" ")}
-                          >
-                            {task.status.replaceAll("_", " ")}
-                          </span>
-                          {task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled" ? (
-                            <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 font-semibold text-red-300">
-                              Overdue
-                            </span>
-                          ) : null}
-                          <span>{task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}</span>
-                          {task.due_at ? <span>{`Due ${fmt(task.due_at)}`}</span> : null}
-                          {task.decision_id ? <span>Decision related</span> : null}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {task.status !== "in_progress" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={taskBusyId === task.id}
-                              onClick={() => handleTaskStatus(task.id, "in_progress")}
-                            >
-                              Start
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            disabled={taskBusyId === task.id}
-                            onClick={() => handleTaskStatus(task.id, "done")}
-                          >
-                            Done
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <Sparkles className="h-4 w-4 opacity-80" />
-                  Session developments
-                  <HintTooltip text="Automatic developments appear here when the session adds pressure, follow-up work, or a new turn in the scenario." />
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                {`${visibleConsequences.length} shown`}
-              </div>
-            </div>
-
-            <div className="p-5">
-              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleConsequences.length} shown
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleConsequences.filter((item) => item.task_id).length} with follow-up
-                </span>
-                {visibleConsequences[0] ? (
-                  <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                    Latest {fmt(visibleConsequences[0].applied_at)}
-                  </span>
-                ) : null}
-              </div>
-              <div className="space-y-3">
-                {visibleConsequences.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                    No automatic developments yet.
-                  </div>
-                ) : (
-                  visibleConsequences.slice(0, 8).map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-medium">{item.title}</div>
-                          {item.description ? (
-                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
-                              {item.description}
-                            </div>
-                          ) : null}
-                        </div>
-                        <span
-                          className={[
-                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
-                            consequenceSeverityTone(item.severity),
-                          ].join(" ")}
-                        >
-                          {item.severity}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
-                        {consequenceTypeLabel(item)} • {fmt(item.applied_at)}
-                      </div>
-
-                      <div className="mt-2 text-sm font-medium text-[color:var(--studio-ink)]">
-                        {consequenceImpactLabel(item)}
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2 border-t border-[var(--studio-border)] pt-3 text-xs text-[color:var(--studio-muted2)]">
-                        {item.task_id ? <span>Created or matched task</span> : null}
-                        {item.decision_id ? <span>Decision related</span> : null}
-                        {item.session_inject_id ? <span>Update related</span> : null}
-                        {item.rule_template_id ? <span>Created automatically</span> : null}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                  <ListChecks className="h-4 w-4 opacity-80" />
-                  Response log
-                  <HintTooltip text="This log shows visible team responses and facilitator decisions during the exercise." />
-                </div>
-              </div>
-              <div className="text-xs text-[color:var(--studio-muted2)]">
-                {actionsLoading
-                  ? "Loading…"
-                  : actionsError
-                  ? actionsError
-                  : `${visibleActions.length} shown`}
-              </div>
-            </div>
-
-            <div className="p-5">
-              <div className="mb-4 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleActions.length} shown
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleActions.filter((action) => action.action_type === "escalate").length} escalations
-                </span>
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-                  {visibleActions.filter((action) => action.action_type === "act").length} actioned
-                </span>
-              </div>
-              <div className="space-y-2.5">
-                {actionsLoading ? (
-                  <div className="text-sm text-[color:var(--studio-muted2)]">
-                    Loading…
-                  </div>
-                ) : visibleActions.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
-                    No responses yet.
-                  </div>
-                ) : (
-                  visibleActions.slice(0, 30).map((a) => (
-                    <div
-                      key={a.id}
-                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="text-xs text-[color:var(--studio-muted2)]">
-                          {fmt(a.created_at)}
-                        </div>
-                        <div className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--studio-ink)]">
-                          {humanActionLabel(a.action_type)}
-                        </div>
-                      </div>
-                      {a.comment ? (
-                        <div className="mt-1 text-sm">{a.comment}</div>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      ) : null}
-
-      {advancedInsightsOpen ? (
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
         <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
           <div>
-            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-              <Sparkles className="h-4 w-4 opacity-80" />
-              Chain of events
-              <HintTooltip text="A connected view of updates, responses, decisions, developments, and follow-up work for the current session." />
-            </div>
-          </div>
-          <div className="text-xs text-[color:var(--studio-muted2)]">
-            {selectedThreadOnly ? "Focused chain" : "Full session chain"}
-          </div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                  <Sparkles className="h-4 w-4 opacity-80" />
+              Session trace
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                  {chainEvents.length} events
+                </span>
+                <span>{selectedThreadOnly ? "Focused chain" : "Full session chain"}</span>
+              </div>
         </div>
 
-        <div className="p-5">
+        <div className="p-4">
+          <div className="mb-4 grid gap-3 rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 lg:grid-cols-[auto_auto_1fr] lg:items-start">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                Scope
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedThreadOnly((value) => {
+                      const next = !value;
+                      if (!next) setFocusedThreadId(null);
+                      else if (!focusedThreadId && selectedItem?.id) setFocusedThreadId(selectedItem.id);
+                      return next;
+                    })
+                  }
+                  aria-pressed={selectedThreadOnly}
+                  className={[
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    selectedThreadOnly
+                      ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                      : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                  ].join(" ")}
+                >
+                  {selectedThreadOnly ? "Focused chain" : "All chains"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRuntimeTasksOnly((value) => !value)}
+                  aria-pressed={runtimeTasksOnly}
+                  className={[
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    runtimeTasksOnly
+                      ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                      : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                  ].join(" ")}
+                >
+                  {runtimeTasksOnly ? "Auto-created tasks" : "All tasks"}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                Window
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(["15m", "60m", "all"] as TimelineWindow[]).map((window) => (
+                  <button
+                    key={window}
+                    type="button"
+                    onClick={() => setTimelineWindow(window)}
+                    aria-pressed={timelineWindow === window}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase transition",
+                      timelineWindow === window
+                        ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                        : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                    ].join(" ")}
+                  >
+                    {window}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
+                Show
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["inject", "action", "decision", "consequence", "task"] as TimelineKind[]).map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => toggleTimelineKind(kind)}
+                    aria-pressed={timelineFilter[kind]}
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
+                      timelineFilter[kind]
+                        ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
+                        : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                    ].join(" ")}
+                  >
+                    {kind}
+                  </button>
+                ))}
+                {selectedTimelineEventId ? (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTimelineEventId(null)}
+                    className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)]"
+                  >
+                    Clear path
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
-            <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
-              {chainEvents.length} visible events
-            </span>
             {selectedTimelinePathEvents.length > 0 ? (
               <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.045] px-2.5 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
                 {selectedTimelinePathEvents.length} linked in selected path
               </span>
             ) : null}
-            {selectedThreadOnly ? (
-              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 font-semibold text-[color:var(--studio-ink)]">
-                Focused chain mode
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {(["15m", "60m", "all"] as TimelineWindow[]).map((window) => (
-              <button
-                key={window}
-                type="button"
-                onClick={() => setTimelineWindow(window)}
-                aria-pressed={timelineWindow === window}
-                className={[
-                  "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase transition",
-                  timelineWindow === window
-                    ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                    : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
-                ].join(" ")}
-              >
-                {window}
-              </button>
-            ))}
-          </div>
-
-          <div className="mb-4 flex flex-wrap gap-2">
-            {(["inject", "action", "decision", "consequence", "task"] as TimelineKind[]).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                onClick={() => toggleTimelineKind(kind)}
-                aria-pressed={timelineFilter[kind]}
-                className={[
-                  "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
-                  timelineFilter[kind]
-                    ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                    : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
-                ].join(" ")}
-              >
-                {kind}
-              </button>
-            ))}
-            {selectedTimelineEventId ? (
-              <button
-                type="button"
-                onClick={() => setSelectedTimelineEventId(null)}
-                className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)]"
-              >
-                Clear selected path
-              </button>
-            ) : null}
           </div>
 
           {selectedTimelinePathEvents.length > 0 ? (
-            <div className="mb-4 rounded-[18px] border border-emerald-500/20 bg-emerald-500/[0.045] px-4 py-4">
+            <div className="mb-4 rounded-[18px] border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-4 shadow-[0_12px_30px_hsl(160_84%_39%/0.08)]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-emerald-500/20 bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800 dark:text-emerald-300">
                   Selected path
                 </span>
-                <span className="text-sm text-[color:var(--studio-muted)]">
-                  {selectedTimelinePathEvents.length} linked events
+                <span className="text-sm font-medium text-[color:var(--studio-ink)]">
+                  {selectedTimelinePathEvents.length} linked events across the same update chain
                 </span>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
@@ -2166,11 +2110,11 @@ export default function SessionParticipantPage() {
                               onMouseLeave={() => setHoveredThreadId((current) => (current === event.sessionInjectId ? null : current))}
                               aria-pressed={isSelectedPathEvent || isActiveThreadEvent}
                               className={[
-                                "relative min-h-[154px] w-full rounded-[18px] border px-4 py-3 text-left transition",
+                                "relative min-h-[148px] w-full rounded-[18px] border px-4 py-3 text-left transition",
                                 isSelectedPathEvent
-                                  ? "border-emerald-500/35 bg-emerald-500/[0.045] shadow-[0_0_0_1px_hsl(160_84%_39%/0.08)]"
+                                  ? "border-emerald-500/35 bg-emerald-500/[0.055] shadow-[0_0_0_1px_hsl(160_84%_39%/0.08)]"
                                   : isActiveThreadEvent
-                                  ? "border-primary/35 bg-primary/10 shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
+                                  ? "border-primary/35 bg-primary/[0.08] shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
                                   : isHoveredThreadEvent
                                   ? "border-primary/25 bg-primary/[0.03] shadow-[0_10px_30px_hsl(220_70%_55%/0.08)]"
                                   : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
@@ -2185,18 +2129,13 @@ export default function SessionParticipantPage() {
                                 >
                                   {event.kind}
                                 </span>
-                                {isActiveThreadEvent ? (
-                                  <span className="rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase text-[color:var(--studio-ink)]">
-                                    Active thread
-                                  </span>
-                                ) : null}
                               </div>
                               <div className="mt-3 font-medium leading-snug">{event.title}</div>
-                              <div className="mt-1.5 line-clamp-3 text-sm leading-6 text-[color:var(--studio-muted)]">
+                              <div className="mt-1.5 line-clamp-2 text-sm leading-6 text-[color:var(--studio-muted)]">
                                 {event.detail}
                               </div>
                               <div className="mt-3 flex flex-wrap gap-1.5">
-                                {event.meta.map((meta) => (
+                                {event.meta.slice(0, 2).map((meta) => (
                                   <span
                                     key={`${event.id}:${meta}`}
                                     className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]"
@@ -2204,29 +2143,21 @@ export default function SessionParticipantPage() {
                                     {meta}
                                   </span>
                                 ))}
+                                {event.meta.length > 2 ? (
+                                  <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]">
+                                    +{event.meta.length - 2}
+                                  </span>
+                                ) : null}
                               </div>
                               {event.relations.length > 0 ? (
-                                <div className="mt-3 border-t border-[var(--studio-border)] pt-3">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {event.relations.map((relation) => (
-                                      <span
-                                        key={`${event.id}:rel:${relation.label}`}
-                                        className={[
-                                          "rounded-full px-2 py-0.5 text-[11px]",
-                                          relation.emphasis === "primary"
-                                            ? "border border-primary/20 bg-primary/10 text-[color:var(--studio-ink)]"
-                                            : "border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
-                                        ].join(" ")}
-                                      >
-                                        {relation.label}
-                                      </span>
-                                    ))}
-                                  </div>
+                                <div className="mt-3 border-t border-[var(--studio-border)] pt-3 text-[11px] text-[color:var(--studio-muted2)]">
+                                  {event.relations[0]?.label}
+                                  {event.relations.length > 1 ? ` +${event.relations.length - 1} more links` : null}
                                 </div>
                               ) : null}
                               {event.sessionInjectId ? (
                                 <div className="mt-4 text-[11px] font-medium text-[color:var(--studio-muted2)]">
-                                  Focus this update chain
+                                  View linked update chain
                                 </div>
                               ) : null}
                             </button>
@@ -2239,6 +2170,243 @@ export default function SessionParticipantPage() {
               ))}
             </div>
           )}
+        </div>
+      </div>
+      ) : null}
+
+      {advancedInsightsOpen ? (
+      <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
+        <div className={isMobile ? "" : "col-span-5"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <CheckSquare className="h-4 w-4 opacity-80" />
+                Follow-up tasks
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                {`${visibleTasks.length} shown`}
+              </div>
+            </div>
+
+            <div className="p-4">
+              <div className="space-y-3">
+                {visibleTasks.length === 0 ? (
+                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                    No follow-up tasks yet.
+                  </div>
+                ) : (
+                  visibleTasks.slice(0, 8).map((task) => (
+                    <div
+                      key={task.id}
+                      className={[
+                        "rounded-[18px] border bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]",
+                        task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled"
+                          ? "border-red-500/25"
+                          : "border-[var(--studio-border)]",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium">{task.title}</div>
+                          {task.description ? (
+                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                              {task.description}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span
+                          className={[
+                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                            taskPriorityTone(task.priority),
+                          ].join(" ")}
+                        >
+                          {task.priority}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--studio-border)] pt-3">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
+                          <span
+                            className={[
+                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                              taskStatusTone(task.status),
+                            ].join(" ")}
+                          >
+                            {task.status.replaceAll("_", " ")}
+                          </span>
+                          {task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled" ? (
+                            <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 font-semibold text-red-300">
+                              Overdue
+                            </span>
+                          ) : null}
+                          <span>{task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}</span>
+                          {task.due_at ? <span>{`Due ${fmt(task.due_at)}`}</span> : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {task.status !== "in_progress" && task.status !== "done" && task.status !== "cancelled" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={taskBusyId === task.id}
+                              onClick={() => handleTaskStatus(task.id, "in_progress")}
+                            >
+                              Start
+                            </Button>
+                          ) : null}
+                          {task.status !== "blocked" && task.status !== "done" && task.status !== "cancelled" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={taskBusyId === task.id}
+                              onClick={() => handleTaskStatus(task.id, "blocked")}
+                            >
+                              Block
+                            </Button>
+                          ) : null}
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={taskBusyId === task.id || task.status === "done"}
+                            onClick={() => handleTaskStatus(task.id, "done")}
+                          >
+                            Done
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={isMobile ? "" : "col-span-4"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <Sparkles className="h-4 w-4 opacity-80" />
+                Developments
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                {`${visibleConsequences.length} shown`}
+              </div>
+            </div>
+
+            <div className="p-4">
+              <div className="space-y-3">
+                {visibleConsequences.length === 0 ? (
+                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                    No developments yet.
+                  </div>
+                ) : (
+                  visibleConsequences.slice(0, 8).map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium">{item.title}</div>
+                          {item.description ? (
+                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                              {item.description}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span
+                          className={[
+                            "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                            consequenceSeverityTone(item.severity),
+                          ].join(" ")}
+                        >
+                          {item.severity}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
+                        {consequenceTypeLabel(item)} • {fmt(item.applied_at)}
+                      </div>
+
+                      <div className="mt-2 text-sm font-medium text-[color:var(--studio-ink)]">
+                        {consequenceImpactLabel(item)}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={isMobile ? "" : "col-span-3"}>
+          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
+            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <ListChecks className="h-4 w-4 opacity-80" />
+                Key decisions
+              </div>
+              <div className="text-xs text-[color:var(--studio-muted2)]">
+                {actionsLoading
+                  ? "Loading…"
+                  : actionsError
+                  ? actionsError
+                  : `${notableActions.length} shown`}
+              </div>
+            </div>
+
+            <div className="p-4">
+              <div className="space-y-2.5">
+                {actionsLoading ? (
+                  <div className="text-sm text-[color:var(--studio-muted2)]">
+                    Loading…
+                  </div>
+                ) : notableActions.length === 0 ? (
+                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                    No notable decisions yet.
+                  </div>
+                ) : (
+                  notableActions.slice(0, 12).map((a) => {
+                    const linkedDecision = decisionsByActionId.get(a.id);
+                    const linkedTasks = tasksBySourceActionId.get(a.id) ?? [];
+                    return (
+                      <div
+                        key={a.id}
+                        className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium">
+                            {responseDecisionLabel(a, linkedDecision?.decision_type, linkedTasks.length)}
+                          </div>
+                          <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                            {responseTargetLabel(a)}
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-[color:var(--studio-muted2)]">
+                          <span>{fmt(a.created_at)}</span>
+                          {linkedTasks.length > 0 ? (
+                            <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2 py-0.5">
+                              {linkedTasks.length === 1 ? "1 follow-up" : `${linkedTasks.length} follow-ups`}
+                            </span>
+                          ) : null}
+                          {linkedDecision?.decision_type === "confirm" || linkedDecision?.decision_type === "deny" ? (
+                            <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2 py-0.5">
+                              {linkedDecision.decision_type === "confirm" ? "Public response" : "Claim dismissed"}
+                            </span>
+                          ) : null}
+                        </div>
+                        {a.comment ? (
+                          <div className="mt-2 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2 text-sm text-[color:var(--studio-muted)]">
+                            {a.comment}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       ) : null}

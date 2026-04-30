@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { supabase } from "@/lib/supabaseClient";
+import { useRoleContext } from "@/app/components/useRoleContext";
 import {
   applyLanguagePreference,
   applyThemePreference,
@@ -24,11 +25,33 @@ function toMessage(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
 
+function normalizedEmailKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function resendCooldownStorageKeyForEmail(prefix: string, value: string) {
+  return `${prefix}:${normalizedEmailKey(value)}`;
+}
+
+function resendTypeStorageKeyForEmail(prefix: string, value: string) {
+  return `${prefix}:${normalizedEmailKey(value)}`;
+}
+
 export default function SettingsPage() {
+  const { isAnonymous: contextIsAnonymous, needsEmailConfirmation } = useRoleContext();
+  const resendCooldownSeconds = 45;
+  const resendCooldownStorageKeyPrefix = "decisionary.settings.resend-confirmation-until";
+  const resendTypeStorageKeyPrefix = "decisionary.settings.resend-confirmation-type";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [upgradeSaving, setUpgradeSaving] = useState(false);
+  const [resendSaving, setResendSaving] = useState(false);
+  const [resendCooldownLeft, setResendCooldownLeft] = useState(0);
   const [email, setEmail] = useState<string>("");
   const [fullName, setFullName] = useState("");
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [upgradeEmail, setUpgradeEmail] = useState("");
+  const [upgradePassword, setUpgradePassword] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [theme, setTheme] = useState<ThemePreference>("auto");
@@ -40,6 +63,8 @@ export default function SettingsPage() {
   });
   const displayNameId = useId();
   const emailId = useId();
+  const upgradeEmailId = useId();
+  const upgradePasswordId = useId();
   const languageId = useId();
   const themeId = useId();
   const preferencesHydratedRef = useRef(false);
@@ -67,7 +92,9 @@ export default function SettingsPage() {
           return;
         }
 
+        setIsAnonymous(!!user.is_anonymous);
         setEmail(user.email ?? "");
+        setUpgradeEmail(user.email ?? "");
 
         const { data: profile, error } = await supabase
           .from("profiles")
@@ -106,6 +133,67 @@ export default function SettingsPage() {
     saveNotificationPreference(notifications);
   }, [notifications]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const confirmationEmail = normalizedEmailKey(email || upgradeEmail);
+    if (!confirmationEmail) {
+      setResendCooldownLeft(0);
+      return;
+    }
+
+    const storageKey = resendCooldownStorageKeyForEmail(resendCooldownStorageKeyPrefix, confirmationEmail);
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) {
+      setResendCooldownLeft(0);
+      return;
+    }
+
+    const until = Number(raw);
+    if (!Number.isFinite(until)) {
+      window.sessionStorage.removeItem(storageKey);
+      setResendCooldownLeft(0);
+      return;
+    }
+
+    const secondsLeft = Math.ceil((until - Date.now()) / 1000);
+    if (secondsLeft > 0) {
+      setResendCooldownLeft(secondsLeft);
+      return;
+    }
+
+    window.sessionStorage.removeItem(storageKey);
+    setResendCooldownLeft(0);
+  }, [email, upgradeEmail]);
+
+  useEffect(() => {
+    if (resendCooldownLeft <= 0) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setResendCooldownLeft((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [resendCooldownLeft]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const confirmationEmail = normalizedEmailKey(email || upgradeEmail);
+    if (!confirmationEmail) return;
+
+    const storageKey = resendCooldownStorageKeyForEmail(resendCooldownStorageKeyPrefix, confirmationEmail);
+    if (resendCooldownLeft <= 0) {
+      window.sessionStorage.removeItem(storageKey);
+      return;
+    }
+
+    window.sessionStorage.setItem(
+      storageKey,
+      String(Date.now() + resendCooldownLeft * 1000)
+    );
+  }, [email, resendCooldownLeft, upgradeEmail]);
+
   async function saveProfile() {
     setSaving(true);
     setMsg(null);
@@ -130,6 +218,87 @@ export default function SettingsPage() {
     }
   }
 
+  async function upgradeGuestAccount() {
+    setUpgradeSaving(true);
+    setMsg(null);
+    setErr(null);
+
+    try {
+      const normalizedEmail = upgradeEmail.trim().toLowerCase();
+      if (!normalizedEmail) throw new Error("Email is required.");
+      if (!upgradePassword.trim()) throw new Error("Password is required.");
+      if (upgradePassword.trim().length < 8) throw new Error("Password must have at least 8 characters.");
+
+      const { data: auth } = await supabase.auth.getUser();
+      const user = auth.user;
+      if (!user) throw new Error("Not authenticated.");
+      if (!user.is_anonymous) {
+        setIsAnonymous(false);
+        throw new Error("This account is already upgraded.");
+      }
+
+      const { data, error } = await supabase.auth.updateUser({
+        email: normalizedEmail,
+        password: upgradePassword,
+      });
+
+      if (error) throw error;
+
+      setEmail(data.user?.email ?? normalizedEmail);
+      setUpgradeEmail(data.user?.email ?? normalizedEmail);
+      setUpgradePassword("");
+      setIsAnonymous(false);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          resendTypeStorageKeyForEmail(resendTypeStorageKeyPrefix, data.user?.email ?? normalizedEmail),
+          "email_change"
+        );
+      }
+      setMsg(
+        "Guest account upgraded. If email confirmation is enabled in Supabase, confirm the address from your inbox."
+      );
+    } catch (e: unknown) {
+      setErr(toMessage(e, "Failed to upgrade guest account."));
+    } finally {
+      setUpgradeSaving(false);
+    }
+  }
+
+  async function resendConfirmationEmail() {
+    setResendSaving(true);
+    setMsg(null);
+    setErr(null);
+
+    try {
+      const confirmationEmail = (email || upgradeEmail).trim().toLowerCase();
+      if (!confirmationEmail) throw new Error("Email is missing.");
+
+      const emailRedirectTo =
+        typeof window !== "undefined" ? `${window.location.origin}/participant` : undefined;
+      const resendType =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem(
+              resendTypeStorageKeyForEmail(resendTypeStorageKeyPrefix, confirmationEmail)
+            ) ?? "signup"
+          : "signup";
+
+      const { error } = await supabase.auth.resend({
+        type: resendType === "email_change" ? "email_change" : "signup",
+        email: confirmationEmail,
+        options: { emailRedirectTo },
+      });
+
+      if (error) throw error;
+
+      setResendCooldownLeft(resendCooldownSeconds);
+      setMsg(`Confirmation email sent again to ${confirmationEmail}.`);
+    } catch (e: unknown) {
+      setErr(toMessage(e, "Failed to resend confirmation email."));
+    } finally {
+      setResendSaving(false);
+    }
+  }
+
   if (loading) {
     return <div className="text-sm text-muted-foreground">Loading settings…</div>;
   }
@@ -145,6 +314,83 @@ export default function SettingsPage() {
 
       {msg ? <div role="status" aria-live="polite" className="notice notice-success">{msg}</div> : null}
       {err ? <div role="alert" aria-live="assertive" className="notice notice-error">{err}</div> : null}
+
+      {needsEmailConfirmation ? (
+        <Card className="border-amber-500/30">
+          <CardHeader>
+            <CardTitle>Check your inbox</CardTitle>
+            <CardDescription>
+              Your email address is not confirmed yet.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-[var(--radius)] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+              Open the confirmation email sent to <b>{email || upgradeEmail || "your inbox"}</b> and click the link to
+              finish activating this account on other devices and browsers.
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => void resendConfirmationEmail()}
+                disabled={resendSaving || resendCooldownLeft > 0}
+                variant="secondary"
+              >
+                {resendSaving
+                  ? "Sending…"
+                  : resendCooldownLeft > 0
+                    ? `Resend in ${resendCooldownLeft}s`
+                    : "Resend confirmation email"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isAnonymous || contextIsAnonymous ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Upgrade guest account</CardTitle>
+            <CardDescription>
+              Add an email and password to keep this participant identity and all joined sessions as a full account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+              You are currently signed in as a guest participant.
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label htmlFor={upgradeEmailId} className="ui-form-label">Email</label>
+                <Input
+                  id={upgradeEmailId}
+                  type="email"
+                  value={upgradeEmail}
+                  onChange={(e) => setUpgradeEmail(e.target.value)}
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                />
+              </div>
+              <div>
+                <label htmlFor={upgradePasswordId} className="ui-form-label">Password</label>
+                <Input
+                  id={upgradePasswordId}
+                  type="password"
+                  value={upgradePassword}
+                  onChange={(e) => setUpgradePassword(e.target.value)}
+                  placeholder="Create a password"
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => void upgradeGuestAccount()} disabled={upgradeSaving}>
+                {upgradeSaving ? "Upgrading…" : "Upgrade account"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

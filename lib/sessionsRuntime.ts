@@ -43,6 +43,7 @@ export type Session = {
 export type ProfileLite = {
   id: string;
   email: string | null;
+  full_name: string | null;
 };
 
 export type SessionParticipant = {
@@ -54,7 +55,7 @@ export type SessionParticipant = {
 export type ParticipantRow = {
   user_id: string;
   joined_at: string | null;
-  profile: { id: string; email: string | null } | null;
+  profile: { id: string; email: string | null; full_name: string | null } | null;
 };
 
 export type SessionRoleSlot = {
@@ -108,6 +109,25 @@ async function requireUserId(): Promise<string> {
   const uid = data.user?.id;
   if (!uid) throw new Error("Not authenticated");
   return uid;
+}
+
+async function requireJoinUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+
+  const existingUid = data.user?.id;
+  if (existingUid) return existingUid;
+
+  const { data: anonymousData, error: anonymousError } = await supabase.auth.signInAnonymously();
+  if (anonymousError) {
+    throw new Error(
+      anonymousError.message?.trim() || "Guest join is unavailable right now."
+    );
+  }
+
+  const anonymousUid = anonymousData.user?.id;
+  if (!anonymousUid) throw new Error("Guest join is unavailable right now.");
+  return anonymousUid;
 }
 
 function normCode(code: string) {
@@ -383,19 +403,12 @@ export async function createRehearsalSessionFromScenario(params: {
 
   const sessionId = data as string;
 
-  const granted = await tryRpc("grant_session_role", {
+  const { error: grantError } = await supabase.rpc("grant_session_role", {
     p_session_id: sessionId,
     p_role_key: "facilitator",
     p_user_id: null,
   });
-
-  if (granted === null) {
-    await supabase.from("session_role_assignments").insert({
-      session_id: sessionId,
-      user_id: await requireUserId(),
-      role_key: "facilitator",
-    });
-  }
+  if (grantError) throw grantError;
 
   return sessionId;
 }
@@ -417,19 +430,12 @@ export async function createLiveSessionFromScenario(params: {
 
   const sessionId = data as string;
 
-  const granted = await tryRpc("grant_session_role", {
+  const { error: grantError } = await supabase.rpc("grant_session_role", {
     p_session_id: sessionId,
     p_role_key: "facilitator",
     p_user_id: null,
   });
-
-  if (granted === null) {
-    await supabase.from("session_role_assignments").insert({
-      session_id: sessionId,
-      user_id: await requireUserId(),
-      role_key: "facilitator",
-    });
-  }
+  if (grantError) throw grantError;
 
   return sessionId;
 }
@@ -452,15 +458,10 @@ export async function setSessionStatus(
 ) {
   await requireUserId();
 
-  if (status === "live") {
-    const ok = await tryRpc("start_session", { p_session_id: sessionId });
-    if (ok !== null) return;
-  }
-
-  const patch: { status: "draft" | "live" | "ended"; ended_at?: string } = { status };
-  if (status === "ended") patch.ended_at = new Date().toISOString();
-
-  const { error } = await supabase.from("sessions").update(patch).eq("id", sessionId);
+  const { error } = await supabase.rpc("set_session_status", {
+    p_session_id: sessionId,
+    p_status: status,
+  });
   if (error) throw error;
 }
 
@@ -503,22 +504,13 @@ export async function deleteSession(sessionId: string) {
 ========================= */
 
 export async function joinSessionByCode(code: string): Promise<string> {
-  await requireUserId();
-
   const joinCode = normCode(code);
+  await requireJoinUserId();
 
   const sid = await tryRpc<string>("join_session", { p_code: joinCode });
   if (sid) return sid;
 
-  const { data, error } = await supabase
-    .from("sessions")
-    .select("id")
-    .eq("join_code", joinCode)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data?.id) throw new Error("Invalid join code");
-  return data.id as string;
+  throw new Error("Guest join is unavailable right now.");
 }
 
 /* =========================
@@ -548,7 +540,7 @@ export async function listSessionParticipants(
   const { data, error } = await supabase
     .from("session_participants")
     .select(
-      `user_id, joined_at, profile:profiles!session_participants_user_id_fkey ( id, email )`
+      `user_id, joined_at, profile:profiles!session_participants_user_id_fkey ( id:user_id, email, full_name )`
     )
     .eq("session_id", sessionId)
     .order("joined_at", { ascending: true });
@@ -559,8 +551,8 @@ export async function listSessionParticipants(
     user_id: string;
     joined_at: string | null;
     profile:
-      | { id: string; email: string | null }
-      | Array<{ id: string; email: string | null }>
+      | { id: string; email: string | null; full_name: string | null }
+      | Array<{ id: string; email: string | null; full_name: string | null }>
       | null;
   }>;
 
@@ -570,7 +562,13 @@ export async function listSessionParticipants(
     return {
       user_id: row.user_id,
       joined_at: row.joined_at ?? null,
-      profile: profile ? { id: profile.id, email: profile.email ?? null } : null,
+      profile: profile
+        ? {
+            id: profile.id,
+            email: profile.email ?? null,
+            full_name: profile.full_name ?? null,
+          }
+        : null,
     };
   });
 }
@@ -608,25 +606,11 @@ export async function assignUserToSessionRole(params: {
 }) {
   await requireUserId();
 
-  // prefer RPC (handles legacy cols + RLS safely)
-  const ok = await tryRpc("grant_session_role", {
+  const { error } = await supabase.rpc("grant_session_role", {
     p_session_id: params.sessionId,
     p_role_key: params.roleKey,
     p_user_id: params.userId,
   });
-
-  if (ok !== null) return;
-
-  // fallback direct upsert
-  const { error } = await supabase.from("session_role_assignments").upsert(
-    {
-      session_id: params.sessionId,
-      user_id: params.userId,
-      role_key: params.roleKey,
-      assigned_at: new Date().toISOString(),
-    },
-    { onConflict: "session_id,user_id,role_key" }
-  );
 
   if (error) throw error;
 }
@@ -650,6 +634,19 @@ export type SessionRosterRow = {
   joined_at: string | null;
 };
 
+export type SessionParticipantActivityRow = SessionRosterRow & {
+  response_count: number;
+  task_updates_count: number;
+  completed_task_count: number;
+  last_activity_at: string | null;
+};
+
+function deriveDisplayName(profile: ProfileLite | null, fallbackId: string) {
+  if (profile?.full_name?.trim()) return profile.full_name.trim();
+  if (profile?.email?.trim()) return profile.email.trim();
+  return `Participant ${fallbackId.slice(0, 8)}`;
+}
+
 export async function listSessionRoster(sessionId: string): Promise<SessionRosterRow[]> {
   await requireUserId();
 
@@ -666,20 +663,133 @@ export async function listSessionRoster(sessionId: string): Promise<SessionRoste
 
   return (participants ?? []).map((p) => ({
     participant_id: p.user_id,
-    display_name: p.profile?.email ?? null,
+    display_name: deriveDisplayName(p.profile, p.user_id),
     role: roleByUser.get(p.user_id) ?? null,
     joined_at: p.joined_at ?? null,
   }));
 }
 
+export async function listSessionParticipantActivity(
+  sessionId: string
+): Promise<SessionParticipantActivityRow[]> {
+  await requireUserId();
+
+  const [participants, assignments, actionsResult, tasksResult] = await Promise.all([
+    listSessionParticipants(sessionId),
+    listSessionRoleAssignments(sessionId),
+    supabase
+      .from("session_actions")
+      .select("created_by, created_at")
+      .eq("session_id", sessionId),
+    supabase
+      .from("session_tasks")
+      .select("created_by, updated_by, updated_at, status, resolved_at")
+      .eq("session_id", sessionId),
+  ]);
+
+  if (actionsResult.error) throw actionsResult.error;
+  if (tasksResult.error) throw tasksResult.error;
+
+  const roleByUser = new Map<string, string>();
+  for (const a of assignments ?? []) {
+    const role = a?.role_key ?? null;
+    if (a?.user_id && role) roleByUser.set(a.user_id, String(role));
+  }
+
+  const activityByUser = new Map<
+    string,
+    {
+      response_count: number;
+      task_updates_count: number;
+      completed_task_count: number;
+      last_activity_at: string | null;
+    }
+  >();
+
+  const bumpLastActivity = (userId: string, value: string | null | undefined) => {
+    if (!value) return;
+    const nextTime = new Date(value).getTime();
+    if (!Number.isFinite(nextTime)) return;
+
+    const current = activityByUser.get(userId) ?? {
+      response_count: 0,
+      task_updates_count: 0,
+      completed_task_count: 0,
+      last_activity_at: null,
+    };
+    const currentTime = current.last_activity_at
+      ? new Date(current.last_activity_at).getTime()
+      : Number.NEGATIVE_INFINITY;
+
+    if (!Number.isFinite(currentTime) || nextTime > currentTime) {
+      current.last_activity_at = value;
+    }
+
+    activityByUser.set(userId, current);
+  };
+
+  for (const row of (actionsResult.data ?? []) as Array<{
+    created_by: string | null;
+    created_at: string | null;
+  }>) {
+    if (!row.created_by) continue;
+    const current = activityByUser.get(row.created_by) ?? {
+      response_count: 0,
+      task_updates_count: 0,
+      completed_task_count: 0,
+      last_activity_at: null,
+    };
+    current.response_count += 1;
+    activityByUser.set(row.created_by, current);
+    bumpLastActivity(row.created_by, row.created_at);
+  }
+
+  for (const row of (tasksResult.data ?? []) as Array<{
+    created_by: string | null;
+    updated_by: string | null;
+    updated_at: string | null;
+    status: string | null;
+    resolved_at: string | null;
+  }>) {
+    if (row.updated_by) {
+      const current = activityByUser.get(row.updated_by) ?? {
+        response_count: 0,
+        task_updates_count: 0,
+        completed_task_count: 0,
+        last_activity_at: null,
+      };
+      current.task_updates_count += 1;
+      if (row.status === "done") current.completed_task_count += 1;
+      activityByUser.set(row.updated_by, current);
+      bumpLastActivity(row.updated_by, row.resolved_at ?? row.updated_at);
+    } else if (row.created_by) {
+      bumpLastActivity(row.created_by, row.updated_at);
+    }
+  }
+
+  return (participants ?? []).map((participant) => {
+    const activity = activityByUser.get(participant.user_id);
+
+    return {
+      participant_id: participant.user_id,
+      display_name: deriveDisplayName(participant.profile, participant.user_id),
+      role: roleByUser.get(participant.user_id) ?? null,
+      joined_at: participant.joined_at ?? null,
+      response_count: activity?.response_count ?? 0,
+      task_updates_count: activity?.task_updates_count ?? 0,
+      completed_task_count: activity?.completed_task_count ?? 0,
+      last_activity_at: activity?.last_activity_at ?? null,
+    };
+  });
+}
+
 export async function kickFromSession(sessionId: string, participantId: string) {
   await requireUserId();
 
-  const { error } = await supabase
-    .from("session_participants")
-    .delete()
-    .eq("session_id", sessionId)
-    .eq("user_id", participantId);
+  const { error } = await supabase.rpc("remove_session_participant", {
+    p_session_id: sessionId,
+    p_user_id: participantId,
+  });
 
   if (error) throw error;
 }

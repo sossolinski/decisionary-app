@@ -18,6 +18,14 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
 
+function joinErrorMessage(error: unknown) {
+  const message = getErrorMessage(error, "Join failed");
+  if (message === "Not authenticated" || message === "Guest join is unavailable right now.") {
+    return "Guest join is unavailable right now. Try again in a moment or use a participant account.";
+  }
+  return message;
+}
+
 export default function JoinPage() {
   const router = useRouter();
   const joinCodeId = useId();
@@ -40,7 +48,7 @@ export default function JoinPage() {
       const sessionId = await joinSessionByCode(validCode.value);
       router.push(`/sessions/${sessionId}`);
     } catch (e: unknown) {
-      setError(getErrorMessage(e, "Join failed"));
+      setError(joinErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -57,7 +65,7 @@ export default function JoinPage() {
                 Enter your session code.
               </h1>
               <p className="mx-auto max-w-[46ch] text-sm leading-7 text-[color:var(--studio-muted)] sm:text-base">
-                Use the short code shared by your facilitator to open the exercise right away.
+                Use the short code shared by your facilitator to open the exercise right away. If needed, Decisionary will create a guest session for you.
               </p>
             </div>
           </div>
@@ -89,7 +97,7 @@ export default function JoinPage() {
                   <div role="alert" aria-live="assertive" className="notice notice-error">{error}</div>
                 ) : (
                   <p className="text-sm leading-6 text-[color:var(--studio-muted2)]">
-                    The code is usually 6 characters long. You do not need a separate account to join.
+                    The code is usually 6 characters long. You can join with your account or as a guest participant.
                   </p>
                 )}
 

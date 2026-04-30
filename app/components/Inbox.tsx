@@ -1,9 +1,11 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionInbox, subscribeInbox, type SessionInject } from "@/lib/sessions";
+import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
-import { Mail, Briefcase, Newspaper, AtSign, Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
+import { Mail, Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
@@ -68,9 +70,6 @@ function saveSeen(key: string, set: Set<string>) {
 function channelIcon(channel?: string | null) {
   const v = String(channel ?? "").toLowerCase();
   if (v === "pulse") return <Radio className="h-3.5 w-3.5" />;
-  if (v === "ops") return <Briefcase className="h-3.5 w-3.5" />;
-  if (v === "media") return <Newspaper className="h-3.5 w-3.5" />;
-  if (v === "social") return <AtSign className="h-3.5 w-3.5" />;
   return <Mail className="h-3.5 w-3.5" />;
 }
 
@@ -110,18 +109,11 @@ function badge(kind: "severity" | "channel" | "state", value: string) {
   return `${base} bg-secondary/60 text-foreground`;
 }
 
-function emphasisClass(severity: string, unread: boolean) {
-  if (severity === "critical") {
-    return unread
-      ? "border-red-500/35 bg-red-500/[0.06]"
-      : "border-red-500/20 bg-red-500/[0.04]";
-  }
-  if (severity === "high") {
-    return unread
-      ? "border-orange-500/30 bg-orange-500/[0.05]"
-      : "border-orange-500/18 bg-orange-500/[0.035]";
-  }
-  return unread ? "border-primary/18 bg-primary/[0.03]" : "";
+function emphasisClass(severity: string, flash: boolean) {
+  if (!flash) return "";
+  if (severity === "critical") return "border-red-500/30 bg-red-500/[0.04]";
+  if (severity === "high") return "border-orange-500/28 bg-orange-500/[0.04]";
+  return "border-primary/20 bg-primary/[0.035]";
 }
 
 export default function Inbox({
@@ -169,14 +161,14 @@ export default function Inbox({
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function buildQueryOpts(p: number): Parameters<typeof getSessionInbox>[1] {
-    if (channel) return { page: p, pageSize, channel, severity };
+    if (channel) return { page: p, pageSize, channel, severity, search };
     if (mode === "pulse") {
-      return { page: p, pageSize, channel: "pulse" as const, severity };
+      return { page: p, pageSize, channel: "pulse" as const, severity, search };
     }
-    return { page: p, pageSize, channelNot: "pulse" as const, severity };
+    return { page: p, pageSize, channelNot: "pulse" as const, severity, search };
   }
 
-  async function load(p = page) {
+  async function load(p = page, opts?: { silent?: boolean }) {
     if (!sessionId) return;
 
     if (inFlightRef.current) {
@@ -188,10 +180,10 @@ export default function Inbox({
 
     try {
       setErr(null);
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
 
-      const opts = buildQueryOpts(p);
-      const res = await getSessionInbox(sessionId, opts);
+      const queryOpts = buildQueryOpts(p);
+      const res = await getSessionInbox(sessionId, queryOpts);
 
       const next = res.items ?? [];
       setItems(next);
@@ -230,12 +222,12 @@ export default function Inbox({
     } catch (e: unknown) {
       setErr(errMessage(e, "Failed to load inbox"));
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
       inFlightRef.current = false;
 
       if (pendingReloadRef.current) {
         pendingReloadRef.current = false;
-        load(pageRef.current);
+        load(pageRef.current, { silent: true });
       }
     }
   }
@@ -244,7 +236,7 @@ export default function Inbox({
     if (reloadTimerRef.current) return;
     reloadTimerRef.current = setTimeout(() => {
       reloadTimerRef.current = null;
-      load(pageRef.current);
+      load(pageRef.current, { silent: true });
     }, 250);
   }
 
@@ -285,17 +277,27 @@ export default function Inbox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) => {
-      const t = it.injects?.title ?? "";
-      const b = it.injects?.body ?? "";
-      const s1 = it.injects?.sender_name ?? "";
-      const s2 = it.injects?.sender_org ?? "";
-      return `${t}\n${b}\n${s1}\n${s2}`.toLowerCase().includes(q);
-    });
-  }, [items, search]);
+  useEffect(() => {
+    if (!sessionId) return;
+    setPage(1);
+    pageRef.current = 1;
+    load(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  useAutoRefresh(
+    () => {
+      if (!sessionId) return;
+      requestReload();
+    },
+    {
+      enabled: Boolean(sessionId),
+      intervalMs: 8000,
+    }
+  );
+
+  const visible = useMemo(() => items, [items]);
+  const hasActiveFilters = Boolean(search.trim() || channel || severity);
 
   function markSeen(id: string) {
     setSeen((prev) => {
@@ -334,8 +336,15 @@ export default function Inbox({
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="ui-empty-state p-3 text-xs font-semibold text-muted-foreground">
-              No messages matching filters.
+            <div className="rounded-[16px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5">
+              <div className="text-sm font-semibold text-foreground">
+                {hasActiveFilters ? "No inbox updates match the current filters." : "No inbox updates yet."}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-muted-foreground">
+                {hasActiveFilters
+                  ? "Clear the filters or search to see the full list again."
+                  : "Updates will appear here once the session starts moving."}
+              </div>
             </div>
           ) : null}
 
@@ -345,12 +354,14 @@ export default function Inbox({
 
               const title = item.injects?.title?.trim() || "Message";
               const preview = item.injects?.body ? clampText(item.injects.body, 150) : "";
+              const availableMedia = (item.injects?.media ?? []).filter((media) => Boolean(media.signed_url));
+              const firstMedia = availableMedia[0] ?? null;
+              const remainingMediaCount = Math.max(0, availableMedia.length - 1);
 
               const metaLeft =
                 [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
                 "Unknown source";
 
-              const channelTag = item.injects?.channel ? String(item.injects.channel).toUpperCase() : null;
               const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
 
               const time = fmtTime(item.delivered_at);
@@ -376,7 +387,7 @@ export default function Inbox({
                       ? "border-primary/25 bg-primary/10 shadow-[0_16px_36px_hsl(220_20%_20%/0.06)]"
                       : [
                           "border-[var(--studio-border)] bg-[color:var(--studio-surface2)]",
-                          emphasisClass(sv, unread),
+                          emphasisClass(sv, flash),
                           "hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
                         ].join(" "),
                     flash ? "ring-1 ring-primary/20" : "",
@@ -392,7 +403,7 @@ export default function Inbox({
                             : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
                         ].join(" ")}
                       >
-                        {channelIcon(ch || "ops")}
+                        {channelIcon(ch || "inbox")}
                       </div>
 
                       <div className="min-w-0">
@@ -406,9 +417,6 @@ export default function Inbox({
                         </div>
 
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                          {active ? (
-                            <span className={badge("state", "selected")}>Selected</span>
-                          ) : null}
                           {unread && !flash ? (
                             <span className={badge("state", "unread")}>Unread</span>
                           ) : null}
@@ -418,8 +426,6 @@ export default function Inbox({
                               New
                             </span>
                           ) : null}
-
-                          {channelTag ? <span className={badge("channel", channelTag)}>{titleCase(channelTag)}</span> : null}
                           {sevTag ? (
                             <span className={badge("severity", sevTag)}>
                               {severityIcon(sv)}
@@ -435,8 +441,24 @@ export default function Inbox({
                     </div>
                   </div>
 
-                  <div className="mt-3 text-[13px] leading-6 text-[color:var(--studio-muted)]">
-                    {preview ? preview : "(no content)"}
+                  <div className="mt-3 flex gap-3">
+                    {firstMedia?.signed_url ? (
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+                        <img
+                          src={firstMedia.signed_url}
+                          alt={firstMedia.alt_text ?? title}
+                          className="h-full w-full object-cover"
+                        />
+                        {remainingMediaCount > 0 ? (
+                          <div className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            +{remainingMediaCount}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="min-w-0 text-[13px] leading-6 text-[color:var(--studio-muted)]">
+                      {preview ? preview : "(no content)"}
+                    </div>
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">

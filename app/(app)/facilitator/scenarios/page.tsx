@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
@@ -22,6 +23,7 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
 
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
@@ -29,7 +31,6 @@ import HintTooltip from "@/app/components/HintTooltip";
 
 import {
   BookOpen,
-  Plus,
   Search,
   MoreHorizontal,
   Copy,
@@ -45,6 +46,7 @@ import {
   Library,
   PlayCircle,
   Radio,
+  ArrowRight,
 } from "lucide-react";
 
 function fmt(dt?: string | null) {
@@ -66,33 +68,6 @@ function facilitatorOptionLabel(facilitator: FacilitatorProfile) {
   }
   if (facilitator.email?.trim()) return facilitator.email;
   return `Facilitator ${facilitator.id.slice(0, 8)}`;
-}
-
-function useOutsideClose(
-  open: boolean,
-  wrapRef: React.RefObject<HTMLElement | null>,
-  onClose: () => void
-) {
-  useEffect(() => {
-    if (!open) return;
-
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    function onDown(e: MouseEvent) {
-      const el = wrapRef.current;
-      if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) onClose();
-    }
-
-    window.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onDown);
-
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onDown);
-    };
-  }, [open, wrapRef, onClose]);
 }
 
 function Select({
@@ -142,6 +117,14 @@ function MetaRow({
   );
 }
 
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
+
 export default function FacilitatorScenariosPage() {
   const router = useRouter();
   const { loading: roleLoading, canFacilitate } = useRoleContext();
@@ -154,6 +137,7 @@ export default function FacilitatorScenariosPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   // search
   const [q, setQ] = useState("");
@@ -312,7 +296,17 @@ export default function FacilitatorScenariosPage() {
   }
 
   async function onDelete(id: string) {
-    if (!confirm("Delete this scenario?")) return;
+    const scenario = scenarios.find((item) => item.id === id);
+    setPendingConfirm({
+      title: "Delete scenario?",
+      description: `This permanently deletes "${scenario?.title ?? "Untitled scenario"}" and its scenario timeline. Existing sessions are not removed.`,
+      confirmLabel: "Delete scenario",
+      tone: "destructive",
+      onConfirm: () => deleteNow(id),
+    });
+  }
+
+  async function deleteNow(id: string) {
     setError(null);
     setNotice(null);
     setBusyId(id);
@@ -444,7 +438,6 @@ export default function FacilitatorScenariosPage() {
     <div className="space-y-5">
       <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="pointer-events-none absolute right-0 top-0 h-28 w-52 rounded-bl-[28px] bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_62%)]" />
           <div className="relative grid gap-5 lg:grid-cols-[1.45fr_auto] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
@@ -536,6 +529,28 @@ export default function FacilitatorScenariosPage() {
           {notice}
         </div>
       ) : null}
+
+      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-foreground">New to scenario design?</div>
+            <div className="text-sm leading-6 text-[color:var(--studio-muted)]">
+              Follow the manual step by step, then come back here to create your first scenario draft and rehearsal flow.
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/facilitator/guide#prepare">
+                Open scenario guide
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/facilitator/guide#first-rehearsal">First rehearsal path</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {/* List */}
       {sorted.length === 0 ? (
@@ -779,6 +794,20 @@ export default function FacilitatorScenariosPage() {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import {
@@ -18,13 +19,25 @@ import {
 } from "@/lib/sessionsRuntime";
 import { getBillingInfraMessage, listMyLiveExerciseAccess } from "@/lib/billing";
 import { getErrorMessage } from "@/lib/errors";
-import { normalizeSessionStatus, type SessionStatus } from "@/lib/sessionStatus";
+import { normalizeSessionStatus } from "@/lib/sessionStatus";
 import { validateSessionTitle } from "@/lib/validators";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
+import { Button } from "@/app/components/ui/button";
+import ConfirmDialog from "@/app/components/ConfirmDialog";
+import HintTooltip from "@/app/components/HintTooltip";
 import SessionCreatePanel from "@/app/components/facilitator-sessions/SessionCreatePanel";
 import SessionLibrary from "@/app/components/facilitator-sessions/SessionLibrary";
 import { type StatusFilter } from "@/app/components/facilitator-sessions/sessionUi";
+import { ArrowRight } from "lucide-react";
+
+type PendingConfirm = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone?: "default" | "destructive";
+  onConfirm: () => Promise<void>;
+};
 
 export default function FacilitatorSessionsPage() {
   const router = useRouter();
@@ -37,6 +50,7 @@ export default function FacilitatorSessionsPage() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingConfirm | null>(null);
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [scenarios, setScenarios] = useState<ScenarioListItem[]>([]);
@@ -288,7 +302,17 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onEnd(sessionId: string) {
-    if (!confirm("End this session?")) return;
+    const session = sessions.find((item) => item.id === sessionId);
+    setPendingConfirm({
+      title: "End session?",
+      description: `This closes "${session?.title ?? "Untitled session"}" for participants and stops the live exercise flow.`,
+      confirmLabel: "End session",
+      tone: "destructive",
+      onConfirm: () => endNow(sessionId),
+    });
+  }
+
+  async function endNow(sessionId: string) {
     setBusyId(sessionId);
     setError(null);
     try {
@@ -302,7 +326,16 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onRestart(sessionId: string) {
-    if (!confirm("Restart this session?")) return;
+    const session = sessions.find((item) => item.id === sessionId);
+    setPendingConfirm({
+      title: "Restart session?",
+      description: `This restarts "${session?.title ?? "Untitled session"}" and resets its runtime clock. Existing activity may remain in the session history.`,
+      confirmLabel: "Restart session",
+      onConfirm: () => restartNow(sessionId),
+    });
+  }
+
+  async function restartNow(sessionId: string) {
     setBusyId(sessionId);
     setError(null);
     try {
@@ -316,7 +349,17 @@ export default function FacilitatorSessionsPage() {
   }
 
   async function onDelete(sessionId: string) {
-    if (!confirm("Delete this session? This cannot be undone.")) return;
+    const session = sessions.find((item) => item.id === sessionId);
+    setPendingConfirm({
+      title: "Delete session?",
+      description: `This permanently deletes "${session?.title ?? "Untitled session"}" and its session data. This cannot be undone.`,
+      confirmLabel: "Delete session",
+      tone: "destructive",
+      onConfirm: () => deleteNow(sessionId),
+    });
+  }
+
+  async function deleteNow(sessionId: string) {
     setBusyId(sessionId);
     setError(null);
     try {
@@ -335,6 +378,26 @@ export default function FacilitatorSessionsPage() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-semibold text-foreground">Need a guided first run?</div>
+            <HintTooltip text="Use rehearsal if this is your first full-system test. Use live only when the scenario and participant access are already ready." />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/facilitator/guide#launch">
+                Open session guide
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/facilitator/guide#first-live">First live path</Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+
       <SessionCreatePanel
         ids={ids}
         sessionsCount={sessions.length}
@@ -380,6 +443,20 @@ export default function FacilitatorSessionsPage() {
         onEnd={onEnd}
         onRestart={onRestart}
         onDelete={onDelete}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingConfirm)}
+        title={pendingConfirm?.title ?? ""}
+        description={pendingConfirm?.description ?? ""}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        tone={pendingConfirm?.tone}
+        onOpenChange={(open) => {
+          if (!open) setPendingConfirm(null);
+        }}
+        onConfirm={async () => {
+          await pendingConfirm?.onConfirm();
+        }}
       />
     </div>
   );
