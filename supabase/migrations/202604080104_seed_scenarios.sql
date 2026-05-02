@@ -28,6 +28,7 @@ begin
     event_time,
     timezone,
     location,
+    weather,
     situation_type,
     short_description,
     injured,
@@ -45,6 +46,7 @@ begin
     '14:20',
     'Europe/Warsaw',
     'En route over southern Poland, diverting to Katowice Airport (EPKT)',
+    null,
     'In-flight technical emergency',
     'Cabin smoke event with diversion, passenger anxiety, and fast-escalating operational coordination demands.',
     1,
@@ -55,6 +57,16 @@ begin
     v_admin_id
   )
   returning id into v_scenario_id;
+
+  update public.scenarios
+  set passenger_count = 178,
+      crew_count = 6,
+      cargo_weight_kg = 4200,
+      dangerous_goods_count = 0,
+      live_animals_count = 0,
+      location_lat = 50.4743,
+      location_lng = 19.0800
+  where id = v_scenario_id;
 
   insert into public.scenario_roles (
     scenario_id,
@@ -79,6 +91,7 @@ begin
     event_time,
     timezone,
     location,
+    weather,
     situation_type,
     short_description,
     injured,
@@ -96,6 +109,7 @@ begin
     '19:05',
     'Europe/London',
     'Major international hub airport during evening peak bank',
+    null,
     'Airport surface safety event',
     'A runway incursion creates a last-second go-around and immediate safety, regulatory, and media pressure.',
     0,
@@ -106,6 +120,16 @@ begin
     v_admin_id
   )
   returning id into v_scenario_id;
+
+  update public.scenarios
+  set passenger_count = 241,
+      crew_count = 12,
+      cargo_weight_kg = 9800,
+      dangerous_goods_count = 0,
+      live_animals_count = 0,
+      location_lat = 51.4700,
+      location_lng = -0.4543
+  where id = v_scenario_id;
 
   insert into public.scenario_roles (
     scenario_id,
@@ -157,6 +181,16 @@ begin
     v_admin_id
   )
   returning id into v_scenario_id;
+
+  update public.scenarios
+  set passenger_count = 72,
+      crew_count = 4,
+      cargo_weight_kg = 1200,
+      dangerous_goods_count = 1,
+      live_animals_count = 0,
+      location_lat = 49.0097,
+      location_lng = 2.5479
+  where id = v_scenario_id;
 
   insert into public.scenario_roles (
     scenario_id,
@@ -232,6 +266,7 @@ begin
     event_time,
     timezone,
     location,
+    weather,
     situation_type,
     short_description,
     injured,
@@ -248,7 +283,8 @@ begin
     '2026-11-21',
     '17:40',
     'Europe/Paris',
-    'Final approach to a major European airport in low ceiling and rain',
+    'Final approach to a major European airport',
+    'Low ceiling and rain',
     'Major aircraft accident',
     'A crash on approach triggers a full-scale mass casualty, investigation, family assistance, and media response.',
     23,

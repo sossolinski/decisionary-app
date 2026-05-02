@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 
 import HintTooltip from "@/app/components/HintTooltip";
 import { Button } from "@/app/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Input } from "@/app/components/ui/input";
 import type { Session } from "@/lib/sessionsRuntime";
 
@@ -57,15 +56,15 @@ export default function SessionLibrary({
   onDelete,
 }: SessionLibraryProps) {
   return (
-    <Card className="surface shadow-soft border border-[var(--studio-border)] overflow-visible">
-      <CardHeader className="pb-4">
+    <section className="ui-section-panel overflow-visible">
+      <div className="pb-4">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0 xl:flex xl:min-h-10 xl:items-center">
-            <CardTitle className="flex items-center gap-2">
+            <h2 className="flex items-center gap-2 text-base font-semibold">
               <ClipboardList className="h-5 w-5 opacity-80" />
               Session library
               <HintTooltip text="Search, open, and manage exercise runs from one place." />
-            </CardTitle>
+            </h2>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -89,9 +88,9 @@ export default function SessionLibrary({
             </div>
           </div>
         </div>
-      </CardHeader>
+      </div>
 
-      <CardContent className="space-y-3">
+      <div className="space-y-3">
         {q.trim() || statusFilter !== "all" ? (
           <div className="flex flex-wrap gap-2">
             {q.trim() ? <Chip label={`Search: ${q.trim()}`} onClear={() => setQ("")} /> : null}
@@ -101,7 +100,7 @@ export default function SessionLibrary({
 
         {filteredSessions.length === 0 ? (
           q.trim() || statusFilter !== "all" ? (
-            <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4">
+            <div className="ui-empty-state">
               <div className="text-sm font-medium text-foreground">No sessions match the current filters.</div>
               <div className="mt-1 text-sm text-muted-foreground">
                 Clear the search or status filter to get back to the full session library.
@@ -119,7 +118,7 @@ export default function SessionLibrary({
               </div>
             </div>
           ) : (
-            <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4">
+            <div className="ui-empty-state">
               <div className="text-sm font-medium text-foreground">No sessions yet.</div>
               <div className="mt-1 text-sm text-muted-foreground">
                 Launch your first exercise run from a scenario above, then come back here to manage it.
@@ -147,7 +146,7 @@ export default function SessionLibrary({
             return (
               <div
                 key={session.id}
-                className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface)] px-4 py-4 transition-transform duration-150 hover:-translate-y-[1px] md:px-5"
+                className="ui-row-panel"
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
@@ -299,7 +298,7 @@ export default function SessionLibrary({
             );
           })
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }

@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 /* =========================================================
-   Decisionary — Globals (Minimal dashboard foundation)
+   Decisionary — Globals (Operational dashboard foundation)
 ========================================================= */
 
 @layer base {
   :root {
     /* SHADCN TOKENS (HSL TRIPLETS) */
-    --background: 228 38% 97%;
+    --background: 220 30% 98%;
     --foreground: 220 49% 8%;
 
     --card: 0 0% 100%;
@@ -22,10 +22,10 @@
     --accent: 262 83% 58%;
     --accent-foreground: 0 0% 100%;
 
-    --secondary: 228 25% 95%;
+    --secondary: 220 18% 94%;
     --secondary-foreground: 220 49% 8%;
 
-    --muted: 228 25% 95%;
+    --muted: 220 18% 94%;
     --muted-foreground: 220 10% 40%;
 
     --destructive: 0 72% 51%;
@@ -35,26 +35,27 @@
     --input: 220 8% 90%;
     --ring: 221 83% 53%;
 
-    --radius: 1rem; /* 16px */
-    --studio-radius: 1.125rem; /* 18px */
+    --radius: 0.75rem; /* 12px */
+    --studio-radius: 0.875rem; /* 14px */
 
     /* STUDIO ALIASES */
     --studio-max: 1120px;
 
     --studio-bg: hsl(var(--background));
+    --studio-page-end: hsl(220 24% 95.5%);
     --studio-text: hsl(var(--foreground));
     --studio-ink: hsl(var(--foreground));
 
-    /* Minimal surfaces: less "glassy", fewer borders */
-    --studio-surface: hsl(var(--card) / 0.90);
-    --studio-surface2: hsl(var(--card) / 0.96);
+    /* Operational surfaces: flatter, clearer, easier to scan */
+    --studio-surface: hsl(var(--card) / 0.99);
+    --studio-surface2: hsl(var(--card));
 
     --studio-muted: hsl(var(--foreground) / 0.62);
     --studio-muted2: hsl(var(--foreground) / 0.48);
 
     /* Minimal borders: shadow > border */
-    --studio-border: hsl(220 10% 86% / 0.35);
-    --studio-border-strong: hsl(220 10% 84% / 0.55);
+    --studio-border: hsl(220 12% 87% / 0.34);
+    --studio-border-strong: hsl(220 12% 78% / 0.52);
 
     --studio-accent-blue: hsl(var(--primary));
     --studio-accent-purple: hsl(var(--accent));
@@ -63,38 +64,38 @@
 
     /* Minimal shadows */
     --studio-shadow:
-      0 1px 2px hsl(220 20% 20% / 0.04),
-      0 10px 24px hsl(220 20% 20% / 0.05);
+      0 1px 2px hsl(220 20% 20% / 0.025),
+      0 5px 12px hsl(220 20% 20% / 0.025);
     --studio-shadow2:
-      0 2px 10px hsl(220 20% 20% / 0.06),
-      0 20px 55px hsl(220 20% 20% / 0.08);
+      0 2px 8px hsl(220 20% 20% / 0.055),
+      0 16px 36px hsl(220 20% 20% / 0.065);
 
-    /* Landing-like background glows (subtle) */
+    /* Kept as tokens so the look can be switched back easily. */
     --studio-glow-1: radial-gradient(
       900px 500px at 10% -10%,
-      hsl(var(--primary) / 0.12),
+      hsl(var(--primary) / 0.04),
       transparent 55%
     );
     --studio-glow-2: radial-gradient(
       900px 500px at 85% 0%,
-      hsl(var(--accent) / 0.10),
+      hsl(var(--accent) / 0.035),
       transparent 60%
     );
     --studio-glow-3: radial-gradient(
       1200px 700px at 45% 110%,
-      hsl(200 90% 55% / 0.06),
+      hsl(200 90% 55% / 0.025),
       transparent 60%
     );
   }
 
   .dark {
-    --background: 222 25% 9%;
+    --background: 224 20% 11%;
     --foreground: 210 40% 98%;
 
-    --card: 222 25% 11%;
+    --card: 224 18% 13%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 25% 11%;
+    --popover: 224 18% 13%;
     --popover-foreground: 210 40% 98%;
 
     --primary: 221 83% 62%;
@@ -103,7 +104,7 @@
     --accent: 262 83% 68%;
     --accent-foreground: 222 25% 9%;
 
-    --secondary: 222 18% 16%;
+    --secondary: 224 14% 17%;
     --secondary-foreground: 210 40% 98%;
 
     --muted: 222 18% 16%;
@@ -112,37 +113,38 @@
     --destructive: 0 70% 55%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 222 18% 18%;
-    --input: 222 18% 18%;
+    --border: 224 12% 24%;
+    --input: 224 12% 24%;
     --ring: 221 83% 62%;
 
-    --studio-surface: hsl(var(--card) / 0.86);
-    --studio-surface2: hsl(var(--card) / 0.92);
+    --studio-surface: hsl(var(--card) / 0.96);
+    --studio-surface2: hsl(var(--card));
+    --studio-page-end: hsl(224 18% 8.5%);
 
     --studio-muted: hsl(var(--foreground) / 0.76);
     --studio-muted2: hsl(var(--foreground) / 0.62);
 
-    --studio-border: hsl(220 10% 22% / 0.45);
-    --studio-border-strong: hsl(220 10% 26% / 0.55);
+    --studio-border: hsl(224 10% 30% / 0.36);
+    --studio-border-strong: hsl(224 10% 40% / 0.52);
 
     --studio-ring: 0 0 0 4px hsl(var(--primary) / 0.2);
 
-    --studio-shadow: 0 10px 28px hsl(0 0% 0% / 0.22);
-    --studio-shadow2: 0 18px 50px hsl(0 0% 0% / 0.32);
+    --studio-shadow: 0 5px 16px hsl(0 0% 0% / 0.14);
+    --studio-shadow2: 0 14px 34px hsl(0 0% 0% / 0.22);
 
     --studio-glow-1: radial-gradient(
       900px 500px at 10% -10%,
-      hsl(var(--primary) / 0.18),
+      hsl(var(--primary) / 0.08),
       transparent 55%
     );
     --studio-glow-2: radial-gradient(
       900px 500px at 85% 0%,
-      hsl(var(--accent) / 0.14),
+      hsl(var(--accent) / 0.06),
       transparent 60%
     );
     --studio-glow-3: radial-gradient(
       1200px 700px at 45% 110%,
-      hsl(190 90% 55% / 0.08),
+      hsl(190 90% 55% / 0.04),
       transparent 60%
     );
   }
@@ -167,9 +169,7 @@
     line-height: 1.45;
 
     background:
-      var(--studio-glow-1),
-      var(--studio-glow-2),
-      var(--studio-glow-3),
+      linear-gradient(180deg, hsl(var(--background)), var(--studio-page-end)),
       hsl(var(--background));
     background-repeat: no-repeat;
     background-attachment: fixed;
@@ -195,7 +195,7 @@
   h6 {
     margin: 0;
     font-weight: 650;
-    letter-spacing: -0.015em;
+    letter-spacing: 0;
   }
 
   p {
@@ -219,9 +219,15 @@
     color: inherit;
   }
 
+  button:focus:not(:focus-visible),
+  [role="button"]:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: none;
+  }
+
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.34);
+    box-shadow: 0 0 0 2px hsl(var(--ring) / 0.24);
     border-radius: calc(var(--radius) - 6px);
   }
 
@@ -278,9 +284,9 @@
   }
 
   .ui-metric-card {
-    @apply rounded-[16px] border border-[var(--studio-border)] px-4 py-4;
-    background: hsl(var(--card) / 0.96);
-    box-shadow: var(--studio-shadow);
+    @apply rounded-[12px] px-4 py-3.5;
+    background: hsl(var(--background) / 0.72);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.04);
   }
 
   .ui-metric-label {
@@ -288,20 +294,48 @@
   }
 
   .ui-list-card {
-    @apply rounded-[18px] border border-[var(--studio-border)];
-    background: hsl(var(--card) / 0.88);
-    box-shadow: 0 10px 24px hsl(220 20% 20% / 0.03);
+    @apply rounded-[12px];
+    background: hsl(var(--card) / 0.82);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.045);
   }
 
   .ui-empty-state {
-    @apply rounded-[16px] border border-dashed border-[var(--studio-border)] px-4 py-5 text-sm;
-    background: hsl(var(--card) / 0.84);
+    @apply rounded-[12px] px-4 py-5 text-sm;
+    background: hsl(var(--card) / 0.72);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.04);
     color: hsl(var(--foreground) / 0.54);
   }
 
   .ui-subtle-panel {
-    @apply rounded-[16px] border border-[var(--studio-border)] px-4 py-4;
-    background: hsl(var(--card) / 0.92);
+    @apply rounded-[12px] px-4 py-4;
+    background: hsl(var(--card) / 0.72);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.04);
+  }
+
+  .ui-section-panel {
+    @apply rounded-[14px] px-4 py-4 md:px-5 md:py-5;
+    background: hsl(var(--card) / 0.88);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--foreground) / 0.035),
+      0 10px 28px hsl(220 20% 20% / 0.035);
+  }
+
+  .ui-row-panel {
+    @apply rounded-[12px] px-4 py-4 transition-colors;
+    background: hsl(var(--card) / 0.74);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.035);
+  }
+
+  .ui-row-panel:hover {
+    background: hsl(var(--card) / 0.94);
+  }
+
+  .ui-work-surface {
+    @apply rounded-[14px] px-4 py-3;
+    background: hsl(var(--card) / 0.78);
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--foreground) / 0.035),
+      0 8px 22px hsl(220 20% 20% / 0.025);
   }
 
   .bg-grid {
@@ -321,17 +355,15 @@
     box-shadow: var(--studio-shadow2);
   }
 
-  /* Minimal surfaces: almost borderless */
+  /* Minimal surfaces: flatter than the earlier glass-heavy MVP look */
   .surface {
     background: var(--studio-surface);
-    border: 1px solid var(--studio-border);
-    backdrop-filter: blur(10px);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.04);
   }
 
   .surface2 {
     background: var(--studio-surface2);
-    border: 1px solid var(--studio-border);
-    backdrop-filter: blur(8px);
+    box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.04);
   }
 
   .surface-solid {

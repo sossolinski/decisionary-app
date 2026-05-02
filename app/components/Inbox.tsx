@@ -111,9 +111,9 @@ function badge(kind: "severity" | "channel" | "state", value: string) {
 
 function emphasisClass(severity: string, flash: boolean) {
   if (!flash) return "";
-  if (severity === "critical") return "border-red-500/30 bg-red-500/[0.04]";
-  if (severity === "high") return "border-orange-500/28 bg-orange-500/[0.04]";
-  return "border-primary/20 bg-primary/[0.035]";
+  if (severity === "critical") return "bg-red-500/[0.045]";
+  if (severity === "high") return "bg-orange-500/[0.045]";
+  return "bg-primary/[0.04]";
 }
 
 export default function Inbox({
@@ -126,7 +126,7 @@ export default function Inbox({
   search = "",
   autoSelectFirst = true,
 }: Props) {
-  const pageSize = 5;
+  const pageSize = 8;
 
   const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
@@ -327,8 +327,8 @@ export default function Inbox({
     <div className="space-y-2">
       {err ? <div className="notice notice-error p-3 text-xs font-semibold">{err}</div> : null}
 
-      <div className="overflow-hidden rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] shadow-sm">
-        <div className="max-h-[65vh] overflow-auto p-2.5">
+      <div className="overflow-hidden">
+        <div className="max-h-[68vh] overflow-auto pr-2">
           {loading ? (
             <div className="ui-subtle-panel p-3 text-xs font-semibold text-muted-foreground">
               Loading…
@@ -353,7 +353,7 @@ export default function Inbox({
               const active = selectedId === item.id;
 
               const title = item.injects?.title?.trim() || "Message";
-              const preview = item.injects?.body ? clampText(item.injects.body, 150) : "";
+              const preview = item.injects?.body ? clampText(item.injects.body, 118) : "";
               const availableMedia = (item.injects?.media ?? []).filter((media) => Boolean(media.signed_url));
               const firstMedia = availableMedia[0] ?? null;
               const remainingMediaCount = Math.max(0, availableMedia.length - 1);
@@ -381,26 +381,26 @@ export default function Inbox({
                     onSelect(item);
                   }}
                   className={[
-                    "w-full text-left rounded-[18px] border px-4 py-4 transition-all",
-                    "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+                    "mb-2 w-full text-left rounded-[11px] border border-transparent px-3 py-2.5 transition-all last:mb-0",
+                    "outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0",
                     active
-                      ? "border-primary/25 bg-primary/10 shadow-[0_16px_36px_hsl(220_20%_20%/0.06)]"
+                      ? "bg-card shadow-[inset_3px_0_0_hsl(var(--primary)/0.55)]"
                       : [
-                          "border-[var(--studio-border)] bg-[color:var(--studio-surface2)]",
+                          "bg-card/72",
                           emphasisClass(sv, flash),
-                          "hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
+                          "hover:bg-card/95",
                         ].join(" "),
-                    flash ? "ring-1 ring-primary/20" : "",
+                    flash ? "shadow-[0_0_0_2px_hsl(var(--primary)/0.08)]" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex items-start gap-3">
                       <div
                         className={[
-                          "mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border",
+                          "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[8px]",
                           active
-                            ? "border-primary/20 bg-primary/10 text-primary"
-                            : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)]",
+                            ? "bg-primary/10 text-primary"
+                            : "bg-secondary/55 text-[color:var(--studio-muted2)]",
                         ].join(" ")}
                       >
                         {channelIcon(ch || "inbox")}
@@ -416,7 +416,7 @@ export default function Inbox({
                           </div>
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
                           {unread && !flash ? (
                             <span className={badge("state", "unread")}>Unread</span>
                           ) : null}
@@ -441,9 +441,9 @@ export default function Inbox({
                     </div>
                   </div>
 
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-2 flex gap-2.5">
                     {firstMedia?.signed_url ? (
-                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[9px] bg-secondary/55">
                         <img
                           src={firstMedia.signed_url}
                           alt={firstMedia.alt_text ?? title}
@@ -456,12 +456,12 @@ export default function Inbox({
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="min-w-0 text-[13px] leading-6 text-[color:var(--studio-muted)]">
+                    <div className="min-w-0 text-[13px] leading-5 text-[color:var(--studio-muted)]">
                       {preview ? preview : "(no content)"}
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
                     {metaLeft}
                     {item.injects?.requires_decision ? (
                       <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--studio-ink)]">

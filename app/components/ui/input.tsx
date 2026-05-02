@@ -14,7 +14,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
             "flex h-10 w-full rounded-[var(--radius)] px-3 py-2 text-sm",
             "bg-[var(--studio-surface2)] text-foreground",
             "border border-[var(--studio-border)]",
-            "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
             "placeholder:text-muted-foreground/80",
             "transition-[box-shadow,border-color,background-color] duration-150",
             "hover:border-[var(--studio-border-strong)]",

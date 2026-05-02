@@ -67,7 +67,7 @@ export default function RoleSwitcher() {
             className={[
               "h-10 w-full justify-between rounded-[12px] border px-3 text-xs font-semibold capitalize",
               active
-                ? "border-primary/25 bg-background text-foreground shadow-sm hover:bg-background"
+                ? "border-primary/25 bg-primary/[0.08] text-foreground shadow-none hover:bg-primary/[0.08]"
                 : "border-[color:var(--studio-border)] bg-transparent text-[color:var(--studio-muted)] hover:border-[color:var(--studio-border-strong)] hover:bg-background/80 hover:text-foreground",
             ].join(" ")}
           >

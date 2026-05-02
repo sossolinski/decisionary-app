@@ -378,7 +378,7 @@ export default function FacilitatorSessionsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+      <div className="ui-row-panel">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <div className="text-sm font-semibold text-foreground">Need a guided first run?</div>

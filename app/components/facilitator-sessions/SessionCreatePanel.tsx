@@ -67,9 +67,9 @@ export default function SessionCreatePanel({
       : "Rehearsal runs full flow for facilitator only";
 
   return (
-    <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-      <div className="relative px-5 py-5 md:px-6 md:py-6">
-        <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
+    <section className="ui-section-panel">
+      <div className="relative">
+        <div className="grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
           <div className="space-y-4">
             <div className="ui-eyebrow">
               <Sparkles className="h-3.5 w-3.5" />
@@ -104,7 +104,7 @@ export default function SessionCreatePanel({
         </div>
       </div>
 
-      <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
+      <div className="mt-5 rounded-[12px] bg-background/60 px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
         <div id="create-session" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -182,7 +182,7 @@ export default function SessionCreatePanel({
             </div>
           </div>
 
-          <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+          <div className="rounded-[12px] bg-card/80 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
             <button
               type="button"
               onClick={() => setDetailsOpen((value) => !value)}
@@ -200,7 +200,7 @@ export default function SessionCreatePanel({
               )}
             </button>
             <Collapsible open={detailsExpanded}>
-              <div className="border-t border-[var(--studio-border)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+              <div className="px-4 pb-3 text-sm text-[color:var(--studio-muted)]">
                 {createMode === "live" ? (
                   canCreateLive ? (
                     <span>
@@ -226,12 +226,12 @@ export default function SessionCreatePanel({
           </div>
 
           {scenarios.length === 0 ? (
-            <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+            <div className="rounded-[12px] bg-card/80 px-4 py-3 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               You do not have any scenarios yet. Create one first so this workspace can launch a session.
             </div>
           ) : null}
         </div>
       </div>
-    </div>
+    </section>
   );
 }

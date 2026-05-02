@@ -120,19 +120,24 @@ function ActionCard({
   return (
     <div
       className={[
-        "rounded-[14px] border bg-[color:var(--studio-surface2)] p-3 transition-colors",
+        "rounded-[10px] p-2.5 transition-colors",
         recommended
-          ? "border-primary/25 bg-primary/5"
-          : "border-[var(--studio-border)]",
+          ? "bg-primary/[0.07]"
+          : "bg-secondary/35",
       ].join(" ")}
     >
       <div className="flex items-start gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-[color:var(--studio-ink)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] font-semibold text-[color:var(--studio-ink)]">
           <span className="truncate">{title}</span>
+          {recommended ? (
+            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
+              Recommended
+            </span>
+          ) : null}
           <HintTooltip text={description} side="top" />
         </div>
       </div>
-      <div className="mt-4">{children}</div>
+      <div className="mt-2.5">{children}</div>
     </div>
   );
 }
@@ -249,7 +254,7 @@ export default function MessageDetail({
 
   if (activeTab === "pulse") {
     return (
-      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
+      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-sm font-bold text-[color:var(--studio-ink)]">
@@ -286,7 +291,7 @@ export default function MessageDetail({
           </div>
         </div>
 
-        <div className="mt-4 text-xl font-semibold leading-tight text-[color:var(--studio-ink)]">
+        <div className="mt-4 text-lg font-semibold leading-tight text-[color:var(--studio-ink)]">
           {title}
         </div>
         <div className="mt-3 whitespace-pre-wrap text-[15px] leading-7 text-[color:var(--studio-ink)]">
@@ -299,7 +304,7 @@ export default function MessageDetail({
           </div>
         ) : null}
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--studio-border)] pt-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={onConfirm} className="gap-2">
             <ShieldCheck className="h-4 w-4" />
             Confirm publicly
@@ -315,14 +320,14 @@ export default function MessageDetail({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="px-1">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xl font-semibold leading-snug text-[color:var(--studio-ink)]">
+            <div className="text-base font-semibold leading-snug text-[color:var(--studio-ink)]">
               {title}
             </div>
-            <div className="mt-2 text-xs font-medium text-muted-foreground">
+            <div className="mt-1.5 text-xs font-medium text-muted-foreground">
               {senderLine ? senderLine : "Unknown source"}
               {item.delivered_at ? (
                 <>
@@ -348,10 +353,10 @@ export default function MessageDetail({
         </div>
 
         {showResponseHint ? (
-          <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
+          <div className="mt-2.5 rounded-[var(--radius)] bg-card/70 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
               onClick={() => setGuidanceItemId((current) => (current === item.id ? null : item.id))}
               aria-expanded={guidanceOpen}
             >
@@ -366,7 +371,7 @@ export default function MessageDetail({
               />
             </button>
             {guidanceOpen ? (
-              <div className="border-t border-[var(--studio-border)] px-4 py-3 text-sm leading-6 text-[color:var(--studio-muted)]">
+              <div className="px-3 pb-2.5 text-sm leading-5 text-[color:var(--studio-muted)]">
                 {responseHint}
               </div>
             ) : null}
@@ -374,7 +379,7 @@ export default function MessageDetail({
         ) : null}
 
         {contextualMeta.length > 0 ? (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-2.5 flex flex-wrap gap-2">
             {contextualMeta.map((item) => (
               <MetaPill key={`${item.label}:${item.value}`} label={item.label} value={item.value} />
             ))}
@@ -385,25 +390,25 @@ export default function MessageDetail({
           <InjectMediaGallery media={availableMedia} />
         ) : null}
 
-        <div className="mt-4 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
-          <div className="whitespace-pre-wrap text-[15px] leading-7 text-[color:var(--studio-ink)]">
+        <div className="mt-3 rounded-[12px] bg-card/72 px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+          <div className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--studio-ink)]">
             {body || "No message body."}
           </div>
         </div>
       </div>
 
-      <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+      <div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
           <span>Choose response</span>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           <ActionCard
             title="Monitor only"
             description="Keep this on the radar without starting a new task right now."
             recommended={recommendedInboxAction === "ignore"}
           >
             <Button
-              variant="outline"
+              variant={recommendedInboxAction === "ignore" ? "default" : "outline"}
               onClick={() => {
                 setEscalationItemId(null);
                 onIgnore();
@@ -420,7 +425,7 @@ export default function MessageDetail({
               recommended={recommendedInboxAction === "escalate"}
             >
               <Button
-                variant="secondary"
+                variant={recommendedInboxAction === "escalate" ? "default" : "secondary"}
                 onClick={() => {
                   setEscalationItemId(item.id);
                 }}
@@ -436,7 +441,7 @@ export default function MessageDetail({
             recommended={recommendedInboxAction === "act"}
           >
             <Button
-              variant="default"
+              variant={recommendedInboxAction === "act" ? "default" : "outline"}
               onClick={() => {
                 setEscalationItemId(null);
                 onAct();
@@ -449,8 +454,8 @@ export default function MessageDetail({
           </ActionCard>
         </div>
         {showEscalateAction && escalationOpen ? (
-          <div className="mt-3 rounded-[14px] border border-primary/20 bg-primary/[0.04] px-4 py-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="mt-2.5 rounded-[var(--radius)] bg-primary/[0.04] px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]">
+            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <span>Escalate this update</span>
@@ -460,7 +465,7 @@ export default function MessageDetail({
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="block">
-                <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
                   To
                 </span>
                 <Select value={taskOwnerRole} onChange={setTaskOwnerRole}>
@@ -472,7 +477,7 @@ export default function MessageDetail({
                 </Select>
               </label>
               <label className="block">
-                <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
+                <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
                   Deadline
                 </span>
                 <Select value={taskDuePreset} onChange={setTaskDuePreset}>
@@ -485,18 +490,18 @@ export default function MessageDetail({
               </label>
             </div>
             <label className="mt-3 block">
-              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
+              <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--studio-muted2)]">
                 Your note
               </span>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                rows={4}
-                className="w-full rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3 text-sm leading-6 text-[color:var(--studio-ink)] outline-none transition placeholder:text-[color:var(--studio-muted2)] focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
+                rows={3}
+                className="w-full rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2.5 text-sm leading-5 text-[color:var(--studio-ink)] outline-none transition placeholder:text-[color:var(--studio-muted2)] focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
                 placeholder="What should the owner know, verify, or do next?"
               />
             </label>
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <div className="mt-2.5 flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setEscalationItemId(null)}>
                 Cancel
               </Button>

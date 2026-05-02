@@ -596,7 +596,7 @@ export default function AppTopbar({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[color:var(--studio-border)] bg-[var(--studio-surface)] backdrop-blur-xl">
+    <header className="sticky top-0 z-40 border-b border-[color:var(--studio-border)] bg-[var(--studio-surface)]">
       <div className="w-full px-4 md:px-6">
         <div className="h-14 flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3 md:pl-1">
@@ -641,7 +641,7 @@ export default function AppTopbar({
                 aria-controls={notificationsMenuId}
                 aria-label="Open notifications"
                 title="Notifications"
-                className="relative rounded-[14px] bg-[var(--studio-surface2)]"
+                className="relative rounded-[var(--radius)] bg-[var(--studio-surface2)]"
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 ? (
@@ -975,7 +975,7 @@ export default function AppTopbar({
             <div className="relative z-30" ref={accountMenuRef}>
               <Button
                 variant="outline"
-                className="min-w-[220px] max-w-[260px] justify-between rounded-[14px] bg-[var(--studio-surface2)]"
+                className="min-w-[220px] max-w-[260px] justify-between rounded-[var(--radius)] bg-[var(--studio-surface2)]"
                 onClick={() => setOpen((v) => !v)}
                 aria-haspopup="dialog"
                 aria-expanded={open}

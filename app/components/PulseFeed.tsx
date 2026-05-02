@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionPulse, subscribePulse, type SessionInject } from "@/lib/sessions";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
-import { Radio, Circle, AlertCircle, AlertTriangle, Flame, ImageIcon } from "lucide-react";
+import { Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
 function errMessage(e: unknown, fallback: string) {
   return e instanceof Error ? e.message : fallback;
@@ -111,15 +111,15 @@ function badge(kind: "state" | "severity", value: string) {
 function emphasisClass(severity: string, unread: boolean) {
   if (severity === "critical") {
     return unread
-      ? "border-red-500/35 bg-red-500/[0.06]"
-      : "border-red-500/20 bg-red-500/[0.04]";
+      ? "bg-red-500/[0.055]"
+      : "bg-red-500/[0.04]";
   }
   if (severity === "high") {
     return unread
-      ? "border-orange-500/30 bg-orange-500/[0.05]"
-      : "border-orange-500/18 bg-orange-500/[0.035]";
+      ? "bg-orange-500/[0.05]"
+      : "bg-orange-500/[0.035]";
   }
-  return unread ? "border-primary/18 bg-primary/[0.03]" : "";
+  return unread ? "bg-primary/[0.035]" : "";
 }
 
 export default function PulseFeed({
@@ -130,7 +130,7 @@ export default function PulseFeed({
   search = "",
   autoSelectFirst = true,
 }: Props) {
-  const pageSize = 5;
+  const pageSize = 7;
 
   const [items, setItems] = useState<SessionInject[]>([]);
   const [total, setTotal] = useState(0);
@@ -322,8 +322,8 @@ export default function PulseFeed({
     <div className="space-y-2">
       {err ? <div className="notice notice-error p-3 text-xs font-semibold">{err}</div> : null}
 
-      <div className="overflow-hidden rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] shadow-sm">
-        <div className="max-h-[65vh] overflow-auto p-2.5">
+      <div className="overflow-hidden">
+        <div className="max-h-[68vh] overflow-auto pr-2">
           {loading ? (
             <div className="ui-subtle-panel p-3 text-xs font-semibold text-muted-foreground">
               Loading…
@@ -331,7 +331,7 @@ export default function PulseFeed({
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="rounded-[16px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5">
+            <div className="rounded-[var(--studio-radius)] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5">
               <div className="text-sm font-semibold text-foreground">
                 {hasActiveFilters ? "No pulse items match the current filters." : "No pulse items yet."}
               </div>
@@ -348,7 +348,7 @@ export default function PulseFeed({
               const active = selectedId === item.id;
 
               const title = item.injects?.title?.trim() || "Pulse post";
-              const preview = item.injects?.body ? clampText(item.injects.body, 160) : "";
+              const preview = item.injects?.body ? clampText(item.injects.body, 122) : "";
               const availableMedia = (item.injects?.media ?? []).filter((media) => Boolean(media.signed_url));
               const firstMedia = availableMedia[0] ?? null;
               const remainingMediaCount = Math.max(0, availableMedia.length - 1);
@@ -374,26 +374,26 @@ export default function PulseFeed({
                     onSelect(item);
                   }}
                   className={[
-                    "w-full text-left rounded-[20px] border px-4 py-4 transition-all",
-                    "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
+                    "mb-2 w-full text-left rounded-[11px] border border-transparent px-3 py-2.5 transition-all last:mb-0",
+                    "outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0",
                     active
-                      ? "border-primary/25 bg-primary/10 shadow-[0_16px_36px_hsl(220_20%_20%/0.06)]"
+                      ? "bg-card shadow-[inset_3px_0_0_hsl(var(--primary)/0.55)]"
                       : [
-                          "border-[var(--studio-border)] bg-[color:var(--studio-surface2)]",
+                          "bg-card/72",
                           emphasisClass(sv, unread),
-                          "hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
+                          "hover:bg-card/95",
                         ].join(" "),
-                    flash ? "ring-1 ring-primary/20" : "",
+                    flash ? "shadow-[0_0_0_2px_hsl(var(--primary)/0.08)]" : "",
                   ].join(" ")}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex items-start gap-3">
                       <div
                         className={[
-                          "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-bold",
+                          "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[9px] text-[10px] font-bold",
                           active
-                            ? "border-primary/20 bg-primary/10 text-primary"
-                            : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted)]",
+                            ? "bg-primary/10 text-primary"
+                            : "bg-secondary/55 text-[color:var(--studio-muted)]",
                         ].join(" ")}
                       >
                         {initials(senderName)}
@@ -410,8 +410,8 @@ export default function PulseFeed({
                           ) : null}
                         </div>
 
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                          <span className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-2 py-0.5 font-semibold uppercase tracking-wide">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-secondary/60 px-2 py-0.5 font-semibold uppercase tracking-wide">
                             <Radio className="h-3 w-3" />
                             Pulse
                           </span>
@@ -435,44 +435,33 @@ export default function PulseFeed({
                     <div className="shrink-0 pt-0.5 text-[11px] font-medium text-muted-foreground">{time}</div>
                   </div>
 
-                  <div className="mt-3 space-y-3">
-                    <div className="space-y-2">
-                      <div className="text-[15px] font-semibold leading-6 text-[color:var(--studio-ink)]">
-                        {title}
-                      </div>
-                      {preview ? (
-                        <div className="text-[13px] leading-6 text-[color:var(--studio-muted)]">
-                          {preview}
-                        </div>
-                      ) : null}
-                    </div>
-
+                  <div className="mt-2 flex gap-2.5">
                     {firstMedia?.signed_url ? (
-                      <div className="relative overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[9px] bg-secondary/55">
                         <img
                           src={firstMedia.signed_url}
                           alt={firstMedia.alt_text ?? title}
-                          className="aspect-[4/3] w-full object-cover"
+                          className="h-full w-full object-cover"
                         />
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/45 to-transparent" />
                         {remainingMediaCount > 0 ? (
-                          <div className="absolute bottom-3 right-3 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
-                            +{remainingMediaCount} more
+                          <div className="absolute bottom-1 right-1 rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            +{remainingMediaCount}
                           </div>
                         ) : null}
-                        <div className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
-                          <ImageIcon className="h-3.5 w-3.5" />
-                          Image
-                        </div>
                       </div>
-                    ) : preview ? null : (
-                      <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3 text-[12px] text-[color:var(--studio-muted2)]">
-                        No media attached.
+                    ) : null}
+
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold leading-5 text-[color:var(--studio-ink)]">
+                        {title}
                       </div>
-                    )}
+                      <div className="mt-1 text-[13px] leading-5 text-[color:var(--studio-muted)]">
+                        {preview || "No post body."}
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
                     <span>{senderOrg ? `Source: ${senderOrg}` : "Source: pulse stream"}</span>
                     <span>{firstMedia ? `${availableMedia.length} image${availableMedia.length === 1 ? "" : "s"}` : "Text post"}</span>
                   </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LayoutDashboard, Radio, Wrench } from "lucide-react";
+import { ChevronDown, Clock3, LayoutDashboard, Radio, Wrench } from "lucide-react";
 
 import type { Scenario } from "@/lib/scenarios";
 import type { SessionSituation } from "@/lib/sessions";
@@ -9,7 +9,7 @@ import FacilitatorToolsPanel from "@/app/components/FacilitatorToolsPanel";
 import SituationCard from "@/app/components/SituationCard";
 import { Button } from "@/app/components/ui/button";
 
-import { fmt, RuntimeMetric } from "./sessionRuntimeUi";
+import { fmt } from "./sessionRuntimeUi";
 
 type SessionHeaderPanelProps = {
   copPanelId: string;
@@ -33,6 +33,13 @@ type SessionHeaderPanelProps = {
   validSessionId: boolean;
   sessionId: string;
   onUpdateCasualties: (payload: { injured: number; fatalities: number; uninjured: number; unknown: number }) => Promise<void>;
+  onUpdateManifest: (payload: {
+    passengerCount: number;
+    crewCount: number;
+    cargoWeightKg: number;
+    dangerousGoodsCount: number;
+    liveAnimalsCount: number;
+  }) => Promise<void>;
   applySessionMeta: (row: { started_at?: string | null } | null | undefined) => void;
 };
 
@@ -58,94 +65,101 @@ export default function SessionHeaderPanel({
   validSessionId,
   sessionId,
   onUpdateCasualties,
+  onUpdateManifest,
   applySessionMeta,
 }: SessionHeaderPanelProps) {
+  const readableClock = exerciseClock.startsWith("T+")
+    ? exerciseClock.slice(2)
+    : exerciseClock === "T=—"
+      ? "Not started"
+      : exerciseClock;
+
+  const participantLabel =
+    sessionMode === "rehearsal"
+      ? "Rehearsal · single participant · invitations off"
+      : sessionParticipantLimit
+        ? `Up to ${sessionParticipantLimit} participants`
+        : null;
+
   return (
-    <div className="relative z-20 surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
-      <div className="relative overflow-visible rounded-[var(--studio-radius)]">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-12 rounded-t-[var(--studio-radius)] bg-[linear-gradient(180deg,hsl(220_22%_96%/0.62),transparent_78%)] dark:bg-[linear-gradient(180deg,hsl(225_20%_18%/0.24),transparent_80%)]" />
-
-        <div className="relative px-5 py-3.5 sm:px-6 sm:py-4">
-          <div className="grid gap-3.5 xl:grid-cols-[minmax(0,1.58fr)_220px] xl:items-start">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="ui-eyebrow">
-                  <Radio className="h-3.5 w-3.5" />
-                  {heroEyebrow}
-                </div>
-                <div className="inline-flex items-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-medium text-[color:var(--studio-muted2)]">
-                  Started {fmt(startedAt)}
-                </div>
-              </div>
-              <h1 className="mt-1 text-xl font-semibold tracking-tight text-[color:var(--studio-ink)] sm:text-[1.68rem]">
-                {sessionTitle}
-              </h1>
-              {nextBestAction ? (
-                <div className="mt-2 inline-flex max-w-2xl items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-ink)]">
-                  {nextBestAction}
-                </div>
-              ) : null}
-              {sessionMode === "rehearsal" ? (
-                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
-                  Rehearsal · single participant · invitations off
-                </div>
-              ) : sessionParticipantLimit ? (
-                <div className="mt-2 text-xs font-medium text-[color:var(--studio-muted2)]">
-                  Up to {sessionParticipantLimit} participants
-                </div>
-              ) : null}
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button
-                  variant={copOpen ? "secondary" : "outline"}
-                  onClick={() => setCopOpen((v) => !v)}
-                  className="gap-2"
-                  title={participantView ? "Toggle situation" : "Toggle COP"}
-                  aria-expanded={copOpen}
-                  aria-controls={copPanelId}
-                >
-                  <LayoutDashboard className="h-4 w-4 opacity-80" />
-                  {participantView ? (copOpen ? "Hide situation" : "Open situation") : copOpen ? "Hide COP" : "Open COP"}
-                  <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", copOpen ? "rotate-180" : ""].join(" ")} />
-                </Button>
-
-                {roleLoading ? (
-                  <div className="px-2 text-xs text-[color:var(--studio-muted2)]">Loading role…</div>
-                ) : isFacilitator ? (
-                  <Button
-                    variant={toolsOpen ? "secondary" : "outline"}
-                    onClick={() => setToolsOpen((v) => !v)}
-                    className="gap-2"
-                    aria-expanded={toolsOpen}
-                    aria-controls={toolsPanelId}
-                  >
-                    <Wrench className="h-4 w-4" />
-                    {toolsOpen ? "Hide tools" : "Facilitator tools"}
-                    <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", toolsOpen ? "rotate-180" : ""].join(" ")} />
-                  </Button>
-                ) : null}
-              </div>
+    <div className="relative z-20 overflow-visible pb-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-xs font-medium text-[color:var(--studio-muted2)]">
+            <div className="ui-eyebrow">
+              <Radio className="h-3.5 w-3.5" />
+              {heroEyebrow}
             </div>
+            <span>Started {fmt(startedAt)}</span>
+            {participantLabel ? (
+              <>
+                <span className="h-1 w-1 rounded-full bg-[color:var(--studio-muted2)]/60" aria-hidden="true" />
+                <span>{participantLabel}</span>
+              </>
+            ) : null}
+          </div>
 
-            <div className="grid gap-2.5">
-              <RuntimeMetric label="Exercise clock" value={exerciseClock} icon={<Radio className="h-4 w-4" />} compact />
+          <h1 className="mt-2 max-w-[68rem] text-balance text-2xl font-semibold leading-tight text-[color:var(--studio-ink)] sm:text-[1.7rem]">
+            {sessionTitle}
+          </h1>
+
+          {nextBestAction ? (
+            <div className="mt-3 inline-flex max-w-3xl items-center rounded-[10px] border border-primary/18 bg-primary/8 px-3 py-1.5 text-sm font-medium leading-5 text-[color:var(--studio-ink)]">
+              {nextBestAction}
             </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button
+              variant={copOpen ? "secondary" : "outline"}
+              onClick={() => setCopOpen((v) => !v)}
+              className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
+              title={participantView ? "Toggle situation" : "Toggle COP"}
+              aria-expanded={copOpen}
+              aria-controls={copPanelId}
+            >
+              <LayoutDashboard className="h-4 w-4 opacity-80" />
+              {participantView ? (copOpen ? "Hide situation" : "Open situation") : copOpen ? "Hide COP" : "Open COP"}
+              <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", copOpen ? "rotate-180" : ""].join(" ")} />
+            </Button>
+
+            {roleLoading ? (
+              <div className="px-2 text-xs text-[color:var(--studio-muted2)]">Loading role…</div>
+            ) : isFacilitator ? (
+              <Button
+                variant={toolsOpen ? "secondary" : "outline"}
+                onClick={() => setToolsOpen((v) => !v)}
+                className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
+                aria-expanded={toolsOpen}
+                aria-controls={toolsPanelId}
+              >
+                <Wrench className="h-4 w-4" />
+                {toolsOpen ? "Hide tools" : "Facilitator tools"}
+                <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", toolsOpen ? "rotate-180" : ""].join(" ")} />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.02)] sm:w-auto sm:min-w-[220px] xl:mt-1">
+          <div>
+            <div className="ui-metric-label">Elapsed time</div>
+            <div className="mt-0.5 text-lg font-semibold leading-none text-[color:var(--studio-ink)]">{readableClock}</div>
+          </div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-secondary/70 text-[color:var(--studio-ink)]">
+            <Clock3 className="h-4 w-4" />
           </div>
         </div>
       </div>
 
       {copOpen ? (
-        <div id={copPanelId} className="border-t border-[var(--studio-border)]">
-          <div className="px-5 py-4">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <LayoutDashboard className="h-4 w-4 opacity-80" />
-                    {participantView ? "Situation" : "COP"}
-                  </div>
-              </div>
+        <div id={copPanelId} className="mt-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <LayoutDashboard className="h-4 w-4 opacity-80" />
+              Common operational picture
             </div>
-
+          </div>
             <SituationCard
               scenario={scenario}
               situation={situation}
@@ -153,14 +167,17 @@ export default function SessionHeaderPanel({
                 if (!validSessionId) return;
                 await onUpdateCasualties(p);
               }}
+              onUpdateManifest={async (p) => {
+                if (!validSessionId) return;
+                await onUpdateManifest(p);
+              }}
             />
-          </div>
         </div>
       ) : null}
 
       {isFacilitator && toolsOpen ? (
-        <div id={toolsPanelId} className="border-t border-[var(--studio-border)]">
-          <div className="px-5 py-4">
+        <div id={toolsPanelId} className="mt-4">
+          <div className="px-0">
               <div className="mb-3 flex items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2 text-sm font-semibold">

@@ -68,9 +68,9 @@ export default function SessionParticipantBoards({
       : null;
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+    <div className="grid grid-cols-1 gap-4 pt-2">
+      <div className="overflow-hidden">
+        <div className="flex items-center justify-between pb-2">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <CheckSquare className="h-4 w-4 opacity-80" />
@@ -79,8 +79,8 @@ export default function SessionParticipantBoards({
           </div>
         </div>
 
-        <div className="p-5 space-y-4">
-          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
+        <div className="space-y-4 pt-2">
+          <div className="rounded-[12px] bg-card/75 px-4 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
             <div className="flex items-start gap-3">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 opacity-80 text-[color:var(--studio-muted2)]" />
               <div className="min-w-0">
@@ -100,7 +100,7 @@ export default function SessionParticipantBoards({
                   </div>
                 ) : null}
                 {latestConsequence?.description ? (
-                  <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3 text-sm text-[color:var(--studio-muted)]">
+                  <div className="mt-3 rounded-[10px] bg-background/60 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
                     <div className="ui-section-label">Latest change</div>
                     <div className="mt-1 font-medium text-[color:var(--studio-ink)]">{latestConsequence.title}</div>
                     <div className="mt-1">{latestConsequence.description}</div>
@@ -116,10 +116,10 @@ export default function SessionParticipantBoards({
                 <div
                   key={task.id}
                   className={[
-                    "rounded-[18px] border bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]",
+                    "rounded-[10px] px-4 py-4",
                     suggestedTaskId === task.id
-                      ? "border-primary/25 ring-1 ring-primary/15"
-                      : "border-[var(--studio-border)]",
+                      ? "bg-primary/[0.06] ring-1 ring-primary/10"
+                      : "bg-card/70 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]",
                   ].join(" ")}
                 >
                     <div className="flex items-start justify-between gap-3">
@@ -159,7 +159,7 @@ export default function SessionParticipantBoards({
                     {task.description ? (
                       <div className="mt-3 pl-8 text-sm leading-6 text-[color:var(--studio-muted)]">{task.description}</div>
                     ) : null}
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--studio-border)] pt-3 pl-8">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-1 pl-8">
                       <div className="text-xs text-[color:var(--studio-muted2)]">
                         {task.assigned_role ? `Owner: ${task.assigned_role}` : "No owner yet"}
                       </div>

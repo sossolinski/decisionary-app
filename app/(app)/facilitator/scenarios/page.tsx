@@ -418,8 +418,9 @@ export default function FacilitatorScenariosPage() {
     return scenarios.filter((s) => {
       const t = (s.title ?? "").toLowerCase();
       const d = (s.description ?? "").toLowerCase();
+      const w = (s.weather ?? "").toLowerCase();
       const id = (s.id ?? "").toLowerCase();
-      return `${t}\n${d}\n${id}`.includes(query);
+      return `${t}\n${d}\n${w}\n${id}`.includes(query);
     });
   }, [scenarios, q]);
 
@@ -436,7 +437,7 @@ export default function FacilitatorScenariosPage() {
   /* ================= UI ================= */
   return (
     <div className="space-y-5">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+      <section className="ui-section-panel">
         <div className="relative px-5 py-5 md:px-6 md:py-6">
           <div className="relative grid gap-5 lg:grid-cols-[1.45fr_auto] lg:items-start">
             <div className="space-y-4">
@@ -462,16 +463,14 @@ export default function FacilitatorScenariosPage() {
                     <div className="ui-metric-label">Scenarios</div>
                     <div className="mt-2 text-3xl font-semibold">{scenarios.length}</div>
                   </div>
-                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                    <Library className="h-4 w-4 text-foreground" />
-                  </div>
+                  <Library className="h-4 w-4 text-foreground/60" />
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="border-t border-[var(--studio-border)] px-5 py-4 md:px-6">
+        <div className="mt-5 rounded-[12px] bg-background/60 px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
           <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -515,7 +514,7 @@ export default function FacilitatorScenariosPage() {
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Error */}
       {error ? (
@@ -530,7 +529,7 @@ export default function FacilitatorScenariosPage() {
         </div>
       ) : null}
 
-      <div className="rounded-[16px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+      <div className="ui-row-panel">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <div className="text-sm font-semibold text-foreground">New to scenario design?</div>
@@ -554,7 +553,7 @@ export default function FacilitatorScenariosPage() {
 
       {/* List */}
       {sorted.length === 0 ? (
-        <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
+        <div className="ui-empty-state">
           <div className="p-5 text-sm text-[color:var(--studio-muted2)]">
             {q.trim() ? "No scenarios match your search." : "No scenarios yet."}
           </div>
@@ -570,11 +569,11 @@ export default function FacilitatorScenariosPage() {
             const updatedBy = who(s.updated_by);
 
             return (
-              <div key={s.id} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible transition-transform duration-150 hover:-translate-y-[1px]">
+              <div key={s.id} className="ui-row-panel overflow-visible">
                 <div className="px-5 py-5 md:px-6 md:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-primary/20 bg-primary/10 shadow-soft">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-primary/10">
                         <BookOpen className="h-4.5 w-4.5 text-primary" />
                       </div>
 

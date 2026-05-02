@@ -77,7 +77,6 @@ export function Select({
         "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
         "border border-[var(--studio-border)]",
         "bg-[var(--studio-surface2)] text-foreground",
-        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
         "hover:border-[var(--studio-border-strong)]",
         "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
         "transition-[box-shadow,border-color,background-color] duration-150",
@@ -102,7 +101,7 @@ export function Chip({
       type="button"
       onClick={onClear}
       title={title}
-      className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-medium hover:bg-secondary/60 transition"
+      className="inline-flex items-center gap-1 rounded-full bg-secondary/45 px-2.5 py-1 text-xs font-medium hover:bg-secondary/70 transition"
     >
       <span className="truncate max-w-[220px]">{label}</span>
       <span aria-hidden="true" className="opacity-70">×</span>

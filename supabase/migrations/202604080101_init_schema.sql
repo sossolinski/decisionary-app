@@ -116,12 +116,20 @@ create table if not exists public.scenarios (
   event_time text,
   timezone text,
   location text,
+  location_lat numeric,
+  location_lng numeric,
+  weather text,
   situation_type text,
   short_description text,
   injured integer not null default 0,
   fatalities integer not null default 0,
   uninjured integer not null default 0,
   unknown integer not null default 0,
+  passenger_count integer not null default 0,
+  crew_count integer not null default 0,
+  cargo_weight_kg integer not null default 0,
+  dangerous_goods_count integer not null default 0,
+  live_animals_count integer not null default 0,
   created_at timestamptz not null default timezone('utc', now()),
   created_by uuid references public.profiles (user_id) on delete set null,
   updated_at timestamptz not null default timezone('utc', now()),
@@ -129,7 +137,12 @@ create table if not exists public.scenarios (
   check (injured >= 0),
   check (fatalities >= 0),
   check (uninjured >= 0),
-  check (unknown >= 0)
+  check (unknown >= 0),
+  check (passenger_count >= 0),
+  check (crew_count >= 0),
+  check (cargo_weight_kg >= 0),
+  check (dangerous_goods_count >= 0),
+  check (live_animals_count >= 0)
 );
 
 create table if not exists public.injects (
@@ -193,18 +206,31 @@ create table if not exists public.session_situation (
   event_time text,
   timezone text,
   location text,
+  location_lat numeric,
+  location_lng numeric,
+  weather text,
   situation_type text,
   short_description text,
   injured integer not null default 0,
   fatalities integer not null default 0,
   uninjured integer not null default 0,
   unknown integer not null default 0,
+  passenger_count integer not null default 0,
+  crew_count integer not null default 0,
+  cargo_weight_kg integer not null default 0,
+  dangerous_goods_count integer not null default 0,
+  live_animals_count integer not null default 0,
   updated_at timestamptz not null default timezone('utc', now()),
   updated_by uuid references public.profiles (user_id) on delete set null,
   check (injured >= 0),
   check (fatalities >= 0),
   check (uninjured >= 0),
-  check (unknown >= 0)
+  check (unknown >= 0),
+  check (passenger_count >= 0),
+  check (crew_count >= 0),
+  check (cargo_weight_kg >= 0),
+  check (dangerous_goods_count >= 0),
+  check (live_animals_count >= 0)
 );
 
 create table if not exists public.session_injects (

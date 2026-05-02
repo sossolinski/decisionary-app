@@ -15,6 +15,9 @@ export type Scenario = {
   event_time: string | null;
   timezone: string | null;
   location: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  weather: string | null;
 
   situation_type: string | null;
   short_description: string | null;
@@ -23,6 +26,11 @@ export type Scenario = {
   fatalities: number;
   uninjured: number;
   unknown: number;
+  passenger_count: number;
+  crew_count: number;
+  cargo_weight_kg: number;
+  dangerous_goods_count: number;
+  live_animals_count: number;
 
   created_at: string;
   updated_at?: string; // optional (if not present in the schema)

@@ -18,6 +18,9 @@ export type SessionSituation = {
   event_time: string | null;
   timezone: string | null;
   location: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
+  weather: string | null;
 
   situation_type: string | null;
   short_description: string | null;
@@ -26,6 +29,11 @@ export type SessionSituation = {
   fatalities: number;
   uninjured: number;
   unknown: number;
+  passenger_count: number;
+  crew_count: number;
+  cargo_weight_kg: number;
+  dangerous_goods_count: number;
+  live_animals_count: number;
 
   updated_at: string;
   updated_by: string | null;
@@ -750,6 +758,46 @@ export async function updateCasualties(params: {
   });
 
   if (error) throw error;
+  return data as SessionSituation;
+}
+
+export async function updateSessionManifest(params: {
+  sessionId: string;
+  passengerCount: number;
+  crewCount: number;
+  cargoWeightKg: number;
+  dangerousGoodsCount: number;
+  liveAnimalsCount: number;
+}) {
+  const { sessionId, passengerCount, crewCount, cargoWeightKg, dangerousGoodsCount, liveAnimalsCount } = params;
+
+  const { data, error } = await supabase.rpc("update_session_manifest", {
+    p_session_id: sessionId,
+    p_passenger_count: passengerCount,
+    p_crew_count: crewCount,
+    p_cargo_weight_kg: cargoWeightKg,
+    p_dangerous_goods_count: dangerousGoodsCount,
+    p_live_animals_count: liveAnimalsCount,
+  });
+
+  if (error) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("session_situation")
+      .update({
+        passenger_count: passengerCount,
+        crew_count: crewCount,
+        cargo_weight_kg: cargoWeightKg,
+        dangerous_goods_count: dangerousGoodsCount,
+        live_animals_count: liveAnimalsCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("session_id", sessionId)
+      .select("*")
+      .single();
+
+    if (fallbackError) throw fallbackError;
+    return fallbackData as SessionSituation;
+  }
   return data as SessionSituation;
 }
 

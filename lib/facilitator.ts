@@ -9,6 +9,7 @@ export type Scenario = {
   id: string;
   title: string;
   description: string | null;
+  weather: string | null;
 
   owner_id: string;
 
@@ -59,6 +60,7 @@ export async function listScenarios(): Promise<Scenario[]> {
       id,
       title,
       description,
+      weather,
       owner_id,
       created_at,
       created_by,
@@ -92,6 +94,7 @@ export async function createScenario(title: string): Promise<Scenario> {
       id,
       title,
       description,
+      weather,
       owner_id,
       created_at,
       created_by,
@@ -201,7 +204,7 @@ export async function duplicateScenario(sourceScenarioId: string): Promise<Scena
   // load source (must be visible via RLS)
   const { data: src, error: srcErr } = await supabase
     .from("scenarios")
-    .select("id, title, description")
+    .select("id, title, description, weather")
     .eq("id", sourceScenarioId)
     .single();
 
@@ -215,6 +218,7 @@ export async function duplicateScenario(sourceScenarioId: string): Promise<Scena
     .insert({
       title: newTitle,
       description: src?.description ?? null,
+      weather: src?.weather ?? null,
       owner_id: uid,
     })
     .select(
@@ -222,6 +226,7 @@ export async function duplicateScenario(sourceScenarioId: string): Promise<Scena
       id,
       title,
       description,
+      weather,
       owner_id,
       created_at,
       created_by,

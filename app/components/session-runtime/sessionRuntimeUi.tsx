@@ -105,21 +105,22 @@ export function RuntimeMetric({
   return (
     <div
       className={[
-        "ui-metric-card shadow-[0_10px_30px_hsl(220_20%_20%/0.04)]",
-        compact ? "px-3.5 py-2.5" : "px-4 py-3",
+        compact
+          ? "min-w-[184px] rounded-[10px] bg-card/72 px-3 py-2 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]"
+          : "ui-metric-card shadow-none px-4 py-3",
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="ui-metric-label">{label}</div>
-          <div className={compact ? "mt-0.5 text-lg font-semibold tracking-tight" : "mt-1 text-xl font-semibold tracking-tight"}>
+          <div className={compact ? "mt-0.5 text-[15px] font-semibold" : "mt-1 text-xl font-semibold"}>
             {value}
           </div>
         </div>
         <div
           className={[
-            "flex items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-ink)]",
-            compact ? "h-8 w-8" : "h-9 w-9",
+            "flex items-center justify-center rounded-[10px] bg-secondary/55 text-[color:var(--studio-ink)]",
+            compact ? "h-7 w-7" : "h-9 w-9",
           ].join(" ")}
         >
           {icon}
@@ -186,4 +187,3 @@ export function humanDecisionLabel(decisionType: string | null | undefined) {
   if (decisionType === "deny") return "Dismissed update";
   return "Team decision";
 }
-

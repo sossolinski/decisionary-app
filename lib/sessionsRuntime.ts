@@ -18,6 +18,7 @@ export type SessionScenarioLite = {
   event_time: string | null;
   timezone: string | null;
   location: string | null;
+  weather: string | null;
 };
 
 export type Session = {
@@ -176,7 +177,7 @@ async function fetchScenarioLiteByIds(
 
   const { data, error } = await supabase
     .from("scenarios")
-    .select("id,title,short_description,event_date,event_time,timezone,location")
+    .select("id,title,short_description,event_date,event_time,timezone,location,weather")
     .in("id", uniq);
 
   if (error) throw error;

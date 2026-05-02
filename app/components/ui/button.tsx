@@ -9,14 +9,13 @@ const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap",
     "rounded-[var(--radius)] text-sm font-medium",
-    "transition-[transform,box-shadow,background-color,border-color,color,opacity] duration-150",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "transition-[box-shadow,background-color,border-color,color,opacity] duration-150",
+    "focus:outline-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/25 focus-visible:ring-offset-0",
     "disabled:pointer-events-none disabled:opacity-60 disabled:shadow-none",
     "select-none",
-    // tactile feel
-    "shadow-[0_1px_0_hsl(0_0%_100%/0.5),0_1px_2px_hsl(220_20%_20%/0.06)]",
-    "hover:shadow-[0_1px_0_hsl(0_0%_100%/0.55),0_8px_18px_hsl(220_20%_20%/0.10)]",
-    "active:translate-y-[1px] active:shadow-[0_1px_0_hsl(0_0%_100%/0.45),0_2px_6px_hsl(220_20%_20%/0.10)]",
+    "shadow-none",
+    "hover:shadow-none",
+    "active:shadow-none",
   ].join(" "),
   {
     variants: {
@@ -34,10 +33,10 @@ const buttonVariants = cva(
         link: "bg-transparent text-primary underline-offset-4 hover:underline shadow-none hover:shadow-none active:translate-y-0 border-transparent",
       },
       size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-[calc(var(--radius)-2px)] px-3",
-        lg: "h-11 rounded-[calc(var(--radius)+2px)] px-5",
-        icon: "h-10 w-10 px-0",
+        default: "h-9 px-3.5 py-1.5",
+        sm: "h-7 rounded-[calc(var(--radius)-2px)] px-2.5 text-xs",
+        lg: "h-10 rounded-[var(--radius)] px-4",
+        icon: "h-9 w-9 px-0",
       },
     },
     defaultVariants: {

@@ -172,8 +172,8 @@ export default function SessionFeedAndDetail({
       style={desktopGridStyle}
     >
       <div className={isMobile ? "" : "min-w-0 pr-2"}>
-        <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-visible border border-[var(--studio-border)]">
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--studio-border)] px-4 py-3">
+        <div className="ui-work-surface overflow-visible">
+          <div className="flex items-center justify-between gap-2 pb-2">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <MessagesSquare className="h-4 w-4 opacity-80" />
@@ -185,7 +185,7 @@ export default function SessionFeedAndDetail({
               <button
                 type="button"
                 className={[
-                  "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
+                  "h-7 px-2.5 rounded-[var(--radius)] border text-xs font-medium transition inline-flex items-center gap-1.5",
                   streamTab === "inbox"
                     ? "bg-primary/10 border-primary/25"
                     : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
@@ -198,14 +198,14 @@ export default function SessionFeedAndDetail({
                 }}
                 aria-pressed={streamTab === "inbox"}
               >
-                <MessagesSquare className="h-4 w-4 opacity-75" />
+                <MessagesSquare className="h-3.5 w-3.5 opacity-75" />
                 Inbox <Badge n={unseenInbox} />
               </button>
 
               <button
                 type="button"
                 className={[
-                  "h-9 px-3 rounded-[var(--radius)] border text-sm font-medium transition inline-flex items-center gap-2",
+                  "h-7 px-2.5 rounded-[var(--radius)] border text-xs font-medium transition inline-flex items-center gap-1.5",
                   streamTab === "pulse"
                     ? "bg-primary/10 border-primary/25"
                     : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
@@ -218,7 +218,7 @@ export default function SessionFeedAndDetail({
                 }}
                 aria-pressed={streamTab === "pulse"}
               >
-                <Radio className="h-4 w-4 opacity-75" />
+                <Radio className="h-3.5 w-3.5 opacity-75" />
                 Pulse <Badge n={unseenPulse} />
               </button>
 
@@ -355,7 +355,7 @@ export default function SessionFeedAndDetail({
             </div>
           </div>
 
-          <div className="p-3">
+          <div className="pt-2.5">
             {streamTab === "inbox" ? (
               <Inbox
                 sessionId={sessionId}
@@ -394,22 +394,22 @@ export default function SessionFeedAndDetail({
           aria-label="Resize updates and selected update panels"
           title="Resize panels"
         >
-          <span className="my-3 w-px rounded-full bg-[var(--studio-border)] transition group-hover:bg-primary/40 group-focus-visible:bg-primary/50" />
+          <span className="my-4 w-px rounded-full bg-transparent transition group-hover:bg-primary/30 group-focus-visible:bg-primary/40" />
         </button>
       ) : null}
 
       <div className={isMobile ? "" : "min-w-0 pl-2"}>
-        <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-          <div className="border-b border-[var(--studio-border)] px-4 py-3">
+        <div className="ui-work-surface overflow-hidden">
+          <div className="pb-2.5">
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <FileText className="h-4 w-4 opacity-80" />
               Selected update
             </div>
           </div>
 
-          <div className="p-4">
+          <div className="pt-3">
             {runtimeNotice ? (
-              <div className="mb-4 rounded-[14px] border border-emerald-500/15 bg-emerald-500/[0.06] px-4 py-3 text-sm font-medium text-emerald-800 dark:text-emerald-300">
+              <div className="mb-3 rounded-[var(--radius)] border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2.5 text-sm font-medium text-emerald-800 dark:text-emerald-300">
                 {runtimeNotice}
               </div>
             ) : null}

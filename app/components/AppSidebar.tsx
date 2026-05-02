@@ -109,7 +109,7 @@ export default function AppSidebar({
   const isFacilitatorArea =
     (pathname ?? "").startsWith("/facilitator") || (pathname ?? "").startsWith("/sessions/");
 
-  const width = collapsed ? "w-[84px]" : "w-[260px]";
+  const width = collapsed ? "w-[72px]" : "w-[240px]";
   const asidePosition = mobile
     ? "relative h-full w-full pt-0"
     : ["fixed left-0 top-0 z-30 h-screen", "pt-[68px]", width].join(" ");
@@ -161,23 +161,23 @@ export default function AppSidebar({
   );
 
   const itemBase =
-    "group relative flex w-full min-w-0 items-center gap-3 rounded-[16px] border transition " +
+    "group relative flex w-full min-w-0 items-center gap-3 rounded-[10px] border transition " +
     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
 
   const itemCollapsed =
-    "h-11 w-11 justify-center mx-auto border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
-    "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
+    "h-10 w-10 justify-center mx-auto border-transparent bg-transparent " +
+    "hover:bg-secondary/70 hover:border-[var(--studio-border)]";
 
   const itemExpanded =
-    "h-11 justify-start px-3 border-[var(--studio-border)] bg-[var(--studio-surface2)] " +
-    "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]";
+    "h-10 justify-start px-2.5 border-transparent bg-transparent " +
+    "hover:bg-secondary/70 hover:border-[var(--studio-border)]";
 
   if (loading) {
     // Keep layout stable; no flashing of links
     return (
       <aside className={asidePosition}>
-        <div className="h-full px-3 pb-4">
-          <div className="h-full surface shadow-soft rounded-[18px]" />
+        <div className="h-full border-r border-[var(--studio-border)] bg-[var(--studio-surface)] px-2 pb-3">
+          <div className="h-full" />
         </div>
       </aside>
     );
@@ -185,10 +185,10 @@ export default function AppSidebar({
 
   return (
     <aside className={asidePosition}>
-      <div className="h-full px-3 pb-4">
-        <div className="h-full overflow-visible surface shadow-soft rounded-[18px] flex flex-col">
+      <div className="h-full border-r border-[var(--studio-border)] bg-[var(--studio-surface)] px-2 pb-3">
+        <div className="h-full overflow-visible flex flex-col">
           {/* NAV */}
-          <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-3 space-y-3.5">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-0 py-3 space-y-3">
             {(isParticipantArea || isParticipantView) ? (
               <div className="space-y-2.5">
                 <SectionLabel collapsed={collapsed}>Participant</SectionLabel>
@@ -288,9 +288,9 @@ export default function AppSidebar({
           </nav>
 
           {/* Bottom */}
-          <div className="border-t border-[var(--studio-border)] px-2 pb-3 pt-3.5 space-y-2.5">
+          <div className="border-t border-[var(--studio-border)] px-0 pb-2 pt-3 space-y-2.5">
             {!collapsed ? (
-              <div className="space-y-2.5 rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3">
+              <div className="space-y-2.5 border-b border-[var(--studio-border)] px-2 pb-3">
                 <div className="flex items-center gap-2">
                   <div className="ui-section-label">View mode</div>
                   <HintTooltip
@@ -312,8 +312,8 @@ export default function AppSidebar({
                 className={[
                   itemBase,
                   collapsed ? itemCollapsed : itemExpanded,
-                  "border-[var(--studio-border)] bg-[var(--studio-surface2)]",
-                  "hover:bg-secondary/70 hover:border-[var(--studio-border-strong)]",
+                  "border-[var(--studio-border)]",
+                  "hover:bg-secondary/70",
                 ].join(" ")}
                 title={collapsed ? "Expand" : "Collapse"}
               >
@@ -328,7 +328,7 @@ export default function AppSidebar({
 
             {/* Mini role indicator in sidebar (only expanded) */}
             {!collapsed ? (
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2.5 text-xs text-[color:var(--studio-muted2)]">
+              <div className="px-2 py-1 text-xs text-[color:var(--studio-muted2)]">
                 <div>
                   Viewing as: <b className="text-foreground">{humanRole(viewingRole)}</b>
                 </div>

@@ -7,12 +7,6 @@ import { listScenarios, listSessions } from "@/lib/sessionsRuntime";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { ArrowRight, BookOpen, ClipboardList, PlayCircle, Sparkles } from "lucide-react";
 
@@ -74,149 +68,131 @@ export default function FacilitatorHomePage() {
 
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden bg-[linear-gradient(180deg,hsl(var(--card)/0.98),hsl(var(--card)/0.94))]">
-        <CardContent className="relative pt-5 pb-5 md:pt-6 md:pb-6">
-          <div className="relative grid gap-4 lg:grid-cols-[1.45fr_0.8fr] lg:items-start">
-            <div className="space-y-4">
-              <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
-                Facilitator workspace
-              </div>
-
-              <div className="space-y-2">
-                <h1 className="text-[28px] font-semibold tracking-tight">Run realistic exercises with less friction.</h1>
-                <div className="text-sm text-[color:var(--studio-muted)]">
-                  Active organization: <b className="text-foreground">{activeOrg?.name ?? "not selected"}</b>
-                </div>
-                <p className="max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
-                  Build the scenario, run the exercise live, then come back to review the timeline, decisions, and exports.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                <Button asChild>
-                  <Link href="/facilitator/sessions">
-                    Go to Sessions
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-
-                <Button asChild variant="secondary">
-                  <Link href="/facilitator/sessions#create-session">New Session</Link>
-                </Button>
-
-                <Button asChild variant="outline">
-                  <Link href="/facilitator/scenarios">Manage Scenarios</Link>
-                </Button>
-
-                <Button asChild variant="ghost">
-                  <Link href="/facilitator/guide">Open Guide</Link>
-                </Button>
-              </div>
+      <section className="ui-section-panel">
+        <div className="grid gap-4 lg:grid-cols-[1.45fr_0.8fr] lg:items-start">
+          <div className="space-y-4">
+            <div className="ui-eyebrow">
+              <Sparkles className="h-3.5 w-3.5" />
+              Facilitator workspace
             </div>
 
-            <div className="grid gap-3 self-start sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              <div className="ui-metric-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="ui-metric-label">
-                      Scenarios
-                    </div>
-                    <div className="mt-2 text-3xl font-semibold">{loading ? "—" : scenarioCount}</div>
-                  </div>
-                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                    <BookOpen className="h-4 w-4 text-foreground/80" />
-                  </div>
-                </div>
+            <div className="space-y-2">
+              <h1 className="text-[28px] font-semibold tracking-tight">Run realistic exercises with less friction.</h1>
+              <div className="text-sm text-[color:var(--studio-muted)]">
+                Active organization: <b className="text-foreground">{activeOrg?.name ?? "not selected"}</b>
               </div>
+              <p className="max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                Build the scenario, run the exercise live, then come back to review the timeline, decisions, and exports.
+              </p>
+            </div>
 
-              <div className="ui-metric-card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="ui-metric-label">
-                      Sessions
-                    </div>
-                    <div className="mt-2 text-3xl font-semibold">{loading ? "—" : sessionCount}</div>
-                  </div>
-                  <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                    <PlayCircle className="h-4 w-4 text-foreground/80" />
-                  </div>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <Button asChild>
+                <Link href="/facilitator/sessions">
+                  Go to Sessions
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+
+              <Button asChild variant="secondary">
+                <Link href="/facilitator/sessions#create-session">New Session</Link>
+              </Button>
+
+              <Button asChild variant="outline">
+                <Link href="/facilitator/scenarios">Manage Scenarios</Link>
+              </Button>
+
+              <Button asChild variant="ghost">
+                <Link href="/facilitator/guide">Open Guide</Link>
+              </Button>
             </div>
           </div>
 
-          {error ? (
-            <div className="notice notice-error mt-5">
-              {error}
+          <div className="grid gap-3 self-start sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div className="ui-metric-card">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="ui-metric-label">
+                    Scenarios
+                  </div>
+                  <div className="mt-2 text-3xl font-semibold">{loading ? "—" : scenarioCount}</div>
+                </div>
+                <BookOpen className="h-4 w-4 text-foreground/60" />
+              </div>
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+
+            <div className="ui-metric-card">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="ui-metric-label">
+                    Sessions
+                  </div>
+                  <div className="mt-2 text-3xl font-semibold">{loading ? "—" : sessionCount}</div>
+                </div>
+                <PlayCircle className="h-4 w-4 text-foreground/60" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {error ? (
+          <div className="notice notice-error mt-5">
+            {error}
+          </div>
+        ) : null}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="h-full">
-          <CardHeader className="pb-3">
+        <section className="ui-row-panel h-full">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>1. Prepare</CardTitle>
+                <h2 className="text-base font-semibold">1. Prepare</h2>
               </div>
-              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                <BookOpen className="h-4 w-4 text-foreground/80" />
-              </div>
+              <BookOpen className="h-4 w-4 text-foreground/60" />
             </div>
-          </CardHeader>
-          <CardContent className="flex min-h-[92px] items-end justify-between gap-4 pt-0">
+          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
             <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               Create the scenario, inject flow, and rule logic before you launch a run.
             </span>
             <Button asChild variant="secondary" size="sm" className="shrink-0">
               <Link href="/facilitator/scenarios">Scenarios</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="h-full">
-          <CardHeader className="pb-3">
+        <section className="ui-row-panel h-full">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>2. Run</CardTitle>
+                <h2 className="text-base font-semibold">2. Run</h2>
               </div>
-              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                <PlayCircle className="h-4 w-4 text-foreground/80" />
-              </div>
+              <PlayCircle className="h-4 w-4 text-foreground/60" />
             </div>
-          </CardHeader>
-          <CardContent className="flex min-h-[92px] items-end justify-between gap-4 pt-0">
+          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
             <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               Start the session, release injects, coordinate responses, and steer the live exercise.
             </span>
             <Button asChild variant="secondary" size="sm" className="shrink-0">
               <Link href="/facilitator/sessions">Sessions</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="h-full">
-          <CardHeader className="pb-3">
+        <section className="ui-row-panel h-full">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <CardTitle>3. Review</CardTitle>
+                <h2 className="text-base font-semibold">3. Review</h2>
               </div>
-              <div className="rounded-[12px] border border-[color:var(--studio-border)] bg-background/80 p-2">
-                <ClipboardList className="h-4 w-4 text-foreground/80" />
-              </div>
+              <ClipboardList className="h-4 w-4 text-foreground/60" />
             </div>
-          </CardHeader>
-          <CardContent className="flex min-h-[92px] items-end justify-between gap-4 pt-0">
+          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
             <span className="max-w-[30ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
               {reviewSummary}
             </span>
             <Button asChild variant="secondary" size="sm" className="shrink-0">
               <Link href={reviewTargetHref}>Review</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
     </div>
   );

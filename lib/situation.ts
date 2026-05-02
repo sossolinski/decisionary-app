@@ -33,10 +33,18 @@ export async function getSituationForSession(sessionId: string) {
       situation_type,
       short_description,
       location,
+      location_lat,
+      location_lng,
+      weather,
       injured,
       fatalities,
       uninjured,
-      unknown
+      unknown,
+      passenger_count,
+      crew_count,
+      cargo_weight_kg,
+      dangerous_goods_count,
+      live_animals_count
     `)
     .eq("id", session.scenario_id)
     .single();

@@ -13,6 +13,7 @@ import {
   type ScenarioInject,
 } from "@/lib/scenarios";
 import { getErrorMessage } from "@/lib/errors";
+import { copyTextToClipboard } from "@/lib/clientClipboard";
 import { normalizeSessionStatus } from "@/lib/sessionStatus";
 import { validateMessagePayload } from "@/lib/validators";
 import {
@@ -29,17 +30,28 @@ import {
   listSessionParticipantActivity,
   type SessionParticipantActivityRow,
 } from "@/lib/sessionsRuntime";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import InjectMediaField from "@/app/components/InjectMediaField";
 import { Input } from "@/app/components/ui/input";
 import Collapsible from "@/app/components/Collapsible";
-import { ChevronDown, ChevronUp, PlayCircle, Send, Sparkles, TimerReset, Users, Zap } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  ClipboardList,
+  Copy,
+  PlayCircle,
+  Radio,
+  RotateCcw,
+  Send,
+  Sparkles,
+  Square,
+  TimerReset,
+  Users,
+  Zap,
+} from "lucide-react";
 import { RULE_PRESETS } from "@/app/components/facilitator-scenarios/scenarioEditorUi";
 
 type SessionMeta = {
@@ -170,9 +182,77 @@ function summarizeEvaluation(row: SessionRuleEvaluation) {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1 text-xs font-semibold text-[color:var(--studio-ink)]">
+    <span className="inline-flex min-h-7 items-center rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))] px-2.5 py-1 text-xs font-semibold text-[color:var(--studio-ink)]">
       {children}
     </span>
+  );
+}
+
+function ToolMetric({
+  icon,
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  hint?: React.ReactNode;
+  tone?: "neutral" | "warning" | "danger" | "success";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-red-500/35 text-red-700 dark:text-red-200"
+      : tone === "warning"
+        ? "border-amber-500/35 text-amber-800 dark:text-amber-200"
+        : tone === "success"
+          ? "border-emerald-500/35 text-emerald-700 dark:text-emerald-200"
+          : "border-[var(--studio-border)] text-[color:var(--studio-ink)]";
+
+  return (
+    <div className={`min-h-[50px] rounded-[8px] border bg-[hsl(var(--background))] px-2.5 py-2 ${toneClass}`}>
+      <div className="flex min-w-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] opacity-70 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:stroke-[1.8]">
+        <span className="shrink-0 opacity-80">{icon}</span>
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="mt-1 flex min-w-0 items-baseline justify-between gap-2">
+        <span className="truncate text-base font-semibold leading-none">{value}</span>
+        {hint ? <span className="truncate text-xs font-semibold opacity-65">{hint}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function ToolSectionTitle({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className="shrink-0 text-[color:var(--studio-muted2)] [&_svg]:h-4 [&_svg]:w-4 [&_svg]:stroke-[1.8]">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-semibold leading-none text-[color:var(--studio-ink)]">{title}</div>
+        {subtitle ? (
+          <div className="mt-1 truncate text-xs font-semibold text-[color:var(--studio-muted2)]">{subtitle}</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function EmptyPanel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-[8px] border border-dashed border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 py-4 text-sm text-[color:var(--studio-muted2)]">
+      {children}
+    </div>
   );
 }
 
@@ -195,7 +275,7 @@ function Select({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm font-semibold text-foreground focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+      className="h-10 w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm font-semibold text-foreground focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
     >
       {children}
     </select>
@@ -219,10 +299,14 @@ export default function FacilitatorToolsPanel({
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [engineRefreshing, setEngineRefreshing] = useState(false);
+  const [joinCodeCopied, setJoinCodeCopied] = useState(false);
 
   // collapsibles
   const [injectReleaseOpen, setInjectReleaseOpen] = useState(false);
+  const [participantDetailsOpen, setParticipantDetailsOpen] = useState(false);
   const [quickMsgOpen, setQuickMsgOpen] = useState(false);
+  const [quickAdvancedOpen, setQuickAdvancedOpen] = useState(false);
+  const [runtimeDetailOpen, setRuntimeDetailOpen] = useState(false);
   const [latestInsightsOpen, setLatestInsightsOpen] = useState(false);
   const [traceHistoryOpen, setTraceHistoryOpen] = useState(false);
 
@@ -680,387 +764,404 @@ export default function FacilitatorToolsPanel({
     }
   }
 
+  async function copyJoinCode() {
+    const code = meta?.join_code?.trim();
+    if (!code) return;
+
+    const ok = await copyTextToClipboard(code);
+    setMsg(ok ? "Join code copied." : "Clipboard unavailable. Copy code manually.");
+    if (!ok) return;
+
+    setJoinCodeCopied(true);
+    window.setTimeout(() => setJoinCodeCopied(false), 1200);
+  }
+
   const controlBlock = (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge>{normalizeSessionStatus(meta?.status ?? null)}</Badge>
-        {meta?.join_code ? <Badge>Code {meta.join_code}</Badge> : null}
+    <section className="rounded-[8px] border border-[var(--studio-border-strong)] bg-[hsl(var(--card))] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <ToolSectionTitle
+          icon={<Radio />}
+          title="Session controls"
+          subtitle={operatorNextMove}
+        />
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {effectiveScenarioId ? (
+            <Link
+              href={`/facilitator/scenarios/${effectiveScenarioId}`}
+              className="inline-flex h-8 items-center justify-center rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 text-xs font-semibold text-[color:var(--studio-ink)] transition hover:border-[var(--studio-border-strong)]"
+            >
+              Scenario editor
+            </Link>
+          ) : null}
+          <Button variant="default" size="sm" onClick={startExercise} disabled={loading} className="gap-2">
+            <PlayCircle className="h-4 w-4" />
+            {loading ? "..." : "Start"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={endExercise} disabled={loading} className="gap-2">
+            <Square className="h-4 w-4" />
+            End
+          </Button>
+          <Button variant="outline" size="sm" onClick={restartExercise} disabled={loading} className="gap-2">
+            <RotateCcw className="h-4 w-4" />
+            Reset
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        <ToolMetric
+          icon={<Activity />}
+          label="Status"
+          value={
+            <span className="inline-flex items-center gap-2">
+              <span
+                className={[
+                  "h-2.5 w-2.5 rounded-full",
+                  sessionLive ? "bg-emerald-500 shadow-[0_0_0_4px_hsl(152_70%_45%/0.14)]" : "bg-[color:var(--studio-muted2)]",
+                ].join(" ")}
+              />
+              {normalizeSessionStatus(meta?.status ?? null)}
+            </span>
+          }
+          tone={sessionLive ? "success" : "neutral"}
+        />
+        <ToolMetric icon={<Users />} label="Participants" value={joinedParticipantsCount} hint={`${activeParticipantsCount} active`} />
+        <ToolMetric icon={<Zap />} label="Injects" value={pending.length} hint={`${scenarioInjects.length} total`} tone={pending.length > 0 ? "warning" : "neutral"} />
+        <ToolMetric icon={<ClipboardList />} label="Open tasks" value={openTasks.length} hint="active" />
+        <ToolMetric icon={<AlertTriangle />} label="Overdue" value={overdueTasks.length} hint="review" tone={overdueTasks.length > 0 ? "danger" : "neutral"} />
+        <ToolMetric icon={<Sparkles />} label="Traces" value={evaluationRows.length} hint={`${matchedTraceCount}/${skippedTraceCount}`} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--studio-border)] pt-2">
+        <button
+          type="button"
+          onClick={copyJoinCode}
+          disabled={!meta?.join_code}
+          className="inline-flex min-h-8 items-center gap-2 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 text-xs font-semibold text-[color:var(--studio-ink)] transition hover:border-[var(--studio-border-strong)] disabled:opacity-55"
+          title={meta?.join_code ? "Copy join code" : "No join code"}
+        >
+          {joinCodeCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+          <span>{meta?.join_code ? `Code ${meta.join_code}` : "No join code"}</span>
+        </button>
         {meta?.started_at ? <Badge>Started {fmtIso(meta.started_at)}</Badge> : null}
         {meta?.ended_at ? <Badge>Ended {fmtIso(meta.ended_at)}</Badge> : null}
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <Button variant="default" onClick={startExercise} disabled={loading}>
-          {loading ? "..." : "Start (T=0)"}
-        </Button>
-        <Button variant="destructive" onClick={endExercise} disabled={loading}>
-          {loading ? "..." : "End"}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={runManualRulesNow}
+          disabled={!sessionLive || engineRefreshing || manualRuleCount === 0}
+          className="ml-auto gap-2"
+        >
+          <PlayCircle className="h-4 w-4" />
+          Manual rules
         </Button>
         <Button
-          variant="secondary"
-          onClick={restartExercise}
-          disabled={loading}
+          variant="outline"
+          size="sm"
+          onClick={processOverdueNow}
+          disabled={!sessionLive || engineRefreshing}
+          className="gap-2"
         >
-          {loading ? "..." : "Restart"}
+          <TimerReset className="h-4 w-4" />
+          {engineRefreshing ? "Working..." : "Overdue"}
         </Button>
       </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {effectiveScenarioId ? (
-          <Link
-            href={`/facilitator/scenarios/${effectiveScenarioId}`}
-            className="inline-flex h-8 items-center justify-center rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 text-xs font-semibold text-[color:var(--studio-ink)] transition hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface2)]"
-          >
-            Scenario editor
-          </Link>
-        ) : null}
-      </div>
-    </div>
+    </section>
   );
 
   const participantsBlock = (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <Users className="h-4 w-4" />
-          Participants
+    <section className="overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
+      <button
+        type="button"
+        onClick={() => setParticipantDetailsOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+        aria-expanded={participantDetailsOpen}
+      >
+        <ToolSectionTitle
+          icon={<Users />}
+          title="Participants"
+          subtitle={`${joinedParticipantsCount} joined · ${activeParticipantsCount} active · ${participantsWithCompletedTasksCount} done`}
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">
+            {participantDetailsOpen ? "Hide" : "Show"}
+          </span>
+          {participantDetailsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
-        <Link
-          href={`/facilitator/sessions/${sessionId}/roster`}
-          className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
-        >
-          Open roster
-        </Link>
-      </div>
+      </button>
+      <Collapsible open={participantDetailsOpen}>
+        <div className="border-t border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+          <div className="mb-3 flex justify-end">
+            <Link
+              href={`/facilitator/sessions/${sessionId}/roster`}
+              className="text-xs font-semibold text-muted-foreground transition hover:text-foreground"
+            >
+              Open roster
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {participantRows.length === 0 ? (
+              <EmptyPanel>No participants have joined this session yet.</EmptyPanel>
+            ) : (
+              participantRows.slice(0, compact ? 5 : 6).map((row) => {
+                const state = getParticipantState(row);
 
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Joined
-          </div>
-          <div className="mt-1 text-lg font-semibold">{joinedParticipantsCount}</div>
-        </div>
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Active
-          </div>
-          <div className="mt-1 text-lg font-semibold">{activeParticipantsCount}</div>
-        </div>
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Tasks done
-          </div>
-          <div className="mt-1 text-lg font-semibold">{participantsWithCompletedTasksCount}</div>
-        </div>
-      </div>
-
-      <div className="mt-3 space-y-2">
-        {participantRows.length === 0 ? (
-          <div className="rounded-[12px] border border-dashed border-[var(--studio-border)] px-3 py-4 text-sm text-muted-foreground">
-            No participants have joined this session yet.
-          </div>
-        ) : (
-          participantRows.slice(0, compact ? 5 : 6).map((row) => {
-            const state = getParticipantState(row);
-
-            return (
-              <div
-                key={row.participant_id}
-                className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-foreground">
-                      {row.display_name ?? "Anonymous"}
+                return (
+                  <div
+                    key={row.participant_id}
+                    className="rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))] px-3 py-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-foreground">
+                          {row.display_name ?? "Anonymous"}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {row.role ? row.role.replaceAll("_", " ") : "participant"}
+                        </div>
+                      </div>
+                      <span
+                        className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${state.className}`}
+                      >
+                        {state.label}
+                      </span>
                     </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {row.role ? row.role.replaceAll("_", " ") : "participant"}
+
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>Joined {fmtShort(row.joined_at)}</span>
+                      {row.last_activity_at ? <span>Last active {fmtShort(row.last_activity_at)}</span> : null}
+                      {row.response_count > 0 ? <span>{row.response_count} responses</span> : null}
+                      {row.task_updates_count > 0 ? <span>{row.task_updates_count} task updates</span> : null}
+                      {row.completed_task_count > 0 ? <span>{row.completed_task_count} done</span> : null}
                     </div>
                   </div>
-                  <span
-                    className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${state.className}`}
-                  >
-                    {state.label}
-                  </span>
-                </div>
-
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                  <span>Joined {fmtShort(row.joined_at)}</span>
-                  {row.last_activity_at ? <span>Last active {fmtShort(row.last_activity_at)}</span> : null}
-                  {row.response_count > 0 ? <span>{row.response_count} responses</span> : null}
-                  {row.task_updates_count > 0 ? <span>{row.task_updates_count} task updates</span> : null}
-                  {row.completed_task_count > 0 ? <span>{row.completed_task_count} done</span> : null}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </Collapsible>
+    </section>
   );
 
   const engineBlock = (
-    <div className="rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="h-4 w-4" />
-          Runtime
+    <section className="overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
+      <button
+        type="button"
+        onClick={() => setRuntimeDetailOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+        aria-expanded={runtimeDetailOpen}
+      >
+        <ToolSectionTitle
+          icon={<Sparkles />}
+          title="Runtime detail"
+          subtitle={latestConsequence?.title ?? latestEvaluation?.rule_template?.rule_name ?? "Nothing generated yet"}
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground">
+            {runtimeDetailOpen ? "Hide" : "Show"}
+          </span>
+          {runtimeDetailOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={runManualRulesNow}
-            disabled={!sessionLive || engineRefreshing || manualRuleCount === 0}
-          >
-            <PlayCircle className="mr-2 h-4 w-4" />
-            Run manual rules
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={processOverdueNow}
-            disabled={!sessionLive || engineRefreshing}
-          >
-            <TimerReset className="mr-2 h-4 w-4" />
-            {engineRefreshing ? "Working..." : "Process overdue"}
-          </Button>
-        </div>
-      </div>
+      </button>
 
-      <div className="mb-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3 text-sm font-medium text-foreground">
-        {operatorNextMove}
-      </div>
-
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Pending injects</div>
-          <div className="mt-1 flex items-baseline justify-between gap-2">
-            <span className="text-lg font-semibold">{pending.length}</span>
-            <span className="text-xs text-muted-foreground">ready</span>
-          </div>
-        </div>
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Open tasks</div>
-          <div className="mt-1 flex items-baseline justify-between gap-2">
-            <span className="text-lg font-semibold">{openTasks.length}</span>
-            <span className="text-xs text-muted-foreground">active</span>
-          </div>
-        </div>
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Overdue</div>
-          <div className="mt-1 flex items-baseline justify-between gap-2">
-            <span className="text-lg font-semibold">{overdueTasks.length}</span>
-            <span className="text-xs text-muted-foreground">need review</span>
-          </div>
-        </div>
-        <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Developments</div>
-          <div className="mt-1 flex items-baseline justify-between gap-2">
-            <span className="text-lg font-semibold">{consequenceRows.length}</span>
-            <span className="text-xs text-muted-foreground">logged</span>
-          </div>
-        </div>
-      </div>
-
-      {oldestOverdueTask ? (
-        <div className="mt-2.5 rounded-[14px] border border-red-500/20 bg-red-500/8 p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300/90">
-            Oldest overdue follow-up
-          </div>
-          <div className="mt-1 text-sm font-semibold text-foreground">{oldestOverdueTask.title}</div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            {oldestOverdueTask.assigned_role
-              ? `Owner: ${oldestOverdueTask.assigned_role}`
-              : "No owner yet"}{" "}
-            • Due {fmtIso(oldestOverdueTask.due_at)}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="mt-3 overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
-        <button
-          type="button"
-          onClick={() => setLatestInsightsOpen((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
-          aria-expanded={latestInsightsOpen}
-        >
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Latest insight
+      <Collapsible open={runtimeDetailOpen}>
+        <div className="border-t border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+          {oldestOverdueTask ? (
+            <div className="mb-2.5 rounded-[8px] border border-red-500/20 bg-red-500/8 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300/90">
+                Oldest overdue follow-up
+              </div>
+              <div className="mt-1 text-sm font-semibold text-foreground">{oldestOverdueTask.title}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {oldestOverdueTask.assigned_role
+                  ? `Owner: ${oldestOverdueTask.assigned_role}`
+                  : "No owner yet"}{" "}
+                • Due {fmtIso(oldestOverdueTask.due_at)}
+              </div>
             </div>
-            <div className="mt-1 text-sm font-semibold text-foreground">
-              {latestConsequence?.title ??
-                latestEvaluation?.rule_template?.rule_name ??
-                "Nothing generated yet"}
-            </div>
-          </div>
-          {latestInsightsOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
-        </button>
-        <Collapsible open={latestInsightsOpen}>
-          <div className="border-t border-[var(--studio-border)] p-3">
-            {latestConsequence ? (
-              <div className="rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
+          ) : null}
+
+          <div className="overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
+            <button
+              type="button"
+              onClick={() => setLatestInsightsOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+              aria-expanded={latestInsightsOpen}
+            >
+              <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Latest development
+                  Latest insight
                 </div>
-                <div className="mt-1 text-sm font-semibold">{latestConsequence.title}</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {latestConsequence.consequence_type.replaceAll("_", " ")} • {fmtIso(latestConsequence.applied_at)}
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  {latestConsequence?.title ??
+                    latestEvaluation?.rule_template?.rule_name ??
+                    "Nothing generated yet"}
                 </div>
-                {latestConsequence.description ? (
-                  <div className="mt-2 text-sm text-foreground">{latestConsequence.description}</div>
+              </div>
+              {latestInsightsOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+            </button>
+            <Collapsible open={latestInsightsOpen}>
+              <div className="border-t border-[var(--studio-border)] p-3">
+                {latestConsequence ? (
+                  <div className="rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Latest development
+                    </div>
+                    <div className="mt-1 text-sm font-semibold">{latestConsequence.title}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {latestConsequence.consequence_type.replaceAll("_", " ")} • {fmtIso(latestConsequence.applied_at)}
+                    </div>
+                    {latestConsequence.description ? (
+                      <div className="mt-2 text-sm text-foreground">{latestConsequence.description}</div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {latestEvaluation ? (
+                  <div className="mt-2.5 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Latest rule trace
+                    </div>
+                    <div className="mt-1 text-sm font-semibold">
+                      {latestEvaluation.rule_template?.rule_name ?? latestEvaluation.event_type.replaceAll("_", " ")}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {latestEvaluationSummary ?? "No trace details recorded"} • {fmtIso(latestEvaluation.created_at)}
+                    </div>
+                  </div>
                 ) : null}
               </div>
-            ) : null}
+            </Collapsible>
+          </div>
 
-            {latestEvaluation ? (
-              <div className="mt-2.5 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-3">
+          <div className="mt-2 overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
+            <button
+              type="button"
+              onClick={() => setTraceHistoryOpen((value) => !value)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
+              aria-expanded={traceHistoryOpen}
+            >
+              <div>
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                  Latest rule trace
+                  Rule traces
                 </div>
-                <div className="mt-1 text-sm font-semibold">
-                  {latestEvaluation.rule_template?.rule_name ?? latestEvaluation.event_type.replaceAll("_", " ")}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {latestEvaluationSummary ?? "No trace details recorded"} • {fmtIso(latestEvaluation.created_at)}
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  Last {evaluationRows.length} evaluations
                 </div>
               </div>
-            ) : null}
-          </div>
-        </Collapsible>
-      </div>
-
-      <div className="mt-3 overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
-        <button
-          type="button"
-          onClick={() => setTraceHistoryOpen((value) => !value)}
-          className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
-          aria-expanded={traceHistoryOpen}
-        >
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Rule traces
-            </div>
-            <div className="mt-1 text-sm font-semibold text-foreground">
-              Last {evaluationRows.length} evaluations
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-700">
-              {matchedTraceCount} matched
-            </span>
-            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-700">
-              {skippedTraceCount} skipped
-            </span>
-            {traceHistoryOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
-          </div>
-        </button>
-        <Collapsible open={traceHistoryOpen}>
-          <div className="border-t border-[var(--studio-border)] p-3">
-            {evaluationRows.length === 0 ? (
-              <div className="rounded-[12px] border border-dashed border-[var(--studio-border)] px-3 py-4 text-sm text-muted-foreground">
-                No rule evaluations recorded yet for this session.
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-xs font-semibold text-emerald-700">
+                  {matchedTraceCount} matched
+                </span>
+                <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-700">
+                  {skippedTraceCount} skipped
+                </span>
+                {traceHistoryOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
               </div>
-            ) : (
-              <div className="space-y-2">
-            {evaluationRows.map((row) => {
-              const focus = describeEvaluationFocus(row);
-              const triggerLabel =
-                row.rule_template?.trigger_type?.replaceAll("_", " ") ??
-                row.event_type.replaceAll("_", " ");
+            </button>
+            <Collapsible open={traceHistoryOpen}>
+              <div className="border-t border-[var(--studio-border)] p-3">
+                {evaluationRows.length === 0 ? (
+                  <EmptyPanel>No rule evaluations recorded yet for this session.</EmptyPanel>
+                ) : (
+                  <div className="space-y-2">
+                {evaluationRows.map((row) => {
+                  const focus = describeEvaluationFocus(row);
+                  const triggerLabel =
+                    row.rule_template?.trigger_type?.replaceAll("_", " ") ??
+                    row.event_type.replaceAll("_", " ");
 
-              return (
-                <div
-                  key={row.id}
-                  className="rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={
-                            row.matched
-                              ? "rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700"
-                              : "rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700"
-                          }
-                        >
-                          {row.matched ? "Matched" : "Skipped"}
-                        </span>
-                        <span className="text-sm font-semibold text-foreground">
-                          {row.rule_template?.rule_name ?? row.event_type.replaceAll("_", " ")}
-                        </span>
+                  return (
+                    <div
+                      key={row.id}
+                      className="rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 py-3"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={
+                                row.matched
+                                  ? "rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-700"
+                                  : "rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-700"
+                              }
+                            >
+                              {row.matched ? "Matched" : "Skipped"}
+                            </span>
+                            <span className="text-sm font-semibold text-foreground">
+                              {row.rule_template?.rule_name ?? row.event_type.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {summarizeEvaluation(row)}
+                          </div>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          <div>{fmtIso(row.created_at)}</div>
+                          <div className="mt-1">trigger: {triggerLabel}</div>
+                        </div>
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
-                        {summarizeEvaluation(row)}
+
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
+                        {row.rule_template?.rule_key ? (
+                          <span>
+                            key: <span className="text-foreground">{row.rule_template.rule_key}</span>
+                          </span>
+                        ) : null}
+                        {focus ? (
+                          <span>
+                            focus: <span className="text-foreground">{focus}</span>
+                          </span>
+                        ) : null}
+                        {readContextValue(row.context, "source") ? (
+                          <span>
+                            source:{" "}
+                            <span className="text-foreground">
+                              {readContextValue(row.context, "source")}
+                            </span>
+                          </span>
+                        ) : null}
+                        {readContextValue(row.context, "task_status") ? (
+                          <span>
+                            task:{" "}
+                            <span className="text-foreground">
+                              {readContextValue(row.context, "task_status")?.replaceAll("_", " ")}
+                            </span>
+                          </span>
+                        ) : null}
                       </div>
-                    </div>
-                    <div className="text-right text-xs text-muted-foreground">
-                      <div>{fmtIso(row.created_at)}</div>
-                      <div className="mt-1">trigger: {triggerLabel}</div>
-                    </div>
-                  </div>
 
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold text-muted-foreground">
-                    {row.rule_template?.rule_key ? (
-                      <span>
-                        key: <span className="text-foreground">{row.rule_template.rule_key}</span>
-                      </span>
-                    ) : null}
-                    {focus ? (
-                      <span>
-                        focus: <span className="text-foreground">{focus}</span>
-                      </span>
-                    ) : null}
-                    {readContextValue(row.context, "source") ? (
-                      <span>
-                        source:{" "}
-                        <span className="text-foreground">
-                          {readContextValue(row.context, "source")}
-                        </span>
-                      </span>
-                    ) : null}
-                    {readContextValue(row.context, "task_status") ? (
-                      <span>
-                        task:{" "}
-                        <span className="text-foreground">
-                          {readContextValue(row.context, "task_status")?.replaceAll("_", " ")}
-                        </span>
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {row.rule_template?.description ? (
-                    <div className="mt-2 text-sm text-foreground/80">
-                      {row.rule_template.description}
+                      {row.rule_template?.description ? (
+                        <div className="mt-2 text-sm text-foreground/80">
+                          {row.rule_template.description}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            )}
+            </div>
+            </Collapsible>
           </div>
-        )}
-          </div>
-        </Collapsible>
-      </div>
-    </div>
+        </div>
+      </Collapsible>
+    </section>
   );
 
   const injectBlock = (
-    <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
+    <section className="overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
             <button
               onClick={() => setInjectReleaseOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
             >
-              <div className="flex items-center gap-2">
-                <Zap className="h-4 w-4" />
-                <div>
-                  <div className="text-sm font-semibold">Inject release</div>
-                  <div className="text-xs font-semibold text-muted-foreground">
-                    {pending.length} pending of {scenarioInjects.length}
-                  </div>
-                </div>
-              </div>
+              <ToolSectionTitle
+                icon={<Zap />}
+                title="Inject release"
+                subtitle={`${pending.length} pending of ${scenarioInjects.length}`}
+              />
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-muted-foreground">
@@ -1075,27 +1176,8 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {injectReleaseOpen ? (
-              <div className="border-t border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={deliverDue}
-                    disabled={!sessionLive || loading}
-                  >
-                    Deliver due
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={deliverNextPending}
-                    disabled={!sessionLive || loading || pending.length === 0}
-                  >
-                    Deliver next
-                  </Button>
-                </div>
-
-                <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <div className="border-t border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+                <div className="grid gap-2">
                   <Select value={selectedSiId} onChange={setSelectedSiId}>
                     <option value="">— Select pending inject —</option>
                     {pending.map((si) => (
@@ -1107,17 +1189,39 @@ export default function FacilitatorToolsPanel({
                     ))}
                   </Select>
 
-                  <Button
-                    variant="default"
-                    onClick={deliverSelected}
-                    disabled={!sessionLive || loading || !selectedSI?.inject_id}
-                  >
-                    Deliver now
-                  </Button>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={deliverDue}
+                      disabled={!sessionLive || loading}
+                      className="h-10"
+                    >
+                      Due
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={deliverNextPending}
+                      disabled={!sessionLive || loading || pending.length === 0}
+                      className="h-10"
+                    >
+                      Next
+                    </Button>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={deliverSelected}
+                      disabled={!sessionLive || loading || !selectedSI?.inject_id}
+                      className="h-10"
+                    >
+                      Now
+                    </Button>
+                  </div>
                 </div>
 
                 {selectedSI ? (
-                  <div className="mt-3 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
+                  <div className="mt-3 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
                     <div className="text-xs font-semibold text-muted-foreground">
                       Preview
                     </div>
@@ -1147,7 +1251,7 @@ export default function FacilitatorToolsPanel({
                               key={media.id}
                               src={media.signed_url ?? undefined}
                               alt={media.alt_text ?? selectedSI.injects?.title ?? "Inject image"}
-                              className="aspect-[4/3] w-full rounded-[12px] border border-[var(--studio-border)] object-cover"
+                              className="aspect-[4/3] w-full rounded-[8px] border border-[var(--studio-border)] object-cover"
                             />
                           ))}
                       </div>
@@ -1156,24 +1260,16 @@ export default function FacilitatorToolsPanel({
                 ) : null}
               </div>
             ) : null}
-          </div>
+    </section>
   );
 
   const quickMessageBlock = (
-    <div className="overflow-hidden rounded-[16px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+    <section className="overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
             <button
               onClick={() => setQuickMsgOpen((v) => !v)}
-              className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left"
             >
-              <div className="flex items-center gap-2">
-                <Send className="h-4 w-4 opacity-80" />
-                <div>
-                  <div className="text-sm font-semibold">Quick message</div>
-                  <div className="text-xs font-medium text-muted-foreground">
-                    Send an ad-hoc inject
-                  </div>
-                </div>
-              </div>
+              <ToolSectionTitle icon={<Send />} title="Quick message" subtitle="Send an ad-hoc inject" />
 
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-muted-foreground">
@@ -1188,8 +1284,8 @@ export default function FacilitatorToolsPanel({
             </button>
 
             {quickMsgOpen ? (
-              <div className="border-t border-[var(--studio-border)] bg-[color:var(--studio-surface)] p-3">
-                <div className="grid gap-3 sm:grid-cols-2">
+              <div className="border-t border-[var(--studio-border)] bg-[hsl(var(--background))] p-3">
+                <div className="space-y-3">
                   <div className="space-y-1">
                     <label htmlFor={quickTitleId} className="text-sm font-semibold">Title</label>
                     <Input
@@ -1208,49 +1304,58 @@ export default function FacilitatorToolsPanel({
                     </Select>
                   </div>
 
-                  <div className="space-y-1 sm:col-span-2">
+                  <div className="space-y-1">
                     <label htmlFor={quickBodyId} className="text-sm font-semibold">Body</label>
                     <textarea
                       id={quickBodyId}
                       value={qmBody}
                       onChange={(e) => setQmBody(e.target.value)}
-                      className="min-h-[96px] w-full rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
+                      className="min-h-[112px] w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2 text-sm focus-visible:shadow-[var(--studio-ring)] focus-visible:outline-none"
                       placeholder="Write the message..."
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
-                    <InjectMediaField
-                      existingMedia={[]}
-                      pendingFiles={qmMediaFiles}
-                      onAddFiles={(files) =>
-                        setQmMediaFiles((prev) => [...prev, ...createPendingInjectMedia(files, qmTitle)])
-                      }
-                      onMovePending={(fromIndex, toIndex) =>
-                        setQmMediaFiles((prev) => {
-                          if (toIndex < 0 || toIndex >= prev.length || fromIndex === toIndex) return prev;
-                          const next = [...prev];
-                          const [moved] = next.splice(fromIndex, 1);
-                          next.splice(toIndex, 0, moved);
-                          return next;
-                        })
-                      }
-                      onUpdatePendingAlt={(index, altText) =>
-                        setQmMediaFiles((prev) =>
-                          prev.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, alt_text: altText } : item
-                          )
-                        )
-                      }
-                      onRemovePending={(index) =>
-                        setQmMediaFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
-                      }
-                      disabled={!sessionLive || loading}
-                    />
-                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setQuickAdvancedOpen((value) => !value)}
+                      className="flex h-10 w-full items-center justify-between rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))] px-3 text-left text-sm font-semibold"
+                      aria-expanded={quickAdvancedOpen}
+                    >
+                      <span>Options, images, decision flow</span>
+                      {quickAdvancedOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                    <Collapsible open={quickAdvancedOpen}>
+                      <div className="mt-2 space-y-3 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))] p-3">
+                        <InjectMediaField
+                          existingMedia={[]}
+                          pendingFiles={qmMediaFiles}
+                          onAddFiles={(files) =>
+                            setQmMediaFiles((prev) => [...prev, ...createPendingInjectMedia(files, qmTitle)])
+                          }
+                          onMovePending={(fromIndex, toIndex) =>
+                            setQmMediaFiles((prev) => {
+                              if (toIndex < 0 || toIndex >= prev.length || fromIndex === toIndex) return prev;
+                              const next = [...prev];
+                              const [moved] = next.splice(fromIndex, 1);
+                              next.splice(toIndex, 0, moved);
+                              return next;
+                            })
+                          }
+                          onUpdatePendingAlt={(index, altText) =>
+                            setQmMediaFiles((prev) =>
+                              prev.map((item, itemIndex) =>
+                                itemIndex === index ? { ...item, alt_text: altText } : item
+                              )
+                            )
+                          }
+                          onRemovePending={(index) =>
+                            setQmMediaFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
+                          }
+                          disabled={!sessionLive || loading}
+                        />
 
-                  <div className="space-y-2 sm:col-span-2 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label htmlFor={quickSeverityId} className="text-sm font-semibold">Severity</label>
                         <Select id={quickSeverityId} value={qmSeverity} onChange={setQmSeverity}>
@@ -1271,33 +1376,35 @@ export default function FacilitatorToolsPanel({
                           placeholder="Facilitator"
                         />
                       </div>
-                    </div>
-                  </div>
+                        </div>
 
-                  <div className="space-y-2 sm:col-span-2 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-3">
-                    <div className="text-sm font-semibold">Decision flow</div>
-                    <label htmlFor={quickDecisionRequiredId} className="flex items-center gap-2 text-sm text-foreground">
-                      <input
-                        id={quickDecisionRequiredId}
-                        type="checkbox"
-                        checked={qmRequiresDecision}
-                        onChange={(e) => setQmRequiresDecision(e.target.checked)}
-                      />
-                      Mark this message as decision-required
-                    </label>
-                    <Select
-                      id={quickDecisionTemplateId}
-                      value={qmDecisionTemplateKey}
-                      onChange={setQmDecisionTemplateKey}
-                      disabled={!qmRequiresDecision}
-                    >
-                      <option value="">No decision template</option>
-                      {decisionTemplateOptions.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </Select>
+                        <div className="space-y-2">
+                          <div className="text-sm font-semibold">Decision flow</div>
+                          <label htmlFor={quickDecisionRequiredId} className="flex items-center gap-2 text-sm text-foreground">
+                            <input
+                              id={quickDecisionRequiredId}
+                              type="checkbox"
+                              checked={qmRequiresDecision}
+                              onChange={(e) => setQmRequiresDecision(e.target.checked)}
+                            />
+                            Mark as decision-required
+                          </label>
+                          <Select
+                            id={quickDecisionTemplateId}
+                            value={qmDecisionTemplateKey}
+                            onChange={setQmDecisionTemplateKey}
+                            disabled={!qmRequiresDecision}
+                          >
+                            <option value="">No decision template</option>
+                            {decisionTemplateOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                    </Collapsible>
                   </div>
                 </div>
 
@@ -1306,42 +1413,53 @@ export default function FacilitatorToolsPanel({
                     variant="default"
                     onClick={sendQuickMessage}
                     disabled={!sessionLive || loading}
+                    className="h-10 min-w-[144px]"
                   >
                     {loading ? "..." : "Send message"}
                   </Button>
                 </div>
               </div>
             ) : null}
-          </div>
+    </section>
   );
 
   const messageBlock = msg ? (
-    <div className="rounded-[12px] border border-emerald-500/20 bg-emerald-500/8 px-3 py-2 text-xs font-semibold text-emerald-800">
+    <div className="rounded-[8px] border border-emerald-500/20 bg-emerald-500/8 px-3 py-2 text-xs font-semibold text-emerald-800">
       {msg}
     </div>
   ) : null;
 
   const content = compact ? (
-    <div className="grid gap-3.5 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
-      <div className="space-y-3.5">
-        {controlBlock}
-        {participantsBlock}
-        {injectBlock}
-        {quickMessageBlock}
-        {messageBlock}
-      </div>
-      <div className="space-y-3.5">
-        {engineBlock}
+    <div className="space-y-3">
+      {controlBlock}
+      {messageBlock}
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <div className="space-y-3">
+          {participantsBlock}
+          {injectBlock}
+          {quickMessageBlock}
+        </div>
+        <div className="space-y-3">
+          {engineBlock}
+        </div>
       </div>
     </div>
   ) : (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {controlBlock}
-      {participantsBlock}
-      {engineBlock}
-      {injectBlock}
-      {quickMessageBlock}
       {messageBlock}
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,0.82fr)_minmax(0,1.18fr)]">
+        <div className="space-y-3">
+          {participantsBlock}
+        </div>
+        <div className="space-y-3">
+          {engineBlock}
+        </div>
+      </div>
+      <div className="grid gap-3 xl:grid-cols-2">
+        {injectBlock}
+        {quickMessageBlock}
+      </div>
     </div>
   );
 
@@ -1349,15 +1467,5 @@ export default function FacilitatorToolsPanel({
     return <div className="space-y-4">{content}</div>;
   }
 
-  return (
-    <div className="space-y-3">
-      <Card className="surface-solid border border-[var(--studio-border)] shadow-none">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Facilitator tools</CardTitle>
-        </CardHeader>
-
-        <CardContent className="space-y-4">{content}</CardContent>
-      </Card>
-    </div>
-  );
+  return <div className="space-y-3">{content}</div>;
 }

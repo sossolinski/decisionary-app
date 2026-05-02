@@ -15,6 +15,7 @@ import { getErrorMessage } from "@/lib/errors";
 import {
   getSessionSituation,
   updateCasualties,
+  updateSessionManifest,
   type SessionSituation,
   type SessionInject,
   getSessionActions,
@@ -1634,6 +1635,17 @@ export default function SessionParticipantPage() {
           });
           setSituation(s);
         }}
+        onUpdateManifest={async (p) => {
+          const s = await updateSessionManifest({
+            sessionId,
+            passengerCount: p.passengerCount,
+            crewCount: p.crewCount,
+            cargoWeightKg: p.cargoWeightKg,
+            dangerousGoodsCount: p.dangerousGoodsCount,
+            liveAnimalsCount: p.liveAnimalsCount,
+          });
+          setSituation(s);
+        }}
         applySessionMeta={applySessionMeta}
       />
 
@@ -1726,8 +1738,8 @@ export default function SessionParticipantPage() {
       />
 
       {canUseFacilitatorUi ? (
-        <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <div className="flex items-center justify-between gap-3 py-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 Detailed session view
@@ -1739,7 +1751,7 @@ export default function SessionParticipantPage() {
               onClick={() => setAdvancedInsightsOpen((value) => !value)}
               aria-expanded={advancedInsightsOpen}
               aria-controls={insightsPanelId}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)] focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-transparent bg-transparent text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border)] hover:text-[color:var(--studio-ink)] focus:outline-none focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
             >
               <ChevronDown
                 className={[

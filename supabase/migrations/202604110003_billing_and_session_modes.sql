@@ -305,12 +305,19 @@ begin
     event_time,
     timezone,
     location,
+    location_lat,
+    location_lng,
     situation_type,
     short_description,
     injured,
     fatalities,
     uninjured,
     unknown,
+    passenger_count,
+    crew_count,
+    cargo_weight_kg,
+    dangerous_goods_count,
+    live_animals_count,
     updated_by
   )
   values (
@@ -319,12 +326,19 @@ begin
     v_scenario.event_time,
     v_scenario.timezone,
     v_scenario.location,
+    v_scenario.location_lat,
+    v_scenario.location_lng,
     v_scenario.situation_type,
     v_scenario.short_description,
     v_scenario.injured,
     v_scenario.fatalities,
     v_scenario.uninjured,
     v_scenario.unknown,
+    v_scenario.passenger_count,
+    v_scenario.crew_count,
+    v_scenario.cargo_weight_kg,
+    v_scenario.dangerous_goods_count,
+    v_scenario.live_animals_count,
     v_uid
   )
   on conflict (session_id) do nothing;
@@ -438,12 +452,19 @@ begin
     event_time,
     timezone,
     location,
+    location_lat,
+    location_lng,
     situation_type,
     short_description,
     injured,
     fatalities,
     uninjured,
     unknown,
+    passenger_count,
+    crew_count,
+    cargo_weight_kg,
+    dangerous_goods_count,
+    live_animals_count,
     updated_by
   )
   values (
@@ -452,12 +473,19 @@ begin
     v_scenario.event_time,
     v_scenario.timezone,
     v_scenario.location,
+    v_scenario.location_lat,
+    v_scenario.location_lng,
     v_scenario.situation_type,
     v_scenario.short_description,
     v_scenario.injured,
     v_scenario.fatalities,
     v_scenario.uninjured,
     v_scenario.unknown,
+    v_scenario.passenger_count,
+    v_scenario.crew_count,
+    v_scenario.cargo_weight_kg,
+    v_scenario.dangerous_goods_count,
+    v_scenario.live_animals_count,
     v_uid
   )
   on conflict (session_id) do nothing;

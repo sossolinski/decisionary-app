@@ -58,6 +58,13 @@ type PendingConfirm = {
   onConfirm: () => Promise<void>;
 };
 
+function asNullableNumber(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export default function FacilitatorScenarioEditorPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -80,12 +87,20 @@ export default function FacilitatorScenarioEditorPage() {
   const [eventTime, setEventTime] = useState("");
   const [timezone, setTimezone] = useState("");
   const [location, setLocation] = useState("");
+  const [locationLat, setLocationLat] = useState("");
+  const [locationLng, setLocationLng] = useState("");
+  const [weather, setWeather] = useState("");
   const [situationType, setSituationType] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [injured, setInjured] = useState("0");
   const [fatalities, setFatalities] = useState("0");
   const [uninjured, setUninjured] = useState("0");
   const [unknown, setUnknown] = useState("0");
+  const [passengerCount, setPassengerCount] = useState("0");
+  const [crewCount, setCrewCount] = useState("0");
+  const [cargoWeightKg, setCargoWeightKg] = useState("0");
+  const [dangerousGoodsCount, setDangerousGoodsCount] = useState("0");
+  const [liveAnimalsCount, setLiveAnimalsCount] = useState("0");
 
   const [niTitle, setNiTitle] = useState("");
   const [niBody, setNiBody] = useState("");
@@ -124,12 +139,20 @@ export default function FacilitatorScenarioEditorPage() {
   const eventTimeId = `${formId}-event-time`;
   const eventTimezoneId = `${formId}-event-timezone`;
   const eventLocationId = `${formId}-event-location`;
+  const eventLocationLatId = `${formId}-event-location-lat`;
+  const eventLocationLngId = `${formId}-event-location-lng`;
+  const eventWeatherId = `${formId}-event-weather`;
   const situationTypeId = `${formId}-situation-type`;
   const shortDescriptionId = `${formId}-short-description`;
   const injuredId = `${formId}-injured`;
   const fatalitiesId = `${formId}-fatalities`;
   const uninjuredId = `${formId}-uninjured`;
   const unknownId = `${formId}-unknown`;
+  const passengerCountId = `${formId}-passenger-count`;
+  const crewCountId = `${formId}-crew-count`;
+  const cargoWeightKgId = `${formId}-cargo-weight-kg`;
+  const dangerousGoodsCountId = `${formId}-dangerous-goods-count`;
+  const liveAnimalsCountId = `${formId}-live-animals-count`;
   const newInjectPanelId = `${formId}-new-inject-panel`;
   const newRulePanelId = `${formId}-new-rule-panel`;
   const niTitleId = `${formId}-new-inject-title`;
@@ -174,12 +197,20 @@ export default function FacilitatorScenarioEditorPage() {
       setEventTime(s?.event_time ?? "");
       setTimezone(s?.timezone ?? "");
       setLocation(s?.location ?? "");
+      setLocationLat(s?.location_lat == null ? "" : String(s.location_lat));
+      setLocationLng(s?.location_lng == null ? "" : String(s.location_lng));
+      setWeather(s?.weather ?? "");
       setSituationType(s?.situation_type ?? "");
       setShortDescription(s?.short_description ?? "");
       setInjured(String(s?.injured ?? 0));
       setFatalities(String(s?.fatalities ?? 0));
       setUninjured(String(s?.uninjured ?? 0));
       setUnknown(String(s?.unknown ?? 0));
+      setPassengerCount(String(s?.passenger_count ?? 0));
+      setCrewCount(String(s?.crew_count ?? 0));
+      setCargoWeightKg(String(s?.cargo_weight_kg ?? 0));
+      setDangerousGoodsCount(String(s?.dangerous_goods_count ?? 0));
+      setLiveAnimalsCount(String(s?.live_animals_count ?? 0));
     } catch (e: unknown) {
       setError(errMessage(e, "Failed to load scenario."));
     } finally {
@@ -217,12 +248,20 @@ export default function FacilitatorScenarioEditorPage() {
       eventTime !== (scenario.event_time ?? "") ||
       timezone !== (scenario.timezone ?? "") ||
       location !== (scenario.location ?? "") ||
+      asNullableNumber(locationLat) !== (scenario.location_lat ?? null) ||
+      asNullableNumber(locationLng) !== (scenario.location_lng ?? null) ||
+      weather !== (scenario.weather ?? "") ||
       situationType !== (scenario.situation_type ?? "") ||
       shortDescription !== (scenario.short_description ?? "") ||
       asInt(injured) !== (scenario.injured ?? 0) ||
       asInt(fatalities) !== (scenario.fatalities ?? 0) ||
       asInt(uninjured) !== (scenario.uninjured ?? 0) ||
-      asInt(unknown) !== (scenario.unknown ?? 0)
+      asInt(unknown) !== (scenario.unknown ?? 0) ||
+      asInt(passengerCount) !== (scenario.passenger_count ?? 0) ||
+      asInt(crewCount) !== (scenario.crew_count ?? 0) ||
+      asInt(cargoWeightKg) !== (scenario.cargo_weight_kg ?? 0) ||
+      asInt(dangerousGoodsCount) !== (scenario.dangerous_goods_count ?? 0) ||
+      asInt(liveAnimalsCount) !== (scenario.live_animals_count ?? 0)
     );
   }, [
     scenario,
@@ -232,12 +271,20 @@ export default function FacilitatorScenarioEditorPage() {
     eventTime,
     timezone,
     location,
+    locationLat,
+    locationLng,
+    weather,
     situationType,
     shortDescription,
     injured,
     fatalities,
     uninjured,
     unknown,
+    passengerCount,
+    crewCount,
+    cargoWeightKg,
+    dangerousGoodsCount,
+    liveAnimalsCount,
   ]);
 
   function clearNewInjectDraft() {
@@ -289,12 +336,20 @@ export default function FacilitatorScenarioEditorPage() {
         event_time: eventTime.trim() || null,
         timezone: timezone.trim() || null,
         location: location.trim() || null,
+        location_lat: asNullableNumber(locationLat),
+        location_lng: asNullableNumber(locationLng),
+        weather: weather.trim() || null,
         situation_type: situationType.trim() || null,
         short_description: shortDescription.trim() || null,
         injured: asInt(injured),
         fatalities: asInt(fatalities),
         uninjured: asInt(uninjured),
         unknown: asInt(unknown),
+        passenger_count: asInt(passengerCount),
+        crew_count: asInt(crewCount),
+        cargo_weight_kg: asInt(cargoWeightKg),
+        dangerous_goods_count: asInt(dangerousGoodsCount),
+        live_animals_count: asInt(liveAnimalsCount),
       };
 
       const updated = await updateScenario(id, patch);
@@ -305,12 +360,20 @@ export default function FacilitatorScenarioEditorPage() {
       setEventTime(updated.event_time ?? "");
       setTimezone(updated.timezone ?? "");
       setLocation(updated.location ?? "");
+      setLocationLat(updated.location_lat == null ? "" : String(updated.location_lat));
+      setLocationLng(updated.location_lng == null ? "" : String(updated.location_lng));
+      setWeather(updated.weather ?? "");
       setSituationType(updated.situation_type ?? "");
       setShortDescription(updated.short_description ?? "");
       setInjured(String(updated.injured ?? 0));
       setFatalities(String(updated.fatalities ?? 0));
       setUninjured(String(updated.uninjured ?? 0));
       setUnknown(String(updated.unknown ?? 0));
+      setPassengerCount(String(updated.passenger_count ?? 0));
+      setCrewCount(String(updated.crew_count ?? 0));
+      setCargoWeightKg(String(updated.cargo_weight_kg ?? 0));
+      setDangerousGoodsCount(String(updated.dangerous_goods_count ?? 0));
+      setLiveAnimalsCount(String(updated.live_animals_count ?? 0));
     } catch (e: unknown) {
       setError(errMessage(e, "Failed to save scenario."));
     } finally {
@@ -696,12 +759,20 @@ export default function FacilitatorScenarioEditorPage() {
         eventTimeId={eventTimeId}
         eventTimezoneId={eventTimezoneId}
         eventLocationId={eventLocationId}
+        eventLocationLatId={eventLocationLatId}
+        eventLocationLngId={eventLocationLngId}
+        eventWeatherId={eventWeatherId}
         situationTypeId={situationTypeId}
         shortDescriptionId={shortDescriptionId}
         injuredId={injuredId}
         fatalitiesId={fatalitiesId}
         uninjuredId={uninjuredId}
         unknownId={unknownId}
+        passengerCountId={passengerCountId}
+        crewCountId={crewCountId}
+        cargoWeightKgId={cargoWeightKgId}
+        dangerousGoodsCountId={dangerousGoodsCountId}
+        liveAnimalsCountId={liveAnimalsCountId}
         title={title}
         setTitle={setTitle}
         description={description}
@@ -714,6 +785,12 @@ export default function FacilitatorScenarioEditorPage() {
         setTimezone={setTimezone}
         location={location}
         setLocation={setLocation}
+        locationLat={locationLat}
+        setLocationLat={setLocationLat}
+        locationLng={locationLng}
+        setLocationLng={setLocationLng}
+        weather={weather}
+        setWeather={setWeather}
         situationType={situationType}
         setSituationType={setSituationType}
         shortDescription={shortDescription}
@@ -726,6 +803,16 @@ export default function FacilitatorScenarioEditorPage() {
         setUninjured={setUninjured}
         unknown={unknown}
         setUnknown={setUnknown}
+        passengerCount={passengerCount}
+        setPassengerCount={setPassengerCount}
+        crewCount={crewCount}
+        setCrewCount={setCrewCount}
+        cargoWeightKg={cargoWeightKg}
+        setCargoWeightKg={setCargoWeightKg}
+        dangerousGoodsCount={dangerousGoodsCount}
+        setDangerousGoodsCount={setDangerousGoodsCount}
+        liveAnimalsCount={liveAnimalsCount}
+        setLiveAnimalsCount={setLiveAnimalsCount}
       />
 
       <ScenarioInjectsSection

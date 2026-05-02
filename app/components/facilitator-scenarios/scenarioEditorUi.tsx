@@ -213,7 +213,6 @@ export function Select({
         "h-10 w-full rounded-[var(--radius)] px-3 text-sm",
         "border border-[var(--studio-border)]",
         "bg-background text-foreground",
-        "shadow-[0_1px_2px_hsl(220_20%_20%/0.06)]",
         "hover:border-[var(--studio-border-strong)]",
         "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
         "transition-[box-shadow,border-color,background-color] duration-150",
