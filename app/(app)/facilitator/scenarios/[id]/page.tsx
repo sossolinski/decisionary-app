@@ -35,12 +35,14 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
+import HintTooltip from "@/app/components/HintTooltip";
 import ScenarioDetailsSection from "@/app/components/facilitator-scenarios/ScenarioDetailsSection";
 import ScenarioInjectsSection from "@/app/components/facilitator-scenarios/ScenarioInjectsSection";
 import ScenarioRulesSection from "@/app/components/facilitator-scenarios/ScenarioRulesSection";
 import {
   RULE_PRESETS,
   RULE_TRIGGER_OPTIONS,
+  EDITOR_ICON,
   asInt,
   errMessage,
   fmt,
@@ -56,6 +58,11 @@ type PendingConfirm = {
   confirmLabel: string;
   tone?: "default" | "destructive";
   onConfirm: () => Promise<void>;
+};
+
+type LoadOptions = {
+  showLoading?: boolean;
+  hydrateForm?: boolean;
 };
 
 function asNullableNumber(value: string) {
@@ -178,8 +185,8 @@ export default function FacilitatorScenarioEditorPage() {
   const nrConditionConfigId = `${formId}-new-rule-condition-config`;
   const nrEffectConfigId = `${formId}-new-rule-effect-config`;
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ showLoading = true, hydrateForm = true }: LoadOptions = {}) => {
+    if (showLoading) setLoading(true);
     setError(null);
     try {
       const [s, si, ruleRows] = await Promise.all([
@@ -191,44 +198,39 @@ export default function FacilitatorScenarioEditorPage() {
       setInjects(si ?? []);
       setRules(ruleRows ?? []);
 
-      setTitle(s?.title ?? "");
-      setDescription(s?.description ?? "");
-      setEventDate(s?.event_date ?? "");
-      setEventTime(s?.event_time ?? "");
-      setTimezone(s?.timezone ?? "");
-      setLocation(s?.location ?? "");
-      setLocationLat(s?.location_lat == null ? "" : String(s.location_lat));
-      setLocationLng(s?.location_lng == null ? "" : String(s.location_lng));
-      setWeather(s?.weather ?? "");
-      setSituationType(s?.situation_type ?? "");
-      setShortDescription(s?.short_description ?? "");
-      setInjured(String(s?.injured ?? 0));
-      setFatalities(String(s?.fatalities ?? 0));
-      setUninjured(String(s?.uninjured ?? 0));
-      setUnknown(String(s?.unknown ?? 0));
-      setPassengerCount(String(s?.passenger_count ?? 0));
-      setCrewCount(String(s?.crew_count ?? 0));
-      setCargoWeightKg(String(s?.cargo_weight_kg ?? 0));
-      setDangerousGoodsCount(String(s?.dangerous_goods_count ?? 0));
-      setLiveAnimalsCount(String(s?.live_animals_count ?? 0));
+      if (hydrateForm) {
+        setTitle(s?.title ?? "");
+        setDescription(s?.description ?? "");
+        setEventDate(s?.event_date ?? "");
+        setEventTime(s?.event_time ?? "");
+        setTimezone(s?.timezone ?? "");
+        setLocation(s?.location ?? "");
+        setLocationLat(s?.location_lat == null ? "" : String(s.location_lat));
+        setLocationLng(s?.location_lng == null ? "" : String(s.location_lng));
+        setWeather(s?.weather ?? "");
+        setSituationType(s?.situation_type ?? "");
+        setShortDescription(s?.short_description ?? "");
+        setInjured(String(s?.injured ?? 0));
+        setFatalities(String(s?.fatalities ?? 0));
+        setUninjured(String(s?.uninjured ?? 0));
+        setUnknown(String(s?.unknown ?? 0));
+        setPassengerCount(String(s?.passenger_count ?? 0));
+        setCrewCount(String(s?.crew_count ?? 0));
+        setCargoWeightKg(String(s?.cargo_weight_kg ?? 0));
+        setDangerousGoodsCount(String(s?.dangerous_goods_count ?? 0));
+        setLiveAnimalsCount(String(s?.live_animals_count ?? 0));
+      }
     } catch (e: unknown) {
       setError(errMessage(e, "Failed to load scenario."));
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [id]);
 
   useEffect(() => {
     if (roleLoading || !canFacilitate) return;
-    void load();
+    void load({ showLoading: true, hydrateForm: true });
   }, [roleLoading, canFacilitate, load]);
-
-  useAutoRefresh(
-    async () => {
-      await load();
-    },
-    { enabled: !roleLoading && canFacilitate && !saving, intervalMs: 30000 }
-  );
 
   const sortedInjects = useMemo(() => {
     return [...injects].sort((a, b) => {
@@ -286,6 +288,23 @@ export default function FacilitatorScenarioEditorPage() {
     dangerousGoodsCount,
     liveAnimalsCount,
   ]);
+
+  const isEditingLocally = Boolean(
+    hasChanges ||
+      newInjectOpen ||
+      openSiId ||
+      newRuleOpen ||
+      openRuleId ||
+      pendingConfirm ||
+      busyKey
+  );
+
+  useAutoRefresh(
+    async () => {
+      await load({ showLoading: false, hydrateForm: false });
+    },
+    { enabled: !roleLoading && canFacilitate && !saving && !isEditingLocally, intervalMs: 30000 }
+  );
 
   function clearNewInjectDraft() {
     setNiTitle("");
@@ -589,14 +608,57 @@ export default function FacilitatorScenarioEditorPage() {
 
     setBusyKey(`move:${siId}`);
     setError(null);
+    const previousInjects = injects;
 
     try {
+      setInjects((current) =>
+        current.map((item) => {
+          if (item.id === a.id) return { ...item, order_index: b.order_index };
+          if (item.id === b.id) return { ...item, order_index: a.order_index };
+          return item;
+        })
+      );
       await Promise.all([
         updateScenarioInject({ id: a.id, order_index: b.order_index }),
         updateScenarioInject({ id: b.id, order_index: a.order_index }),
       ]);
-      await load();
     } catch (e: unknown) {
+      setInjects(previousInjects);
+      setError(errMessage(e, "Failed to reorder inject."));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function onReorderInject(siId: string, targetSiId: string) {
+    if (siId === targetSiId) return;
+
+    const fromIndex = sortedInjects.findIndex((item) => item.id === siId);
+    const toIndex = sortedInjects.findIndex((item) => item.id === targetSiId);
+    if (fromIndex < 0 || toIndex < 0) return;
+
+    const next = [...sortedInjects];
+    const [moved] = next.splice(fromIndex, 1);
+    if (!moved) return;
+    next.splice(toIndex, 0, moved);
+
+    setBusyKey(`move:${siId}`);
+    setError(null);
+    const previousInjects = injects;
+    const nextOrderById = new Map(next.map((item, index) => [item.id, (index + 1) * 10]));
+
+    try {
+      setInjects((current) =>
+        current.map((item) => {
+          const orderIndex = nextOrderById.get(item.id);
+          return typeof orderIndex === "number" ? { ...item, order_index: orderIndex } : item;
+        })
+      );
+      await Promise.all(
+        next.map((item, index) => updateScenarioInject({ id: item.id, order_index: (index + 1) * 10 }))
+      );
+    } catch (e: unknown) {
+      setInjects(previousInjects);
       setError(errMessage(e, "Failed to reorder inject."));
     } finally {
       setBusyKey(null);
@@ -695,15 +757,21 @@ export default function FacilitatorScenarioEditorPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-[color:var(--studio-muted2)]">Loading…</div>;
+    return (
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 text-sm text-[color:var(--studio-muted)] shadow-[var(--studio-shadow)]">
+        Loading…
+      </div>
+    );
   }
 
   if (!scenario) {
     return (
-      <div className="space-y-3">
-        <div className="text-sm text-[color:var(--studio-muted2)]">Scenario not found.</div>
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)]">
+        <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+          Scenario not found.
+        </div>
         <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")} className="gap-2">
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className={EDITOR_ICON.action} />
           Back
         </Button>
       </div>
@@ -712,31 +780,29 @@ export default function FacilitatorScenarioEditorPage() {
 
   return (
     <div className="space-y-5">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="relative">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 space-y-3">
               <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
+                <Sparkles className={EDITOR_ICON.eyebrow} />
                 Scenario editor
+                <HintTooltip text="Edit the scenario brief, shape the starting situation, and build the inject sequence that will drive the session." />
               </div>
               <div className="text-xs text-[color:var(--studio-muted2)]">
                 Scenario • {id.slice(0, 8)} • Updated {fmt(scenario.updated_at)}
               </div>
-              <h1 className="text-[28px] font-semibold tracking-tight truncate">{scenario.title ?? "Scenario"}</h1>
-              <div className="max-w-[62ch] text-sm leading-7 text-[color:var(--studio-muted)]">
-                Edit the scenario brief, shape the starting situation, and build the inject sequence that will drive the session.
-              </div>
+              <h1 className="truncate text-[28px] font-semibold leading-tight tracking-tight text-foreground">{scenario.title ?? "Scenario"}</h1>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="secondary" onClick={() => router.push("/facilitator/scenarios")} className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
+                <ArrowLeft className={EDITOR_ICON.action} />
                 Back
               </Button>
 
               <Button onClick={onSaveScenario} disabled={!hasChanges || saving} className="gap-2">
-                <Save className="h-4 w-4" />
+                <Save className={EDITOR_ICON.action} />
                 {saving ? "…" : "Save changes"}
               </Button>
             </div>
@@ -744,13 +810,13 @@ export default function FacilitatorScenarioEditorPage() {
         </div>
 
         {error ? (
-          <div className="border-t border-[var(--studio-border)] px-5 py-3">
+          <div className="mt-4">
             <div className="notice notice-error" role="alert" aria-live="assertive">
               {error}
             </div>
           </div>
         ) : null}
-      </div>
+      </section>
 
       <ScenarioDetailsSection
         basicsTitleId={basicsTitleId}
@@ -848,6 +914,7 @@ export default function FacilitatorScenarioEditorPage() {
         onReorderInjectMedia={onReorderInjectMedia}
         onReschedule={onReschedule}
         onMove={onMove}
+        onReorder={onReorderInject}
         clearNewInjectDraft={clearNewInjectDraft}
         niTitle={niTitle}
         setNiTitle={setNiTitle}

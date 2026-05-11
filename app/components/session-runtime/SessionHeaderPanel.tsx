@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Clock3, LayoutDashboard, Radio, Wrench } from "lucide-react";
+import { ChevronDown, Clock3, LayoutDashboard, ListChecks, MessagesSquare, Radio, Wrench } from "lucide-react";
 
 import type { Scenario } from "@/lib/scenarios";
 import type { SessionSituation } from "@/lib/sessions";
@@ -13,7 +13,9 @@ import { fmt } from "./sessionRuntimeUi";
 
 type SessionHeaderPanelProps = {
   copPanelId: string;
+  updatesPanelId: string;
   toolsPanelId: string;
+  insightsPanelId: string;
   heroEyebrow: string;
   participantView: boolean;
   startedAt: string | null;
@@ -23,10 +25,15 @@ type SessionHeaderPanelProps = {
   sessionParticipantLimit: number | null;
   copOpen: boolean;
   setCopOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  updatesOpen: boolean;
+  setUpdatesOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  totalWaitingUpdates: number;
   roleLoading: boolean;
   isFacilitator: boolean;
   toolsOpen: boolean;
   setToolsOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  advancedInsightsOpen: boolean;
+  setAdvancedInsightsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   exerciseClock: string;
   scenario: Scenario | null;
   situation: SessionSituation | null;
@@ -45,7 +52,9 @@ type SessionHeaderPanelProps = {
 
 export default function SessionHeaderPanel({
   copPanelId,
+  updatesPanelId,
   toolsPanelId,
+  insightsPanelId,
   heroEyebrow,
   participantView,
   startedAt,
@@ -55,10 +64,15 @@ export default function SessionHeaderPanel({
   sessionParticipantLimit,
   copOpen,
   setCopOpen,
+  updatesOpen,
+  setUpdatesOpen,
+  totalWaitingUpdates,
   roleLoading,
   isFacilitator,
   toolsOpen,
   setToolsOpen,
+  advancedInsightsOpen,
+  setAdvancedInsightsOpen,
   exerciseClock,
   scenario,
   situation,
@@ -82,7 +96,7 @@ export default function SessionHeaderPanel({
         : null;
 
   return (
-    <div className="relative z-20 overflow-visible pb-4">
+    <div className="ui-session-shell relative z-20 overflow-visible">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-xs font-medium text-[color:var(--studio-muted2)]">
@@ -123,25 +137,57 @@ export default function SessionHeaderPanel({
               <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", copOpen ? "rotate-180" : ""].join(" ")} />
             </Button>
 
+            <Button
+              variant={updatesOpen ? "secondary" : "outline"}
+              onClick={() => setUpdatesOpen((value) => !value)}
+              className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
+              title="Toggle updates workbench"
+              aria-expanded={updatesOpen}
+              aria-controls={updatesPanelId}
+            >
+              <MessagesSquare className="h-4 w-4 opacity-80" />
+              {updatesOpen ? "Hide updates" : "Updates"}
+              {totalWaitingUpdates > 0 ? (
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground">
+                  {totalWaitingUpdates > 9 ? "9+" : totalWaitingUpdates}
+                </span>
+              ) : null}
+              <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", updatesOpen ? "rotate-180" : ""].join(" ")} />
+            </Button>
+
             {roleLoading ? (
               <div className="px-2 text-xs text-[color:var(--studio-muted2)]">Loading role…</div>
             ) : isFacilitator ? (
-              <Button
-                variant={toolsOpen ? "secondary" : "outline"}
-                onClick={() => setToolsOpen((v) => !v)}
-                className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
-                aria-expanded={toolsOpen}
-                aria-controls={toolsPanelId}
-              >
-                <Wrench className="h-4 w-4" />
-                {toolsOpen ? "Hide tools" : "Facilitator tools"}
-                <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", toolsOpen ? "rotate-180" : ""].join(" ")} />
-              </Button>
+              <>
+                <Button
+                  variant={toolsOpen ? "secondary" : "outline"}
+                  onClick={() => setToolsOpen((v) => !v)}
+                  className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
+                  aria-expanded={toolsOpen}
+                  aria-controls={toolsPanelId}
+                >
+                  <Wrench className="h-4 w-4" />
+                  {toolsOpen ? "Hide tools" : "Facilitator tools"}
+                  <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", toolsOpen ? "rotate-180" : ""].join(" ")} />
+                </Button>
+                <Button
+                  variant={advancedInsightsOpen ? "secondary" : "outline"}
+                  onClick={() => setAdvancedInsightsOpen((value) => !value)}
+                  className="h-8 gap-2 rounded-[8px] px-2.5 text-xs font-semibold"
+                  aria-expanded={advancedInsightsOpen}
+                  aria-controls={insightsPanelId}
+                  title="Toggle detailed session view"
+                >
+                  <ListChecks className="h-4 w-4" />
+                  {advancedInsightsOpen ? "Hide details" : "Detailed view"}
+                  <ChevronDown className={["h-4 w-4 opacity-70 transition-transform", advancedInsightsOpen ? "rotate-180" : ""].join(" ")} />
+                </Button>
+              </>
             ) : null}
           </div>
         </div>
 
-        <div className="flex w-full items-center justify-between gap-3 rounded-[12px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.02)] sm:w-auto sm:min-w-[220px] xl:mt-1">
+        <div className="flex w-full items-center justify-between gap-3 rounded-[8px] border border-[var(--studio-border)] bg-[color:var(--studio-inset)] px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.02)] sm:w-auto sm:min-w-[220px] xl:mt-1">
           <div>
             <div className="ui-metric-label">Elapsed time</div>
             <div className="mt-0.5 text-lg font-semibold leading-none text-[color:var(--studio-ink)]">{readableClock}</div>
@@ -153,13 +199,15 @@ export default function SessionHeaderPanel({
       </div>
 
       {copOpen ? (
-        <div id={copPanelId} className="mt-4">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <LayoutDashboard className="h-4 w-4 opacity-80" />
-              Common operational picture
+        <div id={copPanelId} className="mt-4 border-t border-[var(--studio-border)] pt-4">
+          <div className="ui-session-panel">
+            <div className="ui-session-header flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <LayoutDashboard className="h-4 w-4 opacity-80" />
+                Common operational picture
+              </div>
             </div>
-          </div>
+            <div className="p-3">
             <SituationCard
               scenario={scenario}
               situation={situation}
@@ -172,27 +220,29 @@ export default function SessionHeaderPanel({
                 await onUpdateManifest(p);
               }}
             />
+            </div>
+          </div>
         </div>
       ) : null}
 
       {isFacilitator && toolsOpen ? (
-        <div id={toolsPanelId} className="mt-4">
-          <div className="px-0">
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold">
-                    <Wrench className="h-4 w-4 opacity-80" />
-                    Facilitator tools
-                  </div>
-                </div>
+        <div id={toolsPanelId} className="mt-4 border-t border-[var(--studio-border)] pt-4">
+          <div className="ui-session-panel">
+            <div className="ui-session-header flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+                <Wrench className="h-4 w-4 opacity-80" />
+                Facilitator tools
               </div>
+            </div>
 
+            <div className="p-3">
             <FacilitatorToolsPanel
               sessionId={sessionId}
               scenarioId={scenario?.id ?? null}
               compact
               onSessionMetaChange={(meta) => applySessionMeta(meta as { started_at?: string | null } | null)}
             />
+            </div>
           </div>
         </div>
       ) : null}

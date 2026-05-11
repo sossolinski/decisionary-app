@@ -187,3 +187,12 @@ export function humanDecisionLabel(decisionType: string | null | undefined) {
   if (decisionType === "deny") return "Dismissed update";
   return "Team decision";
 }
+
+export function decisionPressureLabel(value: string | null | undefined) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (normalized === "low") return "Routine";
+  if (normalized === "medium") return "Elevated";
+  if (normalized === "high") return "Urgent";
+  if (normalized === "critical") return "Critical";
+  return "Pressure";
+}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Building2, Mail, PlayCircle, UsersRound } from "lucide-react";
 
 import { supabase } from "@/lib/supabaseClient";
 import { joinSessionByCode } from "@/lib/sessionsRuntime";
@@ -13,6 +13,28 @@ import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
 type Role = "admin" | "facilitator" | "participant";
+type AccessMode = "participant" | "facilitator";
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        element: HTMLElement,
+        options: {
+          sitekey: string;
+          callback?: (token: string) => void;
+          "expired-callback"?: () => void;
+          "error-callback"?: () => void;
+          theme?: "light" | "dark" | "auto";
+          size?: "normal" | "compact";
+        }
+      ) => string;
+      reset: (widgetId?: string) => void;
+      remove: (widgetId: string) => void;
+    };
+  }
+}
 
 async function resolveSignedInRole(): Promise<Role | null> {
   const { data: profileData, error: profileError } = await supabase.rpc("get_my_profile");
@@ -48,30 +70,110 @@ function joinErrorMessage(error: unknown) {
 function signInErrorMessage(error: unknown) {
   const message = getErrorMessage(error, "Sign in failed.");
   if (message.toLowerCase().includes("email or phone")) {
-    return "Enter your work email and password.";
+    return "Enter your email and password.";
   }
   return message;
 }
 
 function Hero() {
-  const headerButtonClass = "inline-flex min-h-9 items-center justify-center rounded-[8px] border border-[#c5cedd] px-3 text-sm font-semibold text-[#5a6578] transition hover:border-[#2457d6] hover:text-[#111827]";
+  const headerLinkClass = "inline-flex min-h-9 items-center justify-center rounded-[8px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm font-semibold text-[color:var(--studio-muted)] transition hover:border-[var(--studio-border-strong)] hover:text-foreground";
 
   return (
-    <section className="flex items-center justify-between gap-4 border-b border-[#dce2ec] px-5 py-5 sm:px-6">
-      <Link href="/" className="inline-flex items-center gap-3 font-semibold text-[#111827]">
-        <span className="grid h-9 w-9 place-items-center rounded-[8px] border border-[#111827] text-sm font-bold">D</span>
-        <span>Decisionary</span>
-      </Link>
-      <Link href="/" className={headerButtonClass}>
+    <header className="mx-auto flex w-full max-w-[1040px] justify-end gap-2 px-5 py-4 sm:px-6">
+      <a
+        href="mailto:decisionary.app@gmail.com"
+        className={headerLinkClass}
+      >
+        <Mail className="mr-1.5 h-3.5 w-3.5 stroke-[1.8]" />
+        Contact
+      </a>
+      <Link
+        href="/"
+        className={headerLinkClass}
+      >
         Back to site
       </Link>
-    </section>
+    </header>
+  );
+}
+
+function TurnstileChallenge({
+  onToken,
+  onReady,
+}: {
+  onToken: (token: string | null) => void;
+  onReady: (reset: () => void) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const widgetIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!turnstileSiteKey || !containerRef.current) return;
+    const siteKey = turnstileSiteKey;
+
+    let cancelled = false;
+    let pollId: number | null = null;
+
+    function renderWidget() {
+      if (cancelled || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
+      widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        sitekey: siteKey,
+        theme: "auto",
+        size: "normal",
+        callback: (token) => onToken(token),
+        "expired-callback": () => onToken(null),
+        "error-callback": () => onToken(null),
+      });
+      onReady(() => {
+        onToken(null);
+        window.turnstile?.reset(widgetIdRef.current ?? undefined);
+      });
+    }
+
+    if (window.turnstile) {
+      renderWidget();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src^="https://challenges.cloudflare.com/turnstile"]');
+      const script = existingScript ?? document.createElement("script");
+      if (!existingScript) {
+        script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
+      script.addEventListener("load", renderWidget);
+      pollId = window.setInterval(renderWidget, 250);
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollId) window.clearInterval(pollId);
+      if (widgetIdRef.current) {
+        window.turnstile?.remove(widgetIdRef.current);
+        widgetIdRef.current = null;
+      }
+    };
+  }, [onReady, onToken]);
+
+  if (!turnstileSiteKey) return null;
+
+  return (
+    <div className="border-t border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 sm:px-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="text-sm font-semibold">Security check</div>
+          <div className="mt-0.5 text-xs leading-5 text-[color:var(--studio-muted2)]">
+            Complete once before signing in or joining.
+          </div>
+        </div>
+        <div ref={containerRef} className="min-h-[65px] sm:min-w-[300px]" />
+      </div>
+    </div>
   );
 }
 
 export default function AuthHome() {
   const router = useRouter();
-  const pathname = usePathname();
   const signInEmailId = useId();
   const signInPasswordId = useId();
   const joinCodeId = useId();
@@ -83,23 +185,44 @@ export default function AuthHome() {
   const [joinLoading, setJoinLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [accessMode, setAccessMode] = useState<AccessMode>("participant");
+  const resetCaptchaRef = useRef<() => void>(() => undefined);
 
-  const labelClass = "mb-2 block text-sm font-semibold leading-6 text-[#111827]";
-  const inputClass = "h-11 rounded-[8px] border-[#c5cedd] bg-white text-[#111827] shadow-none placeholder:text-[#7a8598] hover:border-[#9aa7bc]";
-  const outlineButtonClass = "min-h-11 rounded-[8px] border-[#111827] bg-white text-[#111827] shadow-none hover:bg-[#f5f7fb]";
+  const labelClass = "mb-1.5 block text-sm font-semibold leading-6 text-foreground";
+  const inputClass = "h-10 rounded-[8px]";
+
+  const handleCaptchaReady = useCallback((reset: () => void) => {
+    resetCaptchaRef.current = reset;
+  }, []);
+
+  function chooseAccessMode(mode: AccessMode) {
+    setAccessMode(mode);
+    setAuthError(null);
+    setJoinError(null);
+  }
+
+  function requireCaptcha() {
+    if (!turnstileSiteKey || captchaToken) return true;
+    const message = "Complete the security check first.";
+    setAuthError(message);
+    setJoinError(message);
+    return false;
+  }
 
   async function handleSignIn(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const workEmail = email.trim();
 
     if (!workEmail) {
-      setAuthError("Enter your work email.");
+      setAuthError("Enter your email.");
       return;
     }
     if (!password) {
       setAuthError("Enter your password.");
       return;
     }
+    if (!requireCaptcha()) return;
 
     setAuthLoading(true);
     setAuthError(null);
@@ -108,6 +231,7 @@ export default function AuthHome() {
       const { error } = await supabase.auth.signInWithPassword({
         email: workEmail,
         password,
+        options: captchaToken ? { captchaToken } : undefined,
       });
       if (error) throw error;
 
@@ -125,6 +249,7 @@ export default function AuthHome() {
       router.replace("/participant");
     } catch (e: unknown) {
       setAuthError(signInErrorMessage(e));
+      resetCaptchaRef.current();
     } finally {
       setAuthLoading(false);
     }
@@ -138,126 +263,159 @@ export default function AuthHome() {
       setJoinError(validCode.error);
       return;
     }
+    if (!requireCaptcha()) return;
 
     setJoinLoading(true);
     setJoinError(null);
 
     try {
-      const sessionId = await joinSessionByCode(validCode.value);
+      const sessionId = await joinSessionByCode(validCode.value, captchaToken ?? undefined);
       router.replace(`/sessions/${sessionId}`);
     } catch (e: unknown) {
       setJoinError(joinErrorMessage(e));
+      resetCaptchaRef.current();
     } finally {
       setJoinLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-[#eef2f8] px-5 py-8 text-[#111827] sm:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-[900px] items-center justify-center">
-        <section className="w-full overflow-hidden rounded-[8px] border border-[#dce2ec] bg-white shadow-[0_24px_70px_rgba(23,35,63,0.12)]">
+    <main className="min-h-screen overflow-hidden bg-[var(--studio-bg)] text-foreground">
+      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(180deg,hsl(var(--background)),var(--studio-page-end))]" />
+      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(135deg,hsl(var(--primary)/0.045),transparent_34%,hsl(176_58%_46%/0.05)_68%,transparent)]" />
+      <div className="relative">
         <Hero />
 
-          <div className="px-5 py-7 sm:px-6">
-            <div className="max-w-[620px]">
-              <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-[#12a68c]">Access</p>
-              <h1 className="mt-2 text-[30px] font-semibold leading-tight tracking-[0]">Sign in or join a session.</h1>
-              <p className="mt-2 text-sm leading-6 text-[#5a6578]">
-                Use your organization account, or enter the session code shared by your facilitator.
-              </p>
+        <section className="mx-auto flex min-h-[calc(100vh-4.25rem)] w-full max-w-[1040px] flex-col items-center justify-center px-5 pb-8 pt-2 sm:px-6">
+          <div className="mb-5 flex max-w-[760px] flex-col items-center text-center">
+            <Link href="/" className="inline-flex items-center gap-4 text-foreground">
+              <span className="grid h-14 w-14 place-items-center rounded-[14px] border border-white/24 bg-transparent text-xl font-bold text-white shadow-none sm:h-16 sm:w-16 sm:text-2xl">
+                D
+              </span>
+              <span className="text-[30px] font-semibold leading-none tracking-[0] sm:text-[36px]">Decisionary</span>
+            </Link>
+            <p className="mt-2 text-sm leading-6 text-[color:var(--studio-muted)]">
+              Practice the decisions before they become the day.
+            </p>
+          </div>
+
+          <div className="w-full max-w-[620px] overflow-hidden rounded-[8px] border border-[var(--studio-border)] bg-[var(--studio-surface)] shadow-[var(--studio-shadow2)]">
+            <div className="grid gap-2 border-b border-[var(--studio-border)] bg-[var(--studio-inset)] p-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => chooseAccessMode("participant")}
+                className={[
+                  "rounded-[8px] border px-3 py-3 text-left transition",
+                  accessMode === "participant"
+                    ? "border-primary/35 bg-[var(--studio-surface2)] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]"
+                    : "border-[var(--studio-border)] bg-transparent hover:border-[var(--studio-border-strong)]",
+                ].join(" ")}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <UsersRound className="h-4 w-4 text-primary stroke-[1.8]" />
+                  Participant
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-[color:var(--studio-muted2)]">Join with a session code.</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => chooseAccessMode("facilitator")}
+                className={[
+                  "rounded-[8px] border px-3 py-3 text-left transition",
+                  accessMode === "facilitator"
+                    ? "border-primary/35 bg-[var(--studio-surface2)] shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]"
+                    : "border-[var(--studio-border)] bg-transparent hover:border-[var(--studio-border-strong)]",
+                ].join(" ")}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <Building2 className="h-4 w-4 text-[color:var(--studio-muted2)] stroke-[1.8]" />
+                  Facilitator
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-[color:var(--studio-muted2)]">Prepare or run sessions.</span>
+              </button>
             </div>
 
-            <div className="mt-7 grid gap-6 lg:grid-cols-[1fr_0.86fr]">
-              <div>
-                <h2 className="text-base font-semibold">Organization account</h2>
-                <form onSubmit={handleSignIn} className="mt-4 space-y-4">
-                  <div>
-                    <label htmlFor={signInEmailId} className={labelClass}>Work email</label>
-                    <Input
-                      id={signInEmailId}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      type="email"
-                      placeholder="name@company.com"
-                      autoComplete="email"
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor={signInPasswordId} className={labelClass}>Password</label>
-                    <Input
-                      id={signInPasswordId}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      type="password"
-                      placeholder="Your password"
-                      autoComplete="current-password"
-                      className={inputClass}
-                    />
+            <div className="p-4 sm:p-5">
+              {accessMode === "facilitator" ? (
+                <section>
+                  <div className="flex items-center gap-2 text-base font-semibold">
+                    <Building2 className="h-4 w-4 text-primary stroke-[1.8]" />
+                    Facilitator sign in
                   </div>
 
-                  {authError ? (
-                    <div role="alert" aria-live="assertive" className="rounded-[8px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                      {authError}
+                  <form onSubmit={handleSignIn} className="mt-4 space-y-3">
+                    <div>
+                      <label htmlFor={signInEmailId} className={labelClass}>Email</label>
+                      <Input
+                        id={signInEmailId}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        type="email"
+                        placeholder="name@company.com"
+                        autoComplete="email"
+                        className={inputClass}
+                      />
                     </div>
-                  ) : null}
+                    <div>
+                      <label htmlFor={signInPasswordId} className={labelClass}>Password</label>
+                      <Input
+                        id={signInPasswordId}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        type="password"
+                        placeholder="Your password"
+                        autoComplete="current-password"
+                        className={inputClass}
+                      />
+                    </div>
 
-                  <div>
-                    <Button type="submit" className="min-h-11 w-full rounded-[8px]" disabled={authLoading || joinLoading}>
+                    {authError ? (
+                      <div role="alert" aria-live="assertive" className="notice notice-error px-3 py-2 text-sm shadow-none">
+                        {authError}
+                      </div>
+                    ) : null}
+
+                    <Button type="submit" className="h-10 w-full rounded-[8px]" disabled={authLoading || joinLoading}>
                       {authLoading ? "Signing in..." : "Sign in"}
                       <ArrowRight className="h-4 w-4" aria-hidden="true" />
                     </Button>
+                  </form>
+                </section>
+              ) : (
+                <section>
+                  <div className="flex items-center gap-2 text-base font-semibold">
+                    <PlayCircle className="h-4 w-4 text-primary stroke-[1.8]" />
+                    Participant code
                   </div>
-                </form>
 
-                <p className="mt-4 rounded-[8px] border border-[#dce2ec] bg-[#f5f7fb] px-4 py-3 text-sm leading-6 text-[#5a6578]">
-                  Accounts are provisioned by your organization. Participants can join with a session code.
-                </p>
-              </div>
-
-              <div className="border-t border-[#dce2ec] pt-6 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-                <h2 className="text-base font-semibold">Session code</h2>
-                <form onSubmit={handleJoin} className="mt-4 space-y-4">
-                  <div>
-                    <label htmlFor={joinCodeId} className={labelClass}>Code</label>
-                  <Input
-                    id={joinCodeId}
-                    value={joinCode}
-                    onChange={(e) => setJoinCode(e.target.value)}
-                    placeholder="ABC123"
-                    autoCapitalize="characters"
-                    className={inputClass}
-                  />
-                </div>
-
-                {joinError ? (
-                  <div role="alert" aria-live="assertive" className="rounded-[8px] border border-destructive/35 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    {joinError}
-                  </div>
-                ) : (
-                  <p className="text-sm leading-6 text-[#5a6578]">
-                    You can join as a guest participant.
-                  </p>
-                )}
-
-                <Button
-                  type="submit"
-                  className={outlineButtonClass}
-                  disabled={joinLoading || authLoading}
-                >
-                  {joinLoading ? "Joining..." : "Join with code"}
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </form>
-
-              <p className="mt-4 text-sm leading-6 text-[#5a6578]">
-                {pathname === "/login"
-                  ? "If you were invited as a facilitator, use the registration link from your email instead of this form."
-                  : "Facilitator access is granted separately through an invitation link from your organization. Guest join is only for participants."}
-              </p>
-              </div>
+                  <form onSubmit={handleJoin} className="mt-4 space-y-3">
+                    <div>
+                      <label htmlFor={joinCodeId} className={labelClass}>Code</label>
+                      <Input
+                        id={joinCodeId}
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value)}
+                        placeholder="ABC123"
+                        autoCapitalize="characters"
+                        className={inputClass}
+                      />
+                    </div>
+                    {joinError ? <div role="alert" aria-live="assertive" className="text-sm text-destructive">{joinError}</div> : null}
+                    <Button type="submit" className="h-10 w-full rounded-[8px]" disabled={joinLoading || authLoading}>
+                      {joinLoading ? "Joining..." : "Join session"}
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </form>
+                </section>
+              )}
             </div>
+
+            <TurnstileChallenge
+              onToken={setCaptchaToken}
+              onReady={handleCaptchaReady}
+            />
           </div>
+
         </section>
       </div>
     </main>

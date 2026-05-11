@@ -47,11 +47,14 @@ type NavItemProps = {
 function SectionLabel({
   children,
   collapsed,
+  hideWhenCollapsed = false,
 }: {
   children: ReactNode;
   collapsed: boolean;
+  hideWhenCollapsed?: boolean;
 }) {
   if (collapsed) {
+    if (hideWhenCollapsed) return null;
     return <div className="h-px w-full bg-[var(--studio-border)]/80" />;
   }
 
@@ -112,7 +115,7 @@ export default function AppSidebar({
   const width = collapsed ? "w-[72px]" : "w-[240px]";
   const asidePosition = mobile
     ? "relative h-full w-full pt-0"
-    : ["fixed left-0 top-0 z-30 h-screen", "pt-[68px]", width].join(" ");
+    : ["fixed left-0 top-14 z-30 h-[calc(100vh-3.5rem)]", width].join(" ");
 
   const canFacilitate =
     !loading &&
@@ -161,22 +164,22 @@ export default function AppSidebar({
   );
 
   const itemBase =
-    "group relative flex w-full min-w-0 items-center gap-3 rounded-[10px] border transition " +
+    "group relative flex w-full min-w-0 items-center gap-3 rounded-[8px] border transition " +
     "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]";
 
   const itemCollapsed =
-    "h-10 w-10 justify-center mx-auto border-transparent bg-transparent " +
-    "hover:bg-secondary/70 hover:border-[var(--studio-border)]";
+    "h-10 w-10 justify-center mx-auto border-transparent bg-transparent text-[color:var(--studio-muted)] " +
+    "hover:bg-[hsl(var(--card))] hover:border-[var(--studio-border)] hover:text-[color:var(--studio-ink)]";
 
   const itemExpanded =
-    "h-10 justify-start px-2.5 border-transparent bg-transparent " +
-    "hover:bg-secondary/70 hover:border-[var(--studio-border)]";
+    "h-10 justify-start px-2.5 border-transparent bg-transparent text-[color:var(--studio-muted)] " +
+    "hover:bg-[hsl(var(--card))] hover:border-[var(--studio-border)] hover:text-[color:var(--studio-ink)]";
 
   if (loading) {
     // Keep layout stable; no flashing of links
     return (
       <aside className={asidePosition}>
-        <div className="h-full border-r border-[var(--studio-border)] bg-[var(--studio-surface)] px-2 pb-3">
+        <div className="h-full border-r border-[var(--studio-border)] bg-[hsl(var(--background))] px-2 pb-3">
           <div className="h-full" />
         </div>
       </aside>
@@ -185,13 +188,13 @@ export default function AppSidebar({
 
   return (
     <aside className={asidePosition}>
-      <div className="h-full border-r border-[var(--studio-border)] bg-[var(--studio-surface)] px-2 pb-3">
+      <div className="h-full border-r border-[var(--studio-border)] bg-[hsl(var(--background))] px-2 pb-3">
         <div className="h-full overflow-visible flex flex-col">
           {/* NAV */}
-          <nav className="min-h-0 flex-1 overflow-y-auto px-0 py-3 space-y-3">
+          <nav className="min-h-0 flex-1 overflow-y-auto px-0 py-4 space-y-3">
             {(isParticipantArea || isParticipantView) ? (
               <div className="space-y-2.5">
-                <SectionLabel collapsed={collapsed}>Participant</SectionLabel>
+                <SectionLabel collapsed={collapsed} hideWhenCollapsed>Participant</SectionLabel>
                 {participantNav.map((n) => (
                   <NavItem
                     key={n.href}
@@ -211,7 +214,7 @@ export default function AppSidebar({
             {/* Facilitator nav visible in facilitator areas, not above admin nav */}
             {canFacilitate && isFacilitatorArea && !isParticipantArea && !isAdminArea ? (
               <div className="space-y-2.5">
-                <SectionLabel collapsed={collapsed}>Facilitator</SectionLabel>
+                <SectionLabel collapsed={collapsed} hideWhenCollapsed>Facilitator</SectionLabel>
                 {facilitatorNav.map((n) => (
                   <NavItem
                     key={n.href}
@@ -231,7 +234,7 @@ export default function AppSidebar({
             {/* Admin nav takes priority inside admin area */}
             {isAdminView && isAdminArea ? (
               <div className="space-y-2.5">
-                <SectionLabel collapsed={collapsed}>Admin</SectionLabel>
+                <SectionLabel collapsed={collapsed} hideWhenCollapsed>Admin</SectionLabel>
                 <NavItem
                   href="/admin"
                   label="Overview"
@@ -313,7 +316,7 @@ export default function AppSidebar({
                   itemBase,
                   collapsed ? itemCollapsed : itemExpanded,
                   "border-[var(--studio-border)]",
-                  "hover:bg-secondary/70",
+                  "hover:bg-[hsl(var(--card))]",
                 ].join(" ")}
                 title={collapsed ? "Expand" : "Collapse"}
               >

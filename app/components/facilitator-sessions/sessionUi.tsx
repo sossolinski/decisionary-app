@@ -101,7 +101,7 @@ export function Chip({
       type="button"
       onClick={onClear}
       title={title}
-      className="inline-flex items-center gap-1 rounded-full bg-secondary/45 px-2.5 py-1 text-xs font-medium hover:bg-secondary/70 transition"
+      className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium transition hover:border-[var(--studio-border-strong)]"
     >
       <span className="truncate max-w-[220px]">{label}</span>
       <span aria-hidden="true" className="opacity-70">×</span>
@@ -122,7 +122,7 @@ export function CopyButton({
     <Button
       variant="outline"
       size="sm"
-      className="gap-2"
+      className="gap-2 rounded-[8px]"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value);

@@ -300,14 +300,19 @@ export default function SettingsPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading settings…</div>;
+    return (
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 text-sm text-[color:var(--studio-muted)] shadow-[var(--studio-shadow)]">
+        Loading settings…
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold">Profile settings</h1>
-        <p className="text-sm text-muted-foreground">
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6">
+        <div className="ui-section-label">Account</div>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">Profile settings</h1>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
           Manage your account name and personal workspace preferences.
         </p>
       </div>
@@ -316,7 +321,7 @@ export default function SettingsPage() {
       {err ? <div role="alert" aria-live="assertive" className="notice notice-error">{err}</div> : null}
 
       {needsEmailConfirmation ? (
-        <Card className="border-amber-500/30">
+        <Card className="rounded-2xl border border-amber-500/30 bg-background shadow-[var(--studio-shadow)]">
           <CardHeader>
             <CardTitle>Check your inbox</CardTitle>
             <CardDescription>
@@ -324,7 +329,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-[var(--radius)] border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm leading-6 text-[color:var(--studio-muted)]">
               Open the confirmation email sent to <b>{email || upgradeEmail || "your inbox"}</b> and click the link to
               finish activating this account on other devices and browsers.
             </div>
@@ -346,7 +351,7 @@ export default function SettingsPage() {
       ) : null}
 
       {isAnonymous || contextIsAnonymous ? (
-        <Card>
+        <Card className="rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
           <CardHeader>
             <CardTitle>Upgrade guest account</CardTitle>
             <CardDescription>
@@ -354,7 +359,7 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3 text-sm text-[color:var(--studio-muted)]">
+            <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-[color:var(--studio-muted)] shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
               You are currently signed in as a guest participant.
             </div>
 
@@ -392,7 +397,7 @@ export default function SettingsPage() {
         </Card>
       ) : null}
 
-      <Card>
+      <Card className="rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
         <CardHeader>
           <CardTitle id={profileHeadingId}>Profile</CardTitle>
           <CardDescription>
@@ -424,7 +429,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
         <CardHeader>
           <CardTitle id={preferencesHeadingId}>Workspace preferences</CardTitle>
           <CardDescription>
@@ -438,7 +443,7 @@ export default function SettingsPage() {
               id={languageId}
               value={language}
               onChange={(e) => setLanguage(e.target.value as LanguagePreference)}
-              className="h-10 w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm"
+              className="h-10 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm text-foreground shadow-[0_1px_2px_hsl(220_20%_20%/0.06)] outline-none transition hover:border-[var(--studio-border-strong)] focus-visible:shadow-[var(--studio-ring)]"
             >
               <option value="en">English</option>
               <option value="pl">Polski</option>
@@ -451,7 +456,7 @@ export default function SettingsPage() {
               id={themeId}
               value={theme}
               onChange={(e) => setTheme(e.target.value as ThemePreference)}
-              className="h-10 w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm"
+              className="h-10 w-full rounded-[var(--radius)] border border-border bg-background px-3 text-sm text-foreground shadow-[0_1px_2px_hsl(220_20%_20%/0.06)] outline-none transition hover:border-[var(--studio-border-strong)] focus-visible:shadow-[var(--studio-ring)]"
             >
               <option value="auto">Auto</option>
               <option value="light">Light</option>
@@ -461,7 +466,7 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
         <CardHeader>
           <CardTitle id={notificationsHeadingId}>Notifications</CardTitle>
           <CardDescription>
@@ -469,7 +474,7 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3" aria-labelledby={notificationsHeadingId}>
-          <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3 text-sm text-[color:var(--studio-muted)]">
+          <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm leading-6 text-[color:var(--studio-muted)] shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
             These settings affect the topbar notification feed on this device. They do not send email or mobile push notifications.
           </div>
           {[
@@ -491,11 +496,11 @@ export default function SettingsPage() {
           ].map((item) => (
             <label
               key={item.key}
-              className="flex items-start justify-between gap-4 rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-3"
+              className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)] transition hover:border-[var(--studio-border-strong)]"
             >
               <div className="space-y-1">
-                <div className="text-sm font-medium">{item.title}</div>
-                <div className="text-sm text-muted-foreground">{item.description}</div>
+                <div className="text-sm font-semibold text-foreground">{item.title}</div>
+                <div className="text-sm leading-6 text-[color:var(--studio-muted)]">{item.description}</div>
               </div>
               <input
                 type="checkbox"

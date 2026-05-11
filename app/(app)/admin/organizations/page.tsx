@@ -28,7 +28,6 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 import HintTooltip from "@/app/components/HintTooltip";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import { copyTextToClipboard } from "@/lib/clientClipboard";
@@ -346,18 +345,17 @@ export default function AdminOrganizationsPage() {
   );
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return <div className="text-sm text-[color:var(--studio-muted)]">Loading…</div>;
   }
 
   if (!isPermAdmin) {
     return (
-      <div>
-        <Card>
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <section className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)]">
+        <h1 className="text-lg font-semibold text-foreground">Access denied</h1>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
+          Organization management is only available to permanent administrators.
+        </p>
+      </section>
     );
   }
 
@@ -365,38 +363,72 @@ export default function AdminOrganizationsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
-            <div className="space-y-4">
-              <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
-                Admin workspace
-              </div>
-
-              <div className="space-y-2">
-                <h1 className="text-[28px] font-semibold tracking-tight">Manage organizations without losing track of the people inside them.</h1>
-              </div>
-
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="grid gap-5 lg:grid-cols-[1.35fr_0.95fr] lg:items-start">
+          <div className="space-y-4">
+            <div className="ui-eyebrow">
+              <Sparkles className="h-3.5 w-3.5" />
+              Organization workspace
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Active orgs</div>
-                <div className="mt-2 text-3xl font-semibold">{organizations.length}</div>
+            <div className="space-y-2">
+              <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                Manage organizations without losing track of the people inside them.
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                Switch workspaces, onboard facilitators, create participants, and keep archived organizations recoverable.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <Button asChild>
+                <Link href="/admin">
+                  Admin overview
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/admin/users">People directory</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 self-start sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Orgs</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{organizations.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Building2 className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Archived</div>
-                <div className="mt-2 text-3xl font-semibold">{archivedOrganizations.length}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Archived</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{archivedOrganizations.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Archive className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Participants</div>
-                <div className="mt-2 text-3xl font-semibold">{participants.length}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Participants</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{participants.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Users className="h-4 w-4" />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {notice ? (
         <div
@@ -409,15 +441,15 @@ export default function AdminOrganizationsPage() {
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_1.9fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+          <div className="border-b border-border px-5 py-4">
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
               <Building2 className="h-5 w-5 opacity-80" />
               Organization directory
               <HintTooltip text="Switch the active organization here, create a new one, and restore archived workspaces when needed." />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+            </div>
+          </div>
+          <div className="space-y-3 px-5 py-5">
             <div className="space-y-2">
               <div className="ui-section-label">Active organizations</div>
               {organizations.map((org) => {
@@ -548,20 +580,20 @@ export default function AdminOrganizationsPage() {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{activeOrg?.name ?? "Select organization"}</CardTitle>
+        <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+          <div className="border-b border-border px-5 py-4">
+            <h2 className="text-base font-semibold text-foreground">{activeOrg?.name ?? "Select organization"}</h2>
             {activeOrg ? (
-              <div className="text-sm text-muted-foreground">Selected workspace · {activeOrg.slug}</div>
+              <div className="mt-1 text-sm text-[color:var(--studio-muted)]">Selected workspace · {activeOrg.slug}</div>
             ) : (
-              <div className="text-sm text-muted-foreground">Choose an organization from the list to manage it.</div>
+              <div className="mt-1 text-sm text-[color:var(--studio-muted)]">Choose an organization from the list to manage it.</div>
             )}
-          </CardHeader>
+          </div>
 
-          <CardContent className="space-y-6">
+          <div className="space-y-6 px-5 py-5">
             {!activeOrgId ? (
               <div className="text-sm text-muted-foreground">No organization selected.</div>
             ) : (
@@ -956,8 +988,8 @@ export default function AdminOrganizationsPage() {
                 </div>
               </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
 
       <ConfirmDialog

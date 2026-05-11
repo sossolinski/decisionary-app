@@ -63,14 +63,12 @@ export default function SessionParticipantBoards({
       ? participantView
         ? "Clear overdue next steps first"
         : "Clear overdue follow-ups first"
-      : selectedItemExists
-      ? "Record a response for the selected update"
       : null;
 
   return (
-    <div className="grid grid-cols-1 gap-4 pt-2">
+    <section className="space-y-2">
       <div className="overflow-hidden">
-        <div className="flex items-center justify-between pb-2">
+        <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
               <CheckSquare className="h-4 w-4 opacity-80" />
@@ -79,8 +77,8 @@ export default function SessionParticipantBoards({
           </div>
         </div>
 
-        <div className="space-y-4 pt-2">
-          <div className="rounded-[12px] bg-card/75 px-4 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+        <div className="space-y-3 pt-2">
+          <div className="ui-session-shell px-4 py-3">
             <div className="flex items-start gap-3">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 opacity-80 text-[color:var(--studio-muted2)]" />
               <div className="min-w-0">
@@ -100,7 +98,7 @@ export default function SessionParticipantBoards({
                   </div>
                 ) : null}
                 {latestConsequence?.description ? (
-                  <div className="mt-3 rounded-[10px] bg-background/60 px-3 py-2 text-sm text-[color:var(--studio-muted)]">
+                  <div className="mt-3 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 py-2 text-sm text-[color:var(--studio-muted)]">
                     <div className="ui-section-label">Latest change</div>
                     <div className="mt-1 font-medium text-[color:var(--studio-ink)]">{latestConsequence.title}</div>
                     <div className="mt-1">{latestConsequence.description}</div>
@@ -116,10 +114,10 @@ export default function SessionParticipantBoards({
                 <div
                   key={task.id}
                   className={[
-                    "rounded-[10px] px-4 py-4",
+                    "rounded-[8px] border px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.018)]",
                     suggestedTaskId === task.id
-                      ? "bg-primary/[0.06] ring-1 ring-primary/10"
-                      : "bg-card/70 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]",
+                      ? "border-primary/20 bg-primary/[0.06]"
+                      : "border-[var(--studio-border)] bg-[hsl(var(--card))]",
                   ].join(" ")}
                 >
                     <div className="flex items-start justify-between gap-3">
@@ -189,6 +187,6 @@ export default function SessionParticipantBoards({
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

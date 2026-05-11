@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getSessionInbox, subscribeInbox, type SessionInject } from "@/lib/sessions";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import { Button } from "@/app/components/ui/button";
+import { decisionPressureLabel } from "@/app/components/session-runtime/sessionRuntimeUi";
 import { Mail, Radio, Circle, AlertCircle, AlertTriangle, Flame } from "lucide-react";
 
 function errMessage(e: unknown, fallback: string) {
@@ -26,10 +27,6 @@ function clampText(s: string, max = 150) {
   const clean = (s ?? "").replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + "…";
-}
-
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
 }
 
 function fmtTime(iso?: string | null) {
@@ -85,6 +82,8 @@ function severityIcon(sev?: string | null) {
 function badge(kind: "severity" | "channel" | "state", value: string) {
   const base =
     "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-bold tracking-wide";
+  const pressureBase =
+    "inline-flex items-center gap-1 rounded-full border px-1.5 py-0 text-[10px] font-bold tracking-wide";
   const v = value.toLowerCase();
 
   if (kind === "state") {
@@ -94,11 +93,11 @@ function badge(kind: "severity" | "channel" | "state", value: string) {
   }
 
   if (kind === "severity") {
-    if (v === "critical") return `${base} bg-destructive/10 text-destructive`;
-    if (v === "high") return `${base} bg-orange-500/10 text-orange-700 dark:text-orange-300`;
-    if (v === "medium") return `${base} bg-yellow-500/10 text-yellow-700 dark:text-yellow-300`;
-    if (v === "low") return `${base} bg-emerald-500/10 text-emerald-700 dark:text-emerald-300`;
-    return `${base} bg-secondary/60 text-foreground`;
+    if (v === "critical") return `${pressureBase} border-red-500/40 bg-red-500/12 text-red-700 dark:text-red-300`;
+    if (v === "high") return `${pressureBase} border-orange-500/40 bg-orange-500/12 text-orange-800 dark:text-orange-300`;
+    if (v === "medium") return `${pressureBase} border-yellow-500/40 bg-yellow-500/12 text-yellow-800 dark:text-yellow-300`;
+    if (v === "low") return `${pressureBase} border-emerald-500/35 bg-emerald-500/12 text-emerald-800 dark:text-emerald-300`;
+    return `${pressureBase} border-[var(--studio-border)] bg-secondary/60 text-foreground`;
   }
 
   // channel
@@ -336,7 +335,7 @@ export default function Inbox({
           ) : null}
 
           {!loading && visible.length === 0 ? (
-            <div className="rounded-[16px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5">
+            <div className="rounded-[8px] border border-dashed border-[var(--studio-border)] bg-[hsl(var(--background))] px-4 py-5">
               <div className="text-sm font-semibold text-foreground">
                 {hasActiveFilters ? "No inbox updates match the current filters." : "No inbox updates yet."}
               </div>
@@ -362,7 +361,7 @@ export default function Inbox({
                 [item.injects?.sender_name, item.injects?.sender_org].filter(Boolean).join(" · ") ||
                 "Unknown source";
 
-              const sevTag = item.injects?.severity ? String(item.injects.severity).toUpperCase() : null;
+              const pressure = item.injects?.severity ? String(item.injects.severity) : null;
 
               const time = fmtTime(item.delivered_at);
 
@@ -381,14 +380,14 @@ export default function Inbox({
                     onSelect(item);
                   }}
                   className={[
-                    "mb-2 w-full text-left rounded-[11px] border border-transparent px-3 py-2.5 transition-all last:mb-0",
+                    "mb-2 w-full rounded-[8px] border px-3 py-2.5 text-left transition-all last:mb-0",
                     "outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0",
                     active
-                      ? "bg-card shadow-[inset_3px_0_0_hsl(var(--primary)/0.55)]"
+                      ? "border-primary/30 bg-primary/[0.055] shadow-[inset_3px_0_0_hsl(var(--primary)/0.65)]"
                       : [
-                          "bg-card/72",
+                          "border-[var(--studio-border)] bg-[hsl(var(--background))]",
                           emphasisClass(sv, flash),
-                          "hover:bg-card/95",
+                          "hover:border-[var(--studio-border-strong)] hover:bg-[hsl(var(--card))]",
                         ].join(" "),
                     flash ? "shadow-[0_0_0_2px_hsl(var(--primary)/0.08)]" : "",
                   ].join(" ")}
@@ -426,12 +425,6 @@ export default function Inbox({
                               New
                             </span>
                           ) : null}
-                          {sevTag ? (
-                            <span className={badge("severity", sevTag)}>
-                              {severityIcon(sv)}
-                              {titleCase(sevTag)}
-                            </span>
-                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -443,7 +436,7 @@ export default function Inbox({
 
                   <div className="mt-2 flex gap-2.5">
                     {firstMedia?.signed_url ? (
-                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[9px] bg-secondary/55">
+                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[8px] bg-secondary/55">
                         <img
                           src={firstMedia.signed_url}
                           alt={firstMedia.alt_text ?? title}
@@ -462,7 +455,15 @@ export default function Inbox({
                   </div>
 
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-muted-foreground">
-                    {metaLeft}
+                    <span className="inline-flex min-w-0 flex-wrap items-center gap-1.5">
+                      <span className="truncate">{metaLeft}</span>
+                      {pressure ? (
+                        <span className={badge("severity", pressure)}>
+                          {severityIcon(sv)}
+                          {decisionPressureLabel(pressure)}
+                        </span>
+                      ) : null}
+                    </span>
                     {item.injects?.requires_decision ? (
                       <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--studio-ink)]">
                         Decision needed

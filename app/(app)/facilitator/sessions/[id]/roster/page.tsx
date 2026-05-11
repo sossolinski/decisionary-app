@@ -9,7 +9,6 @@ import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
 import ConfirmDialog from "@/app/components/ConfirmDialog";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Users, UserMinus, ArrowLeft, Shield, User, Sparkles } from "lucide-react";
 
@@ -150,119 +149,111 @@ export default function FacilitatorRosterPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 text-sm text-[color:var(--studio-muted)] shadow-[var(--studio-shadow)]">
+        Loading…
+      </div>
+    );
   }
 
   return (
     <div className="mx-auto w-full max-w-[var(--studio-max)] space-y-5">
-      {/* Header */}
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative flex flex-wrap items-end justify-between gap-4">
-            <div className="space-y-2 min-w-0">
-              <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
-                Session roster
-              </div>
-              <h1 className="text-[28px] font-semibold tracking-tight flex items-center gap-2">
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="grid gap-5 lg:grid-cols-[1.25fr_0.55fr] lg:items-start">
+          <div className="min-w-0 space-y-4">
+            <div className="ui-eyebrow">
+              <Sparkles className="h-3.5 w-3.5" />
+              Session roster
+            </div>
+            <div className="space-y-2">
+              <h1 className="flex items-center gap-2 text-[28px] font-semibold leading-tight tracking-tight text-foreground">
                 <Users className="h-5 w-5 opacity-80" />
                 Participants
               </h1>
-              <p className="text-sm leading-7 text-[color:var(--studio-muted)]">
+              <p className="max-w-2xl text-sm leading-7 text-[color:var(--studio-muted)]">
                 Review who has joined the exercise and remove participants when needed.
               </p>
             </div>
+          </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back to session
-              </Button>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+              <div className="ui-metric-label">Total</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{rows.length}</div>
             </div>
+            <Button variant="secondary" onClick={() => router.push(`/sessions/${sessionId}`)} className="gap-2 sm:self-end lg:self-auto">
+              <ArrowLeft className="h-4 w-4" />
+              Back to session
+            </Button>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Error */}
       {error ? (
         <div className="notice notice-error">
           {error}
         </div>
       ) : null}
 
-      {/* List */}
-      <Card className="surface shadow-soft border border-[var(--studio-border)] overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Users className="h-4 w-4 opacity-80" />
-            Participants
-          </CardTitle>
-          <CardDescription className="text-sm">
-            {rows.length} total
-          </CardDescription>
-        </CardHeader>
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6">
+        <div className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+            <Users className="h-5 w-5 opacity-80" />
+            Roster
+          </h2>
+          <div className="text-sm text-[color:var(--studio-muted)]">{rows.length} total</div>
+        </div>
 
-        <CardContent className="p-0">
-          {rows.length === 0 ? (
-            <div className="p-4 text-sm text-muted-foreground">No participants yet.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--studio-border)] bg-[var(--studio-surface2)]">
-                    <th className="px-4 py-3 text-left ui-section-label">Participant</th>
-                    <th className="px-4 py-3 text-left ui-section-label">Role</th>
-                    <th className="px-4 py-3 text-left ui-section-label">Joined</th>
-                    <th className="px-4 py-3 text-right ui-section-label">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => {
-                    const pid = r.participant_id;
-                    const isBusy = busyId === pid;
+        {rows.length === 0 ? (
+          <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+            No participants yet.
+          </div>
+        ) : (
+          <div className="space-y-3 pt-2">
+            {rows.map((r) => {
+              const pid = r.participant_id;
+              const isBusy = busyId === pid;
 
-                    return (
-                      <tr key={pid} className="border-b border-[var(--studio-border)]">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold truncate max-w-[520px]">
-                            {r.display_name ?? "Anonymous"}
-                          </div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[520px]">
-                            {shortParticipantId(pid)}
-                          </div>
-                        </td>
+              return (
+                <div
+                  key={pid}
+                  className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] transition hover:shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.08)] md:px-5"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <div className="truncate text-lg font-semibold tracking-tight text-foreground">
+                        {r.display_name ?? "Anonymous"}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-[color:var(--studio-muted2)]">
+                        {shortParticipantId(pid)}
+                      </div>
+                    </div>
 
-                        <td className="px-4 py-3">
-                          <RolePill role={r.role ?? "participant"} />
-                        </td>
-
-                        <td className="px-4 py-3 text-muted-foreground">
-                          {fmt(r.joined_at ?? null)}
-                        </td>
-
-                        <td className="px-4 py-3 text-right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onKick(pid, r.display_name ?? null)}
-                            disabled={isBusy}
-                            className="gap-2"
-                            title="Remove from session"
-                            aria-label={`Remove ${r.display_name ?? "participant"} from session`}
-                          >
-                            <UserMinus className="h-4 w-4" />
-                            {isBusy ? "…" : "Remove"}
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
+                      <RolePill role={r.role ?? "participant"} />
+                      <div className="text-sm text-[color:var(--studio-muted)]">
+                        <span className="font-medium text-foreground">Joined:</span> {fmt(r.joined_at ?? null)}
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => onKick(pid, r.display_name ?? null)}
+                        disabled={isBusy}
+                        className="gap-2 sm:ml-1"
+                        title="Remove from session"
+                        aria-label={`Remove ${r.display_name ?? "participant"} from session`}
+                      >
+                        <UserMinus className="h-4 w-4" />
+                        {isBusy ? "…" : "Remove"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <ConfirmDialog
         open={Boolean(pendingConfirm)}

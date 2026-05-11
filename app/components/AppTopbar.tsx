@@ -596,8 +596,8 @@ export default function AppTopbar({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-[color:var(--studio-border)] bg-[var(--studio-surface)]">
-      <div className="w-full px-4 md:px-6">
+    <header className="sticky top-0 z-40 border-b border-[color:var(--studio-border)] bg-[hsl(var(--background)/0.96)] backdrop-blur">
+      <div className="w-full px-4 md:px-5">
         <div className="h-14 flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3 md:pl-1">
             {isMobile && onToggleMobileSidebar ? (
@@ -613,8 +613,11 @@ export default function AppTopbar({
             ) : null}
 
             <div className="min-w-0 flex items-center gap-3">
-              <Link href={brandHref} className="shrink-0 font-semibold tracking-tight">
-                Decisionary
+              <Link href={brandHref} className="inline-flex shrink-0 items-center gap-2 font-semibold tracking-tight text-[color:var(--studio-ink)]">
+                <span className="grid h-8 w-8 place-items-center rounded-[8px] border border-[var(--studio-border-strong)] bg-[hsl(var(--card))] text-sm font-bold leading-none shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.025)]">
+                  D
+                </span>
+                <span>Decisionary</span>
               </Link>
               <div className="hidden md:flex min-w-0 items-center gap-2 text-sm text-[color:var(--studio-muted)]">
                 <span className="text-[color:var(--studio-muted2)]">/</span>
@@ -641,7 +644,7 @@ export default function AppTopbar({
                 aria-controls={notificationsMenuId}
                 aria-label="Open notifications"
                 title="Notifications"
-                className="relative rounded-[var(--radius)] bg-[var(--studio-surface2)]"
+                className="relative rounded-[8px] bg-[hsl(var(--card))]"
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 ? (
@@ -656,12 +659,12 @@ export default function AppTopbar({
                   id={notificationsMenuId}
                   role="dialog"
                   aria-label="Notifications"
-                  className="absolute right-0 z-50 mt-2 w-[456px] max-w-[92vw] popover-solid rounded-[16px] shadow-soft overflow-hidden"
+                  className="absolute right-0 z-50 mt-2 w-[456px] max-w-[92vw] overflow-hidden rounded-2xl border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] shadow-[var(--studio-shadow2)]"
                 >
-                  <div className="border-b border-[color:var(--studio-border)] px-4 py-4">
+                  <div className="border-b border-border px-5 py-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-sm font-semibold">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                           Notifications
                           <HintTooltip
                             text="A shared feed for live session alerts, access changes, and product notices."
@@ -705,7 +708,7 @@ export default function AppTopbar({
                     </div>
                   </div>
 
-                  <div className="max-h-[70vh] overflow-auto p-3 space-y-4">
+                  <div className="max-h-[70vh] space-y-4 overflow-auto p-4">
                     <div className="flex flex-wrap gap-2">
                         {[
                         { key: "all", label: "All" },
@@ -730,7 +733,7 @@ export default function AppTopbar({
                     </div>
 
                     {notificationsLoading ? (
-                      <div className="rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-3 text-sm text-[color:var(--studio-muted)]">
+                      <div className="rounded-2xl border border-border bg-[var(--studio-surface2)] px-4 py-4 text-sm text-[color:var(--studio-muted)] shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
                         Loading notifications…
                       </div>
                     ) : null}
@@ -744,7 +747,7 @@ export default function AppTopbar({
                     filteredSessionNotifications.length === 0 &&
                     filteredSystemNotifications.length === 0 &&
                     filteredProductNotifications.length === 0 ? (
-                      <div className="rounded-[var(--radius)] border border-dashed border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-4 text-sm text-[color:var(--studio-muted)]">
+                      <div className="rounded-2xl border border-dashed border-border bg-[var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted)]">
                         Nothing new in this view right now.
                       </div>
                     ) : null}
@@ -767,10 +770,10 @@ export default function AppTopbar({
                               href={item.href}
                               onClick={() => setNotificationsOpen(false)}
                               className={[
-                                "block rounded-[14px] border px-3 py-3 transition",
+                                "block rounded-2xl border px-4 py-3.5 transition shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]",
                                 unread
                                   ? notificationTone(item)
-                                  : "border-[var(--studio-border)] bg-[var(--studio-surface2)] hover:bg-[var(--studio-surface)]",
+                                  : "border-border bg-[var(--studio-surface2)] hover:border-[var(--studio-border-strong)]",
                               ].join(" ")}
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -840,10 +843,10 @@ export default function AppTopbar({
                               href={item.href}
                               onClick={() => setNotificationsOpen(false)}
                               className={[
-                                "block rounded-[14px] border px-3 py-3 transition",
+                                "block rounded-2xl border px-4 py-3.5 transition shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]",
                                 unread
                                   ? notificationTone(item)
-                                  : "border-[var(--studio-border)] bg-[var(--studio-surface2)] hover:bg-[var(--studio-surface)]",
+                                  : "border-border bg-[var(--studio-surface2)] hover:border-[var(--studio-border-strong)]",
                               ].join(" ")}
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -913,10 +916,10 @@ export default function AppTopbar({
                               href={item.href}
                               onClick={() => setNotificationsOpen(false)}
                               className={[
-                                "block rounded-[14px] border px-3 py-3 transition",
+                                "block rounded-2xl border px-4 py-3.5 transition shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]",
                                 unread
                                   ? notificationTone(item)
-                                  : "border-[var(--studio-border)] bg-[var(--studio-surface2)] hover:bg-[var(--studio-surface)]",
+                                  : "border-border bg-[var(--studio-surface2)] hover:border-[var(--studio-border-strong)]",
                               ].join(" ")}
                             >
                               <div className="flex items-start justify-between gap-3">
@@ -975,7 +978,7 @@ export default function AppTopbar({
             <div className="relative z-30" ref={accountMenuRef}>
               <Button
                 variant="outline"
-                className="min-w-[220px] max-w-[260px] justify-between rounded-[var(--radius)] bg-[var(--studio-surface2)]"
+                className="min-w-[220px] max-w-[260px] justify-between rounded-[8px] bg-[hsl(var(--card))]"
                 onClick={() => setOpen((v) => !v)}
                 aria-haspopup="dialog"
                 aria-expanded={open}
@@ -990,22 +993,22 @@ export default function AppTopbar({
                   id={accountMenuId}
                   role="dialog"
                   aria-label="Account menu"
-                  className="absolute right-0 z-50 mt-2 w-[304px] popover-solid rounded-[16px] shadow-soft overflow-hidden"
+                  className="absolute right-0 z-50 mt-2 w-[320px] overflow-hidden rounded-2xl border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] shadow-[var(--studio-shadow2)]"
                 >
-                  <div className="border-b border-[color:var(--studio-border)] px-5 py-4">
+                  <div className="border-b border-border px-5 py-4">
                     <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
                       Account
                     </div>
-                    <div className="text-sm font-semibold truncate">{email ?? "—"}</div>
+                    <div className="mt-1 truncate text-sm font-semibold text-foreground">{email ?? "—"}</div>
                     {isDisabled ? (
                       <div className="mt-2 text-xs text-destructive">Account disabled</div>
                     ) : null}
                   </div>
-                  <div className="border-b border-[color:var(--studio-border)] px-5 py-4 space-y-5">
+                  <div className="space-y-5 border-b border-border px-5 py-4">
                     <div>
                       <label
                         htmlFor={languageFieldId}
-                        className="mb-2 block text-xs font-medium text-[color:var(--studio-muted)]"
+                        className="mb-2 block text-xs font-semibold text-[color:var(--studio-muted)]"
                       >
                         Language
                       </label>
@@ -1013,7 +1016,7 @@ export default function AppTopbar({
                         id={languageFieldId}
                         value={language}
                         onChange={(e) => setLanguage(e.target.value as LanguagePreference)}
-                        className="h-10 w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm"
+                        className="h-10 w-full rounded-[var(--radius)] border border-border bg-[var(--studio-surface2)] px-3 text-sm text-foreground shadow-[0_1px_2px_hsl(220_20%_20%/0.06)] outline-none transition hover:border-[var(--studio-border-strong)] focus-visible:shadow-[var(--studio-ring)]"
                       >
                         <option value="en">English</option>
                         <option value="pl">Polski</option>
@@ -1023,7 +1026,7 @@ export default function AppTopbar({
                     <div>
                       <label
                         htmlFor={themeFieldId}
-                        className="mb-2 block text-xs font-medium text-[color:var(--studio-muted)]"
+                        className="mb-2 block text-xs font-semibold text-[color:var(--studio-muted)]"
                       >
                         Theme
                       </label>
@@ -1031,7 +1034,7 @@ export default function AppTopbar({
                         id={themeFieldId}
                         value={theme}
                         onChange={(e) => setTheme(e.target.value as ThemePreference)}
-                        className="h-10 w-full rounded-[var(--radius)] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 text-sm"
+                        className="h-10 w-full rounded-[var(--radius)] border border-border bg-[var(--studio-surface2)] px-3 text-sm text-foreground shadow-[0_1px_2px_hsl(220_20%_20%/0.06)] outline-none transition hover:border-[var(--studio-border-strong)] focus-visible:shadow-[var(--studio-ring)]"
                       >
                         <option value="auto">Auto</option>
                         <option value="light">Light</option>
@@ -1039,10 +1042,10 @@ export default function AppTopbar({
                       </select>
                     </div>
                   </div>
-                  <div className="p-3 space-y-1.5">
+                  <div className="space-y-1.5 p-3">
                     <Button
                       variant="ghost"
-                      className="w-full justify-start rounded-[12px] px-3"
+                      className="w-full justify-start rounded-2xl px-3"
                       onClick={() => {
                         setOpen(false);
                         setShortcutsOpen(true);
@@ -1051,7 +1054,7 @@ export default function AppTopbar({
                       <Keyboard className="h-4 w-4" />
                       Keyboard shortcuts
                     </Button>
-                    <Button asChild variant="ghost" className="w-full justify-start rounded-[12px] px-3">
+                    <Button asChild variant="ghost" className="w-full justify-start rounded-2xl px-3">
                       <Link href="/settings" onClick={() => setOpen(false)}>
                         <Settings className="h-4 w-4" />
                         Profile settings
@@ -1059,7 +1062,7 @@ export default function AppTopbar({
                     </Button>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start rounded-[12px] px-3"
+                      className="w-full justify-start rounded-2xl px-3"
                       onClick={async () => {
                         await supabase.auth.signOut();
                         setOpen(false);
@@ -1078,7 +1081,7 @@ export default function AppTopbar({
       </div>
 
       {shortcutsOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/30 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[2px]">
           <div className="flex min-h-full items-start justify-center px-4 pt-20">
             <div
               ref={shortcutsDialogRef}
@@ -1086,11 +1089,11 @@ export default function AppTopbar({
               role="dialog"
               aria-modal="true"
               aria-label="Keyboard shortcuts"
-              className="surface-solid w-full max-w-xl rounded-[18px] shadow-soft overflow-hidden"
+              className="w-full max-w-xl overflow-hidden rounded-2xl border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] shadow-[var(--studio-shadow2)]"
             >
-              <div className="flex items-center justify-between border-b border-[color:var(--studio-border)] px-5 py-4">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
                 <div>
-                  <div className="text-base font-semibold">Keyboard shortcuts</div>
+                  <div className="text-base font-semibold text-foreground">Keyboard shortcuts</div>
                   <div className="text-sm text-[color:var(--studio-muted)]">
                     Global shortcuts that work outside text fields.
                   </div>
@@ -1116,10 +1119,10 @@ export default function AppTopbar({
                 ].map((shortcut) => (
                   <div
                     key={shortcut.keys}
-                    className="flex items-center justify-between gap-4 rounded-[var(--radius)] border border-[var(--studio-border)] bg-[hsl(var(--card))] px-4 py-3"
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-[var(--studio-surface2)] px-4 py-3 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]"
                   >
                     <div className="text-sm text-[color:var(--studio-muted)]">{shortcut.action}</div>
-                    <kbd className="rounded-md border border-[var(--studio-border-strong)] bg-[hsl(var(--background))] px-2 py-1 text-xs font-semibold text-foreground shadow-sm">
+                    <kbd className="rounded-[8px] border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] px-2.5 py-1 text-xs font-semibold text-foreground shadow-sm">
                       {shortcut.keys}
                     </kbd>
                   </div>

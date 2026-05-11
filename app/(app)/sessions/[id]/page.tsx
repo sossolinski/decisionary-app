@@ -47,12 +47,12 @@ import {
 import SessionFeedAndDetail from "@/app/components/session-runtime/SessionFeedAndDetail";
 import SessionHeaderPanel from "@/app/components/session-runtime/SessionHeaderPanel";
 import SessionParticipantBoards from "@/app/components/session-runtime/SessionParticipantBoards";
-import HintTooltip from "@/app/components/HintTooltip";
 import { useRoleContext } from "@/app/components/useRoleContext";
 import {
   consequenceImpactLabel,
   consequenceSeverityTone,
   consequenceTypeLabel,
+  decisionPressureLabel,
   fmt,
   humanActionLabel,
   humanDecisionLabel,
@@ -65,12 +65,14 @@ import {
 
 import { Button } from "@/app/components/ui/button";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  LayoutDashboard,
   Sparkles,
   ListChecks,
   CheckSquare,
+  MessagesSquare,
+  Wrench,
   X,
 } from "lucide-react";
 
@@ -201,34 +203,6 @@ function responseDecisionLabel(
   return "Recorded response";
 }
 
-function timelineConnectorLabel(
-  current: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs },
-  next: { kind: TimelineKind; sessionInjectId: string | null; refs: TimelineRefs; sourceId: string } | null
-) {
-  if (!next) return null;
-
-  if (current.kind === "task" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
-    return "created after decision";
-  }
-  if (current.kind === "task" && current.refs.sourceActionId && current.refs.sourceActionId === next.sourceId) {
-    return "created after response";
-  }
-  if (current.kind === "consequence" && current.refs.decisionId && current.refs.decisionId === next.sourceId) {
-    return "followed decision";
-  }
-  if (current.kind === "consequence" && current.refs.taskId && current.refs.taskId === next.sourceId) {
-    return "linked to follow-up";
-  }
-  if (current.kind === "decision" && current.refs.actionId && current.refs.actionId === next.sourceId) {
-    return "followed response";
-  }
-  if (current.kind === "action" && current.refs.injectId && current.refs.injectId === next.sourceId) {
-    return "response to update";
-  }
-
-  return null;
-}
-
 export default function SessionParticipantPage() {
   const params = useParams<{ id: string }>();
   const sessionId = params?.id ?? "";
@@ -238,6 +212,7 @@ export default function SessionParticipantPage() {
   const isMobile = useMediaQuery("(max-width: 1100px)");
   const copPanelId = useId();
   const toolsPanelId = useId();
+  const updatesPanelId = useId();
   const filtersPanelId = useId();
   const insightsPanelId = useId();
 
@@ -256,7 +231,8 @@ export default function SessionParticipantPage() {
   const [roleLoading, setRoleLoading] = useState(true);
 
   // COP
-  const [copOpen, setCopOpen] = useState(false);
+  const [copOpen, setCopOpen] = useState(true);
+  const [updatesOpen, setUpdatesOpen] = useState(true);
   const [situation, setSituation] = useState<SessionSituation | null>(null);
 
   // Selection
@@ -321,6 +297,10 @@ export default function SessionParticipantPage() {
   const facilitatorSessionAccess = isFacilitator;
   const participantViewMode = !roleContextLoading && activeRole === "participant";
   const canUseFacilitatorUi = facilitatorSessionAccess && !participantViewMode;
+  const allPrimaryPanelsClosed =
+    !copOpen &&
+    !updatesOpen &&
+    (!canUseFacilitatorUi || (!toolsOpen && !advancedInsightsOpen));
 
   function setRuntimeNoticeFromResult(
     result: { created_consequences: number; created_tasks: number; created_injects: number } | null
@@ -966,7 +946,9 @@ export default function SessionParticipantPage() {
         detail: selectedItem.injects?.body ?? "Selected inject entered the session.",
         meta: [
           selectedItem.injects?.channel === "pulse" ? "Stream Pulse" : "Stream Inbox",
-          selectedItem.injects?.severity ? `Severity ${selectedItem.injects.severity}` : "No severity",
+          selectedItem.injects?.severity
+            ? `Pressure ${decisionPressureLabel(selectedItem.injects.severity)}`
+            : "No pressure tag",
         ],
         relations: [
           {
@@ -1574,6 +1556,10 @@ export default function SessionParticipantPage() {
     }
   }, [canUseFacilitatorUi]);
 
+  useEffect(() => {
+    if (!updatesOpen) setFiltersOpen(false);
+  }, [updatesOpen]);
+
   if (!sessionId) {
     return (
       <div className="text-sm text-[color:var(--studio-muted2)]">
@@ -1606,7 +1592,9 @@ export default function SessionParticipantPage() {
     <div className="space-y-5">
       <SessionHeaderPanel
         copPanelId={copPanelId}
+        updatesPanelId={updatesPanelId}
         toolsPanelId={toolsPanelId}
+        insightsPanelId={insightsPanelId}
         heroEyebrow={heroEyebrow}
         participantView={participantViewMode}
         startedAt={startedAt}
@@ -1616,10 +1604,15 @@ export default function SessionParticipantPage() {
         sessionParticipantLimit={sessionParticipantLimit}
         copOpen={copOpen}
         setCopOpen={setCopOpen}
+        updatesOpen={updatesOpen}
+        setUpdatesOpen={setUpdatesOpen}
+        totalWaitingUpdates={totalWaitingUpdates}
         roleLoading={roleLoading || roleContextLoading}
         isFacilitator={canUseFacilitatorUi}
         toolsOpen={toolsOpen}
         setToolsOpen={setToolsOpen}
+        advancedInsightsOpen={advancedInsightsOpen}
+        setAdvancedInsightsOpen={setAdvancedInsightsOpen}
         exerciseClock={exerciseClock}
         scenario={scenario}
         situation={situation}
@@ -1650,7 +1643,7 @@ export default function SessionParticipantPage() {
       />
 
       {showStartHelper ? (
-        <div className="rounded-[18px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-4 py-4 md:px-5">
+        <div className="ui-session-shell px-4 py-4 md:px-5">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="text-sm font-semibold text-[color:var(--studio-ink)]">
@@ -1668,7 +1661,7 @@ export default function SessionParticipantPage() {
                 }
                 setOnboardingDismissed(true);
               }}
-              className="self-start rounded-full border border-[var(--studio-border)] p-1 text-[color:var(--studio-muted2)] transition hover:text-foreground"
+              className="self-start rounded-[8px] border border-[var(--studio-border)] p-1 text-[color:var(--studio-muted2)] transition hover:text-foreground"
               aria-label="Dismiss onboarding helper"
             >
               <X className="h-4 w-4" />
@@ -1677,99 +1670,112 @@ export default function SessionParticipantPage() {
         </div>
       ) : null}
 
-      <SessionFeedAndDetail
-        isMobile={isMobile}
-        participantView={participantViewMode}
-        sessionId={sessionId}
-        streamTab={streamTab}
-        setStreamTab={setStreamTab}
-        selectedItem={selectedItem}
-        setSelectedItem={setSelectedItem}
-        selectedSource={selectedSource}
-        setSelectedSource={setSelectedSource}
-        setFocusedThreadId={setFocusedThreadId}
-        unseenInbox={unseenInbox}
-        unseenPulse={unseenPulse}
-        markSeen={markSeen}
-        refreshUnseen={refreshUnseen}
-        filtersOpen={filtersOpen}
-        setFiltersOpen={setFiltersOpen}
-        filtersWrapRef={filtersWrapRef}
-        filtersButtonRef={filtersButtonRef}
-        filtersPanelRef={filtersPanelRef}
-        filtersPanelPosition={filtersPanelPosition}
-        filtersPanelId={filtersPanelId}
-        inboxSearch={inboxSearch}
-        setInboxSearch={setInboxSearch}
-        inboxSeverity={inboxSeverity}
-        setInboxSeverity={setInboxSeverity}
-        pulseSearch={pulseSearch}
-        setPulseSearch={setPulseSearch}
-        pulseSeverity={pulseSeverity}
-        setPulseSeverity={setPulseSeverity}
-        clearInboxFilters={clearInboxFilters}
-        clearPulseFilters={clearPulseFilters}
-        inboxFiltersActive={inboxFiltersActive}
-        pulseFiltersActive={pulseFiltersActive}
-        runtimeNotice={runtimeNotice}
-        comment={comment}
-        setComment={setComment}
-        taskOwnerRole={taskOwnerRole}
-        setTaskOwnerRole={setTaskOwnerRole}
-        taskDuePreset={taskDuePreset}
-        setTaskDuePreset={setTaskDuePreset}
-        taskRoleOptions={taskRoleOptions}
-        doAction={doAction}
-        doPulseDecision={doPulseDecision}
-      />
-
-      <SessionParticipantBoards
-        participantView={participantViewMode}
-        overdueTaskCount={overdueTaskCount}
-        openTasks={openTasks}
-        selectedItemExists={Boolean(selectedItem)}
-        participantFocusText={participantFocusText}
-        latestConsequence={latestConsequence}
-        participantVisibleTasks={participantVisibleTasks}
-        suggestedTaskId={suggestedTaskId}
-        canManageTasks={canUseFacilitatorUi}
-        taskBusyId={taskBusyId}
-        handleTaskStatus={handleTaskStatus}
-      />
-
-      {canUseFacilitatorUi ? (
-        <div>
-          <div className="flex items-center justify-between gap-3 py-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-                Detailed session view
-                <HintTooltip text="Open the deeper trace when you want to inspect linked events, follow-ups, developments, and key decisions." />
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAdvancedInsightsOpen((value) => !value)}
-              aria-expanded={advancedInsightsOpen}
-              aria-controls={insightsPanelId}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-transparent bg-transparent text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border)] hover:text-[color:var(--studio-ink)] focus:outline-none focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
-            >
-              <ChevronDown
-                className={[
-                  "h-4 w-4 transition-transform",
-                  advancedInsightsOpen ? "rotate-180" : "",
-                ].join(" ")}
+      {updatesOpen ? (
+        <div id={updatesPanelId}>
+          <SessionFeedAndDetail
+            isMobile={isMobile}
+            participantView={participantViewMode}
+            sessionId={sessionId}
+            streamTab={streamTab}
+            setStreamTab={setStreamTab}
+            selectedItem={selectedItem}
+            setSelectedItem={setSelectedItem}
+            selectedSource={selectedSource}
+            setSelectedSource={setSelectedSource}
+            setFocusedThreadId={setFocusedThreadId}
+            unseenInbox={unseenInbox}
+            unseenPulse={unseenPulse}
+            markSeen={markSeen}
+            refreshUnseen={refreshUnseen}
+            filtersOpen={filtersOpen}
+            setFiltersOpen={setFiltersOpen}
+            filtersWrapRef={filtersWrapRef}
+            filtersButtonRef={filtersButtonRef}
+            filtersPanelRef={filtersPanelRef}
+            filtersPanelPosition={filtersPanelPosition}
+            filtersPanelId={filtersPanelId}
+            inboxSearch={inboxSearch}
+            setInboxSearch={setInboxSearch}
+            inboxSeverity={inboxSeverity}
+            setInboxSeverity={setInboxSeverity}
+            pulseSearch={pulseSearch}
+            setPulseSearch={setPulseSearch}
+            pulseSeverity={pulseSeverity}
+            setPulseSeverity={setPulseSeverity}
+            clearInboxFilters={clearInboxFilters}
+            clearPulseFilters={clearPulseFilters}
+            inboxFiltersActive={inboxFiltersActive}
+            pulseFiltersActive={pulseFiltersActive}
+            runtimeNotice={runtimeNotice}
+            comment={comment}
+            setComment={setComment}
+            taskOwnerRole={taskOwnerRole}
+            setTaskOwnerRole={setTaskOwnerRole}
+            taskDuePreset={taskDuePreset}
+            setTaskDuePreset={setTaskDuePreset}
+            taskRoleOptions={taskRoleOptions}
+            doAction={doAction}
+            doPulseDecision={doPulseDecision}
+            rightRailBelow={
+              <SessionParticipantBoards
+                participantView={participantViewMode}
+                overdueTaskCount={overdueTaskCount}
+                openTasks={openTasks}
+                selectedItemExists={Boolean(selectedItem)}
+                participantFocusText={participantFocusText}
+                latestConsequence={latestConsequence}
+                participantVisibleTasks={participantVisibleTasks}
+                suggestedTaskId={suggestedTaskId}
+                canManageTasks={canUseFacilitatorUi}
+                taskBusyId={taskBusyId}
+                handleTaskStatus={handleTaskStatus}
               />
-              <span className="sr-only">
-                {advancedInsightsOpen ? "Collapse detailed session view" : "Expand detailed session view"}
-              </span>
-            </button>
+            }
+          />
+        </div>
+      ) : null}
+
+      {allPrimaryPanelsClosed ? (
+        <div className="ui-session-shell px-4 py-6 md:px-5">
+          <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] text-[color:var(--studio-muted2)]">
+              <LayoutDashboard className="h-5 w-5" />
+            </div>
+            <div className="mt-3 text-sm font-semibold text-[color:var(--studio-ink)]">
+              Session panels are hidden
+            </div>
+            <div className="mt-1 max-w-xl text-sm leading-6 text-[color:var(--studio-muted)]">
+              Open a panel to continue working with the operational picture, updates, tools, or detailed trace.
+            </div>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button variant="outline" className="gap-2 rounded-[8px]" onClick={() => setCopOpen(true)}>
+                <LayoutDashboard className="h-4 w-4" />
+                Open COP
+              </Button>
+              <Button variant="outline" className="gap-2 rounded-[8px]" onClick={() => setUpdatesOpen(true)}>
+                <MessagesSquare className="h-4 w-4" />
+                Open updates
+              </Button>
+              {canUseFacilitatorUi ? (
+                <>
+                  <Button variant="outline" className="gap-2 rounded-[8px]" onClick={() => setToolsOpen(true)}>
+                    <Wrench className="h-4 w-4" />
+                    Open tools
+                  </Button>
+                  <Button variant="outline" className="gap-2 rounded-[8px]" onClick={() => setAdvancedInsightsOpen(true)}>
+                    <ListChecks className="h-4 w-4" />
+                    Open details
+                  </Button>
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}
 
       {advancedInsightsOpen ? (
-      <div id={insightsPanelId} className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+      <div id={insightsPanelId} className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <Sparkles className="h-4 w-4 opacity-80" />
@@ -1781,26 +1787,26 @@ export default function SessionParticipantPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 p-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 shadow-[0_12px_28px_hsl(220_20%_20%/0.03)]">
+        <div className="grid gap-4 p-5 lg:grid-cols-[1.2fr_0.8fr]">
+          <div className="rounded-2xl border border-border bg-background p-5 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
               Right now
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
               <div>
-                <div className="text-2xl font-semibold tracking-tight">{openTasks.length}</div>
+                <div className="text-3xl font-semibold tracking-tight text-foreground">{openTasks.length}</div>
                 <div className="text-xs text-[color:var(--studio-muted2)]">Open follow-ups</div>
               </div>
               <div>
-                <div className="text-2xl font-semibold tracking-tight">{overdueTaskCount}</div>
+                <div className="text-3xl font-semibold tracking-tight text-foreground">{overdueTaskCount}</div>
                 <div className="text-xs text-[color:var(--studio-muted2)]">Overdue</div>
               </div>
               <div>
-                <div className="text-2xl font-semibold tracking-tight">{consequences.length}</div>
+                <div className="text-3xl font-semibold tracking-tight text-foreground">{consequences.length}</div>
                 <div className="text-xs text-[color:var(--studio-muted2)]">Developments</div>
               </div>
             </div>
-            <div className="mt-4 text-sm text-[color:var(--studio-muted)]">
+            <div className="mt-5 text-sm leading-6 text-[color:var(--studio-muted)]">
               {overdueTaskCount > 0
                 ? "Overdue follow-up work is building up. Clear the oldest tasks first."
                 : openTasks.length > 0
@@ -1809,13 +1815,13 @@ export default function SessionParticipantPage() {
             </div>
           </div>
 
-          <div className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 shadow-[0_12px_28px_hsl(220_20%_20%/0.03)]">
+          <div className="rounded-2xl border border-border bg-background p-5 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]">
             <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
               Latest development
             </div>
             {latestConsequence ? (
               <>
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2">
                   <span
                     className={[
                       "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
@@ -1828,8 +1834,8 @@ export default function SessionParticipantPage() {
                     {consequenceTypeLabel(latestConsequence)}
                   </span>
                 </div>
-                <div className="mt-3 font-medium">{latestConsequence.title}</div>
-                <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                <div className="mt-4 font-semibold text-foreground">{latestConsequence.title}</div>
+                <div className="mt-2 text-sm leading-6 text-[color:var(--studio-muted)]">
                   {latestConsequence.description ?? "A new session development was added without extra detail."}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[color:var(--studio-muted2)]">
@@ -1839,7 +1845,7 @@ export default function SessionParticipantPage() {
                 </div>
               </>
             ) : (
-              <div className="mt-3 text-sm text-[color:var(--studio-muted2)]">
+              <div className="mt-4 text-sm leading-6 text-[color:var(--studio-muted)]">
                 No follow-on developments yet. Release an update or record a decision to start the chain.
               </div>
             )}
@@ -1849,8 +1855,8 @@ export default function SessionParticipantPage() {
       ) : null}
 
       {advancedInsightsOpen ? (
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+      <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                   <Sparkles className="h-4 w-4 opacity-80" />
@@ -1858,15 +1864,15 @@ export default function SessionParticipantPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
-                <span className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2.5 py-1">
+                <span className="rounded-full border border-border bg-background px-2.5 py-1 font-medium">
                   {chainEvents.length} events
                 </span>
                 <span>{selectedThreadOnly ? "Focused chain" : "Full session chain"}</span>
               </div>
         </div>
 
-        <div className="p-4">
-          <div className="mb-4 grid gap-3 rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] p-4 lg:grid-cols-[auto_auto_1fr] lg:items-start">
+        <div className="p-5">
+          <div className="mb-5 grid gap-4 rounded-2xl border border-border bg-background p-5 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)] lg:grid-cols-[auto_auto_1fr] lg:items-start">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
                 Scope
@@ -1884,10 +1890,10 @@ export default function SessionParticipantPage() {
                   }
                   aria-pressed={selectedThreadOnly}
                   className={[
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    "rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                     selectedThreadOnly
                       ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                      : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                      : "border-border bg-background text-[color:var(--studio-muted2)] hover:border-[var(--studio-border-strong)] hover:text-foreground",
                   ].join(" ")}
                 >
                   {selectedThreadOnly ? "Focused chain" : "All chains"}
@@ -1897,10 +1903,10 @@ export default function SessionParticipantPage() {
                   onClick={() => setRuntimeTasksOnly((value) => !value)}
                   aria-pressed={runtimeTasksOnly}
                   className={[
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                    "rounded-full border px-3.5 py-2 text-xs font-semibold transition focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                     runtimeTasksOnly
                       ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                      : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                      : "border-border bg-background text-[color:var(--studio-muted2)] hover:border-[var(--studio-border-strong)] hover:text-foreground",
                   ].join(" ")}
                 >
                   {runtimeTasksOnly ? "Auto-created tasks" : "All tasks"}
@@ -1920,10 +1926,10 @@ export default function SessionParticipantPage() {
                     onClick={() => setTimelineWindow(window)}
                     aria-pressed={timelineWindow === window}
                     className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase transition",
+                      "rounded-full border px-3.5 py-2 text-xs font-semibold uppercase transition focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                       timelineWindow === window
                         ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                        : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                        : "border-border bg-background text-[color:var(--studio-muted2)] hover:border-[var(--studio-border-strong)] hover:text-foreground",
                     ].join(" ")}
                   >
                     {window}
@@ -1944,10 +1950,10 @@ export default function SessionParticipantPage() {
                     onClick={() => toggleTimelineKind(kind)}
                     aria-pressed={timelineFilter[kind]}
                     className={[
-                      "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
+                      "rounded-full border px-3.5 py-2 text-xs font-semibold capitalize transition focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                       timelineFilter[kind]
                         ? "border-primary/30 bg-primary/10 text-[color:var(--studio-ink)]"
-                        : "border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-[color:var(--studio-muted2)]",
+                        : "border-border bg-background text-[color:var(--studio-muted2)] hover:border-[var(--studio-border-strong)] hover:text-foreground",
                     ].join(" ")}
                   >
                     {kind}
@@ -1957,7 +1963,7 @@ export default function SessionParticipantPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedTimelineEventId(null)}
-                    className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-1.5 text-xs font-semibold text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-[color:var(--studio-ink)]"
+                    className="rounded-full border border-border bg-background px-3.5 py-2 text-xs font-semibold text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-foreground focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
                   >
                     Clear path
                   </button>
@@ -1966,16 +1972,8 @@ export default function SessionParticipantPage() {
             </div>
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-[color:var(--studio-muted2)]">
-            {selectedTimelinePathEvents.length > 0 ? (
-              <span className="rounded-full border border-emerald-500/20 bg-emerald-500/[0.045] px-2.5 py-1 font-semibold text-emerald-800 dark:text-emerald-300">
-                {selectedTimelinePathEvents.length} linked in selected path
-              </span>
-            ) : null}
-          </div>
-
           {selectedTimelinePathEvents.length > 0 ? (
-            <div className="mb-4 rounded-[18px] border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-4 shadow-[0_12px_30px_hsl(160_84%_39%/0.08)]">
+            <div className="mb-5 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.06] px-5 py-4 shadow-[0_10px_24px_hsl(160_84%_39%/0.04)]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-emerald-500/20 bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800 dark:text-emerald-300">
                   Selected path
@@ -2000,7 +1998,7 @@ export default function SessionParticipantPage() {
           ) : null}
 
           {chainEvents.length === 0 ? (
-            <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+            <div className="rounded-2xl border border-dashed border-border bg-background px-5 py-6 text-sm text-[color:var(--studio-muted)]">
               No linked events to show yet.
             </div>
           ) : (
@@ -2008,7 +2006,7 @@ export default function SessionParticipantPage() {
               {groupedChainEvents.map((group) => (
                 <div key={group.label} className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <div className="inline-flex rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)] backdrop-blur">
+                    <div className="inline-flex rounded-full border border-border bg-background px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--studio-muted2)]">
                       {group.label}
                     </div>
                     <div className="flex items-center gap-2">
@@ -2032,9 +2030,12 @@ export default function SessionParticipantPage() {
                       </Button>
                     </div>
                   </div>
-                  <div data-timeline-group={group.label} className="relative overflow-x-auto pb-2 pt-8 snap-x snap-mandatory">
-                    <div className="pointer-events-none absolute left-0 right-0 top-[46px] h-px bg-[linear-gradient(90deg,hsl(210_20%_86%),hsl(220_30%_78%),hsl(210_20%_86%))]" />
-                    <div className="flex min-w-max items-start gap-3 pr-4">
+                  <div
+                    data-timeline-group={group.label}
+                    className="relative overflow-x-auto rounded-2xl border border-border bg-background px-4 pb-5 pt-5 snap-x snap-mandatory"
+                  >
+                    <div className="pointer-events-none absolute left-4 right-4 top-[56px] h-px bg-border" />
+                    <div className="flex min-w-max items-start gap-7 pr-4">
                       {group.items.map((event, index) => {
                         const isActiveThreadEvent =
                           activeThreadId != null && event.sessionInjectId === activeThreadId;
@@ -2049,61 +2050,59 @@ export default function SessionParticipantPage() {
                         const isMutedBySelection =
                           selectedTimelineEventId != null && !isSelectedPathEvent;
                         const nextEvent = group.items[index + 1] ?? null;
-                        const connectorLabel = timelineConnectorLabel(event, nextEvent);
-                        const isSelectedPathConnector =
-                          nextEvent != null &&
-                          selectedTimelineEventId != null &&
-                          selectedTimelinePathIds.has(event.id) &&
-                          selectedTimelinePathIds.has(nextEvent.id);
-                        const shouldShowConnectorLabel =
-                          Boolean(connectorLabel) &&
-                          (isSelectedPathConnector || isHoveredThreadEvent || isActiveThreadEvent);
-                        const hasThreadContinuation =
+                        const shouldConnectNext =
                           event.sessionInjectId != null &&
                           nextEvent?.sessionInjectId != null &&
                           event.sessionInjectId === nextEvent.sessionInjectId;
+                        const isSelectedPathConnector =
+                          shouldConnectNext &&
+                          selectedTimelineEventId != null &&
+                          selectedTimelinePathIds.has(event.id) &&
+                          selectedTimelinePathIds.has(nextEvent.id);
                         return (
                           <div
                             key={event.id}
                             className={[
-                              "relative w-[240px] min-w-[240px] snap-start space-y-3 transition-opacity",
+                              "relative w-[280px] min-w-[280px] snap-start space-y-4 transition-opacity",
                               isMutedByHover ? "opacity-45" : isMutedBySelection ? "opacity-55" : "opacity-100",
                             ].join(" ")}
                           >
-                            {hasThreadContinuation ? (
-                              <div className="pointer-events-none absolute left-full top-[-8px] z-0 w-28">
-                                {shouldShowConnectorLabel ? (
-                                  <div
-                                    className={[
-                                      "mb-2 inline-flex max-w-[118px] rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm",
-                                      isSelectedPathConnector
-                                        ? "border-emerald-500/25 bg-[color:var(--studio-surface2)] text-emerald-800 dark:text-emerald-300"
-                                        : isHoveredThreadEvent || isActiveThreadEvent
-                                        ? "border-primary/25 bg-[color:var(--studio-surface2)] text-[color:var(--studio-ink)]"
-                                        : "border-orange-500/20 bg-[color:var(--studio-surface2)] text-orange-800 dark:text-orange-300",
-                                    ].join(" ")}
-                                  >
-                                    {connectorLabel}
-                                  </div>
-                                ) : null}
-                                <div
+                            {shouldConnectNext ? (
+                              <div
+                                aria-hidden="true"
+                                className={[
+                                  "pointer-events-none absolute left-full top-[126px] z-30 flex w-7 items-center",
+                                  isSelectedPathConnector || isHoveredThreadEvent || isActiveThreadEvent
+                                    ? "opacity-100"
+                                    : "opacity-55",
+                                ].join(" ")}
+                              >
+                                <span
                                   className={[
-                                    "h-[2px] w-12",
+                                    "h-px flex-1 rounded-full",
                                     isSelectedPathConnector
-                                      ? "bg-[linear-gradient(90deg,hsl(160_84%_39%/0.85),hsl(160_84%_39%/0.18))]"
+                                      ? "bg-emerald-500/70"
                                       : isHoveredThreadEvent || isActiveThreadEvent
-                                      ? "bg-[linear-gradient(90deg,hsl(220_90%_56%/0.85),hsl(220_90%_56%/0.2))]"
-                                      : shouldShowConnectorLabel
-                                      ? "bg-[linear-gradient(90deg,hsl(25_95%_55%/0.65),hsl(25_95%_55%/0.1))]"
-                                      : "bg-[linear-gradient(90deg,hsl(220_90%_56%/0.55),hsl(220_90%_56%/0.12))]",
+                                      ? "bg-primary/60"
+                                      : "bg-border",
+                                  ].join(" ")}
+                                />
+                                <span
+                                  className={[
+                                    "-ml-1 h-2.5 w-2.5 rotate-45 border-r border-t",
+                                    isSelectedPathConnector
+                                      ? "border-emerald-500/70"
+                                      : isHoveredThreadEvent || isActiveThreadEvent
+                                      ? "border-primary/60"
+                                      : "border-border",
                                   ].join(" ")}
                                 />
                               </div>
                             ) : null}
-                            <div className="flex items-center gap-2 px-1">
+                            <div className="relative z-20 inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-background px-2.5 py-1 shadow-[0_8px_18px_hsl(220_20%_20%/0.035)]">
                               <div
                                 className={[
-                                  "h-3 w-3 rounded-full border-2 bg-[color:var(--studio-surface2)]",
+                                  "h-3.5 w-3.5 rounded-full border-2 bg-background",
                                   isSelectedPathEvent
                                     ? "border-emerald-500"
                                     : isActiveThreadEvent || isHoveredThreadEvent
@@ -2111,7 +2110,7 @@ export default function SessionParticipantPage() {
                                     : "border-[var(--studio-border-strong)]",
                                 ].join(" ")}
                               />
-                              <div className="text-xs font-semibold text-[color:var(--studio-muted2)]">
+                              <div className="truncate text-xs font-semibold text-[color:var(--studio-muted2)]">
                                 {fmt(event.at)}
                               </div>
                             </div>
@@ -2122,14 +2121,14 @@ export default function SessionParticipantPage() {
                               onMouseLeave={() => setHoveredThreadId((current) => (current === event.sessionInjectId ? null : current))}
                               aria-pressed={isSelectedPathEvent || isActiveThreadEvent}
                               className={[
-                                "relative min-h-[148px] w-full rounded-[18px] border px-4 py-3 text-left transition",
+                                "relative min-h-[172px] w-full rounded-2xl border px-4 py-4 text-left transition focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
                                 isSelectedPathEvent
-                                  ? "border-emerald-500/35 bg-emerald-500/[0.055] shadow-[0_0_0_1px_hsl(160_84%_39%/0.08)]"
+                                  ? "border-emerald-500/35 bg-emerald-500/[0.055] shadow-[0_12px_28px_hsl(160_84%_39%/0.07)]"
                                   : isActiveThreadEvent
-                                  ? "border-primary/35 bg-primary/[0.08] shadow-[0_0_0_1px_hsl(220_90%_56%/0.08)]"
+                                  ? "border-primary/35 bg-primary/[0.08] shadow-[0_12px_28px_hsl(220_90%_56%/0.07)]"
                                   : isHoveredThreadEvent
                                   ? "border-primary/25 bg-primary/[0.03] shadow-[0_10px_30px_hsl(220_70%_55%/0.08)]"
-                                  : "border-[var(--studio-border)] bg-[color:var(--studio-surface2)] hover:border-[var(--studio-border-strong)] hover:bg-[color:var(--studio-surface)]",
+                                  : "border-border bg-background shadow-[0_8px_20px_hsl(220_20%_20%/0.025)] hover:border-[var(--studio-border-strong)]",
                               ].join(" ")}
                             >
                               <div className="flex flex-wrap items-center gap-2">
@@ -2189,8 +2188,8 @@ export default function SessionParticipantPage() {
       {advancedInsightsOpen ? (
       <div className={isMobile ? "grid grid-cols-1 gap-4" : "grid grid-cols-12 gap-4"}>
         <div className={isMobile ? "" : "col-span-5"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <CheckSquare className="h-4 w-4 opacity-80" />
                 Follow-up tasks
@@ -2200,10 +2199,10 @@ export default function SessionParticipantPage() {
               </div>
             </div>
 
-            <div className="p-4">
+            <div className="p-5">
               <div className="space-y-3">
                 {visibleTasks.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                  <div className="rounded-2xl border border-dashed border-border bg-background px-5 py-6 text-sm text-[color:var(--studio-muted)]">
                     No follow-up tasks yet.
                   </div>
                 ) : (
@@ -2211,17 +2210,17 @@ export default function SessionParticipantPage() {
                     <div
                       key={task.id}
                       className={[
-                        "rounded-[18px] border bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]",
+                        "rounded-2xl border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]",
                         task.due_at && new Date(task.due_at).getTime() <= Date.now() && task.status !== "done" && task.status !== "cancelled"
                           ? "border-red-500/25"
-                          : "border-[var(--studio-border)]",
+                          : "border-border",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-medium">{task.title}</div>
+                          <div className="font-semibold text-foreground">{task.title}</div>
                           {task.description ? (
-                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                            <div className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
                               {task.description}
                             </div>
                           ) : null}
@@ -2294,8 +2293,8 @@ export default function SessionParticipantPage() {
         </div>
 
         <div className={isMobile ? "" : "col-span-4"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <Sparkles className="h-4 w-4 opacity-80" />
                 Developments
@@ -2305,23 +2304,23 @@ export default function SessionParticipantPage() {
               </div>
             </div>
 
-            <div className="p-4">
+            <div className="p-5">
               <div className="space-y-3">
                 {visibleConsequences.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                  <div className="rounded-2xl border border-dashed border-border bg-background px-5 py-6 text-sm text-[color:var(--studio-muted)]">
                     No developments yet.
                   </div>
                 ) : (
                   visibleConsequences.slice(0, 8).map((item) => (
                     <div
                       key={item.id}
-                      className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
+                      className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-medium">{item.title}</div>
+                          <div className="font-semibold text-foreground">{item.title}</div>
                           {item.description ? (
-                            <div className="mt-1 text-sm text-[color:var(--studio-muted)]">
+                            <div className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
                               {item.description}
                             </div>
                           ) : null}
@@ -2352,8 +2351,8 @@ export default function SessionParticipantPage() {
         </div>
 
         <div className={isMobile ? "" : "col-span-3"}>
-          <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-            <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-4 py-3">
+          <div className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <ListChecks className="h-4 w-4 opacity-80" />
                 Key decisions
@@ -2367,14 +2366,14 @@ export default function SessionParticipantPage() {
               </div>
             </div>
 
-            <div className="p-4">
-              <div className="space-y-2.5">
+            <div className="p-5">
+              <div className="space-y-3">
                 {actionsLoading ? (
                   <div className="text-sm text-[color:var(--studio-muted2)]">
                     Loading…
                   </div>
                 ) : notableActions.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-5 text-sm text-[color:var(--studio-muted2)]">
+                  <div className="rounded-2xl border border-dashed border-border bg-background px-5 py-6 text-sm text-[color:var(--studio-muted)]">
                     No notable decisions yet.
                   </div>
                 ) : (
@@ -2384,10 +2383,10 @@ export default function SessionParticipantPage() {
                     return (
                       <div
                         key={a.id}
-                        className="rounded-[18px] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4 shadow-[0_10px_24px_hsl(220_20%_20%/0.03)]"
+                        className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]"
                       >
                         <div className="min-w-0">
-                          <div className="font-medium">
+                          <div className="font-semibold text-foreground">
                             {responseDecisionLabel(a, linkedDecision?.decision_type, linkedTasks.length)}
                           </div>
                           <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
@@ -2408,7 +2407,7 @@ export default function SessionParticipantPage() {
                           ) : null}
                         </div>
                         {a.comment ? (
-                          <div className="mt-2 rounded-[14px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2 text-sm text-[color:var(--studio-muted)]">
+                          <div className="mt-3 rounded-2xl border border-border bg-background px-3 py-2.5 text-sm leading-6 text-[color:var(--studio-muted)]">
                             {a.comment}
                           </div>
                         ) : null}

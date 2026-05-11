@@ -14,6 +14,46 @@ alter table public.session_situation
 
 do $$
 begin
+  alter table public.scenarios
+    add constraint scenarios_passenger_count_nonnegative check (passenger_count >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.scenarios
+    add constraint scenarios_crew_count_nonnegative check (crew_count >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.scenarios
+    add constraint scenarios_cargo_weight_kg_nonnegative check (cargo_weight_kg >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.scenarios
+    add constraint scenarios_dangerous_goods_count_nonnegative check (dangerous_goods_count >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter table public.scenarios
+    add constraint scenarios_live_animals_count_nonnegative check (live_animals_count >= 0);
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
   alter table public.session_situation
     add constraint session_situation_passenger_count_nonnegative check (passenger_count >= 0);
 exception

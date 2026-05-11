@@ -68,7 +68,7 @@ export default function FacilitatorHomePage() {
 
   return (
     <div className="space-y-5">
-      <section className="ui-section-panel">
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
         <div className="grid gap-4 lg:grid-cols-[1.45fr_0.8fr] lg:items-start">
           <div className="space-y-4">
             <div className="ui-eyebrow">
@@ -77,7 +77,9 @@ export default function FacilitatorHomePage() {
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-[28px] font-semibold tracking-tight">Run realistic exercises with less friction.</h1>
+              <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                Run realistic exercises with less friction.
+              </h1>
               <div className="text-sm text-[color:var(--studio-muted)]">
                 Active organization: <b className="text-foreground">{activeOrg?.name ?? "not selected"}</b>
               </div>
@@ -109,27 +111,31 @@ export default function FacilitatorHomePage() {
           </div>
 
           <div className="grid gap-3 self-start sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-            <div className="ui-metric-card">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="ui-metric-label">
                     Scenarios
                   </div>
-                  <div className="mt-2 text-3xl font-semibold">{loading ? "—" : scenarioCount}</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{loading ? "—" : scenarioCount}</div>
                 </div>
-                <BookOpen className="h-4 w-4 text-foreground/60" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <BookOpen className="h-4 w-4" />
+                </div>
               </div>
             </div>
 
-            <div className="ui-metric-card">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="ui-metric-label">
                     Sessions
                   </div>
-                  <div className="mt-2 text-3xl font-semibold">{loading ? "—" : sessionCount}</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{loading ? "—" : sessionCount}</div>
                 </div>
-                <PlayCircle className="h-4 w-4 text-foreground/60" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <PlayCircle className="h-4 w-4" />
+                </div>
               </div>
             </div>
           </div>
@@ -143,54 +149,90 @@ export default function FacilitatorHomePage() {
       </section>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <section className="ui-row-panel h-full">
-            <div className="flex items-center justify-between gap-3">
+        <section className="group flex h-full min-h-[220px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)] transition hover:border-[var(--studio-border-strong)]">
+          <div className="h-1 bg-blue-500/65" />
+          <div className="flex flex-1 flex-col px-5 py-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">1. Prepare</h2>
+                <div className="inline-flex rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-800 dark:text-blue-300">
+                  Step 1
+                </div>
+                <h2 className="mt-3 text-lg font-semibold text-foreground">Prepare</h2>
+                <p className="mt-2 max-w-[34ch] text-sm leading-6 text-[color:var(--studio-muted)]">
+                  Create the scenario, inject flow, and rule logic before you launch a run.
+                </p>
               </div>
-              <BookOpen className="h-4 w-4 text-foreground/60" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)] transition group-hover:border-blue-500/25 group-hover:text-blue-600 dark:group-hover:text-blue-300">
+                <BookOpen className="h-4 w-4" />
+              </div>
             </div>
-          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
-            <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-              Create the scenario, inject flow, and rule logic before you launch a run.
-            </span>
-            <Button asChild variant="secondary" size="sm" className="shrink-0">
-              <Link href="/facilitator/scenarios">Scenarios</Link>
-            </Button>
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
+              <span className="text-xs font-semibold text-[color:var(--studio-muted2)]">Scenario design</span>
+              <Button asChild variant="secondary" size="sm" className="shrink-0 gap-1.5">
+                <Link href="/facilitator/scenarios">
+                  Scenarios
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
 
-        <section className="ui-row-panel h-full">
-            <div className="flex items-center justify-between gap-3">
+        <section className="group flex h-full min-h-[220px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)] transition hover:border-[var(--studio-border-strong)]">
+          <div className="h-1 bg-emerald-500/65" />
+          <div className="flex flex-1 flex-col px-5 py-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">2. Run</h2>
+                <div className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-800 dark:text-emerald-300">
+                  Step 2
+                </div>
+                <h2 className="mt-3 text-lg font-semibold text-foreground">Run</h2>
+                <p className="mt-2 max-w-[34ch] text-sm leading-6 text-[color:var(--studio-muted)]">
+                  Start the session, release injects, coordinate responses, and steer the live exercise.
+                </p>
               </div>
-              <PlayCircle className="h-4 w-4 text-foreground/60" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)] transition group-hover:border-emerald-500/25 group-hover:text-emerald-600 dark:group-hover:text-emerald-300">
+                <PlayCircle className="h-4 w-4" />
+              </div>
             </div>
-          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
-            <span className="max-w-[26ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-              Start the session, release injects, coordinate responses, and steer the live exercise.
-            </span>
-            <Button asChild variant="secondary" size="sm" className="shrink-0">
-              <Link href="/facilitator/sessions">Sessions</Link>
-            </Button>
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
+              <span className="text-xs font-semibold text-[color:var(--studio-muted2)]">Live control</span>
+              <Button asChild variant="secondary" size="sm" className="shrink-0 gap-1.5">
+                <Link href="/facilitator/sessions">
+                  Sessions
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
 
-        <section className="ui-row-panel h-full">
-            <div className="flex items-center justify-between gap-3">
+        <section className="group flex h-full min-h-[220px] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)] transition hover:border-[var(--studio-border-strong)]">
+          <div className="h-1 bg-violet-500/65" />
+          <div className="flex flex-1 flex-col px-5 py-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-base font-semibold">3. Review</h2>
+                <div className="inline-flex rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-violet-800 dark:text-violet-300">
+                  Step 3
+                </div>
+                <h2 className="mt-3 text-lg font-semibold text-foreground">Review</h2>
+                <p className="mt-2 max-w-[36ch] text-sm leading-6 text-[color:var(--studio-muted)]">
+                  {reviewSummary}
+                </p>
               </div>
-              <ClipboardList className="h-4 w-4 text-foreground/60" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)] transition group-hover:border-violet-500/25 group-hover:text-violet-600 dark:group-hover:text-violet-300">
+                <ClipboardList className="h-4 w-4" />
+              </div>
             </div>
-          <div className="mt-3 flex min-h-[92px] items-end justify-between gap-4">
-            <span className="max-w-[30ch] text-sm leading-6 text-[hsl(var(--muted-foreground))]">
-              {reviewSummary}
-            </span>
-            <Button asChild variant="secondary" size="sm" className="shrink-0">
-              <Link href={reviewTargetHref}>Review</Link>
-            </Button>
+            <div className="mt-5 flex items-center justify-between gap-3 border-t border-border pt-4">
+              <span className="text-xs font-semibold text-[color:var(--studio-muted2)]">After-action review</span>
+              <Button asChild variant="secondary" size="sm" className="shrink-0 gap-1.5">
+                <Link href={reviewTargetHref}>
+                  Review
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </section>
       </div>

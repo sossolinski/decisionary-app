@@ -12,7 +12,7 @@ import PulseFeed from "@/app/components/PulseFeed";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 
-import { Badge, Chip, Select } from "./sessionRuntimeUi";
+import { Badge, Chip, decisionPressureLabel, Select } from "./sessionRuntimeUi";
 
 type SessionFeedAndDetailProps = {
   isMobile: boolean;
@@ -58,6 +58,7 @@ type SessionFeedAndDetailProps = {
   taskRoleOptions: TaskRoleOption[];
   doAction: (actionType: "ignore" | "escalate" | "act") => void;
   doPulseDecision: (decision: "confirm" | "deny") => void;
+  rightRailBelow?: React.ReactNode;
 };
 
 export default function SessionFeedAndDetail({
@@ -103,6 +104,7 @@ export default function SessionFeedAndDetail({
   taskRoleOptions,
   doAction,
   doPulseDecision,
+  rightRailBelow,
 }: SessionFeedAndDetailProps) {
   const splitRef = useRef<HTMLDivElement | null>(null);
   const [feedWidthPct, setFeedWidthPct] = useState(35);
@@ -172,8 +174,8 @@ export default function SessionFeedAndDetail({
       style={desktopGridStyle}
     >
       <div className={isMobile ? "" : "min-w-0 pr-2"}>
-        <div className="ui-work-surface overflow-visible">
-          <div className="flex items-center justify-between gap-2 pb-2">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
                 <MessagesSquare className="h-4 w-4 opacity-80" />
@@ -185,10 +187,10 @@ export default function SessionFeedAndDetail({
               <button
                 type="button"
                 className={[
-                  "h-7 px-2.5 rounded-[var(--radius)] border text-xs font-medium transition inline-flex items-center gap-1.5",
+                  "h-8 px-2.5 rounded-[8px] border text-xs font-semibold transition inline-flex items-center gap-1.5",
                   streamTab === "inbox"
-                    ? "bg-primary/10 border-primary/25"
-                    : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
+                    ? "bg-primary/10 border-primary/25 text-[color:var(--studio-ink)]"
+                    : "bg-[hsl(var(--card))] border-[var(--studio-border)] hover:border-[var(--studio-border-strong)]",
                 ].join(" ")}
                 onClick={() => {
                   setStreamTab("inbox");
@@ -205,10 +207,10 @@ export default function SessionFeedAndDetail({
               <button
                 type="button"
                 className={[
-                  "h-7 px-2.5 rounded-[var(--radius)] border text-xs font-medium transition inline-flex items-center gap-1.5",
+                  "h-8 px-2.5 rounded-[8px] border text-xs font-semibold transition inline-flex items-center gap-1.5",
                   streamTab === "pulse"
-                    ? "bg-primary/10 border-primary/25"
-                    : "bg-[var(--studio-surface2)] border-[var(--studio-border)] hover:bg-secondary/60",
+                    ? "bg-primary/10 border-primary/25 text-[color:var(--studio-ink)]"
+                    : "bg-[hsl(var(--card))] border-[var(--studio-border)] hover:border-[var(--studio-border-strong)]",
                 ].join(" ")}
                 onClick={() => {
                   setStreamTab("pulse");
@@ -252,7 +254,7 @@ export default function SessionFeedAndDetail({
                         ref={filtersPanelRef}
                         role="dialog"
                         aria-label={streamTab === "inbox" ? "Inbox filters" : "Pulse filters"}
-                        className="fixed z-[110] w-[360px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden"
+                        className="fixed z-[110] w-[360px] max-w-[92vw] overflow-hidden rounded-[8px] border border-[var(--studio-border-strong)] bg-[hsl(var(--popover))]"
                         style={
                           filtersPanelPosition
                             ? {
@@ -265,25 +267,25 @@ export default function SessionFeedAndDetail({
                               }
                         }
                       >
-                        <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
+                        <div className="flex items-center justify-between border-b border-[var(--studio-border)] px-3 py-3">
                           <div className="text-sm font-semibold">{streamTab === "inbox" ? "Filter inbox" : "Filter pulse"}</div>
                           <Button variant="outline" onClick={() => setFiltersOpen(false)}>
                             Close
                           </Button>
                         </div>
 
-                        <div className="p-4 space-y-3">
+                        <div className="space-y-3 p-3">
                           {streamTab === "inbox" ? (
                             <>
                               <Input value={inboxSearch} onChange={(e) => setInboxSearch(e.target.value)} placeholder="Search updates..." />
 
                               <div className="grid grid-cols-1 gap-2">
                                 <Select value={inboxSeverity ?? ""} onChange={(v) => setInboxSeverity(v ? v : null)}>
-                                  <option value="">Urgency: All</option>
-                                  <option value="low">LOW</option>
-                                  <option value="medium">MEDIUM</option>
-                                  <option value="high">HIGH</option>
-                                  <option value="critical">CRITICAL</option>
+                                  <option value="">Decision pressure: All</option>
+                                  <option value="low">{decisionPressureLabel("low")}</option>
+                                  <option value="medium">{decisionPressureLabel("medium")}</option>
+                                  <option value="high">{decisionPressureLabel("high")}</option>
+                                  <option value="critical">{decisionPressureLabel("critical")}</option>
                                 </Select>
                               </div>
 
@@ -307,7 +309,7 @@ export default function SessionFeedAndDetail({
 
                               <div className="flex flex-wrap gap-2">
                                 {inboxSearch.trim() ? <Chip label={`Search: ${inboxSearch.trim()}`} onClear={() => setInboxSearch("")} /> : null}
-                                {inboxSeverity ? <Chip label={`Urgency: ${inboxSeverity}`} onClear={() => setInboxSeverity(null)} /> : null}
+                                {inboxSeverity ? <Chip label={`Pressure: ${decisionPressureLabel(inboxSeverity)}`} onClear={() => setInboxSeverity(null)} /> : null}
                               </div>
                             </>
                           ) : (
@@ -315,11 +317,11 @@ export default function SessionFeedAndDetail({
                               <Input value={pulseSearch} onChange={(e) => setPulseSearch(e.target.value)} placeholder="Search pulse updates..." />
 
                               <Select value={pulseSeverity ?? ""} onChange={(v) => setPulseSeverity(v ? v : null)}>
-                                <option value="">Urgency: All</option>
-                                <option value="low">LOW</option>
-                                <option value="medium">MEDIUM</option>
-                                <option value="high">HIGH</option>
-                                <option value="critical">CRITICAL</option>
+                                <option value="">Decision pressure: All</option>
+                                <option value="low">{decisionPressureLabel("low")}</option>
+                                <option value="medium">{decisionPressureLabel("medium")}</option>
+                                <option value="high">{decisionPressureLabel("high")}</option>
+                                <option value="critical">{decisionPressureLabel("critical")}</option>
                               </Select>
 
                               <div className="flex gap-2">
@@ -342,7 +344,7 @@ export default function SessionFeedAndDetail({
 
                               <div className="flex flex-wrap gap-2">
                                 {pulseSearch.trim() ? <Chip label={`Search: ${pulseSearch.trim()}`} onClear={() => setPulseSearch("")} /> : null}
-                                {pulseSeverity ? <Chip label={`Urgency: ${pulseSeverity}`} onClear={() => setPulseSeverity(null)} /> : null}
+                                {pulseSeverity ? <Chip label={`Pressure: ${decisionPressureLabel(pulseSeverity)}`} onClear={() => setPulseSeverity(null)} /> : null}
                               </div>
                             </>
                           )}
@@ -355,7 +357,7 @@ export default function SessionFeedAndDetail({
             </div>
           </div>
 
-          <div className="pt-2.5">
+          <div className="ui-session-shell overflow-visible">
             {streamTab === "inbox" ? (
               <Inbox
                 sessionId={sessionId}
@@ -383,7 +385,7 @@ export default function SessionFeedAndDetail({
               />
             )}
           </div>
-        </div>
+        </section>
       </div>
 
       {!isMobile ? (
@@ -399,17 +401,15 @@ export default function SessionFeedAndDetail({
       ) : null}
 
       <div className={isMobile ? "" : "min-w-0 pl-2"}>
-        <div className="ui-work-surface overflow-hidden">
-          <div className="pb-2.5">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-              <FileText className="h-4 w-4 opacity-80" />
-              Selected update
-            </div>
+        <section className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
+            <FileText className="h-4 w-4 opacity-80" />
+            Selected update
           </div>
 
-          <div className="pt-3">
+          <div className="ui-session-shell overflow-hidden">
             {runtimeNotice ? (
-              <div className="mb-3 rounded-[var(--radius)] border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2.5 text-sm font-medium text-emerald-800 dark:text-emerald-300">
+              <div className="mb-3 rounded-[8px] border border-emerald-500/15 bg-emerald-500/[0.06] px-3 py-2.5 text-sm font-medium text-emerald-800 dark:text-emerald-300">
                 {runtimeNotice}
               </div>
             ) : null}
@@ -430,7 +430,8 @@ export default function SessionFeedAndDetail({
               onDeny={() => doPulseDecision("deny")}
             />
           </div>
-        </div>
+          {rightRailBelow ? <div className="pt-1">{rightRailBelow}</div> : null}
+        </section>
       </div>
     </div>
   );

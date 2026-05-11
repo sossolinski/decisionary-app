@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BellRing, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, BellRing, Building2, Megaphone, Sparkles } from "lucide-react";
 
 import { useRoleContext } from "@/app/components/useRoleContext";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
@@ -15,7 +16,6 @@ import {
   type NotificationAnnouncementKind,
   type NotificationAnnouncementPriority,
 } from "@/lib/organizations";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
@@ -102,52 +102,91 @@ export default function AdminAnnouncementsPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return <div className="text-sm text-[color:var(--studio-muted)]">Loading…</div>;
   }
 
   if (!isPermAdmin) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Access denied</CardTitle>
-        </CardHeader>
-      </Card>
+      <section className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)]">
+        <h1 className="text-lg font-semibold text-foreground">Access denied</h1>
+        <p className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
+          Announcements are only available to permanent administrators.
+        </p>
+      </section>
     );
   }
 
   return (
     <div className="space-y-5">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
-            <div className="space-y-4">
-              <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
-                Admin workspace
-              </div>
-
-              <div className="space-y-2">
-                <h1 className="text-[28px] font-semibold tracking-tight">Manage shared announcements without mixing them into organization setup.</h1>
-              </div>
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="grid gap-5 lg:grid-cols-[1.35fr_0.95fr] lg:items-start">
+          <div className="space-y-4">
+            <div className="ui-eyebrow">
+              <Sparkles className="h-3.5 w-3.5" />
+              Announcement workspace
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Global</div>
-                <div className="mt-2 text-3xl font-semibold">{globalAnnouncements.length}</div>
+            <div className="space-y-2">
+              <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                Manage shared announcements without mixing them into organization setup.
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                Publish platform-wide notices or target the selected organization when only one workspace needs context.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <Button asChild>
+                <Link href="/admin">
+                  Admin overview
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/admin/organizations">
+                  Organizations
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 self-start sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Global</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{globalAnnouncements.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Megaphone className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Active org</div>
-                <div className="mt-2 text-3xl font-semibold">{orgAnnouncements.length}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Org notices</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{orgAnnouncements.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <BellRing className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Organizations</div>
-                <div className="mt-2 text-3xl font-semibold">{organizations.length}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Orgs</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{organizations.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Building2 className="h-4 w-4" />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {notice ? (
         <div
@@ -160,14 +199,14 @@ export default function AdminAnnouncementsPage() {
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.15fr_1.85fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+        <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+          <div className="border-b border-border px-5 py-4">
+            <div className="flex items-center gap-2 text-base font-semibold text-foreground">
               Scope
               <HintTooltip text="Choose whether you are publishing for the whole platform or only the selected organization." />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+            </div>
+          </div>
+          <div className="space-y-3 px-5 py-5">
             <div className="grid gap-2">
               <Button
                 type="button"
@@ -195,22 +234,22 @@ export default function AdminAnnouncementsPage() {
                   ? `Currently publishing into ${activeOrg.name}.`
                   : "Pick an active organization first to use organization-scoped announcements."}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <BellRing className="h-5 w-5 opacity-80" />
                 Publish announcement
                 <HintTooltip
                   text="Use global scope for shared platform notices and organization scope for workspace-specific communication."
                   side="right"
                 />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </div>
+            </div>
+            <div className="space-y-4 px-5 py-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="ui-form-label">Category</label>
@@ -248,12 +287,15 @@ export default function AdminAnnouncementsPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="ui-form-label">Link path</label>
+                  <label className="ui-form-label">Open page (optional)</label>
                   <Input
                     value={linkPath}
                     onChange={(e) => setLinkPath(e.target.value)}
-                    placeholder="/settings or /facilitator/sessions"
+                    placeholder="/settings"
                   />
+                  <p className="mt-1.5 text-xs leading-5 text-[color:var(--studio-muted2)]">
+                    Leave empty for a text-only notice. Add an internal page when the announcement should open somewhere.
+                  </p>
                 </div>
               </div>
 
@@ -302,12 +344,12 @@ export default function AdminAnnouncementsPage() {
               >
                 {busyKey === "announcement:create" ? "Publishing…" : "Publish announcement"}
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2 text-base font-semibold text-foreground">
                 Active announcements
                 <HintTooltip
                   text={
@@ -318,14 +360,14 @@ export default function AdminAnnouncementsPage() {
                       : "Pick an active organization first to view organization-scoped notices."
                   }
                 />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+              </div>
+            </div>
+            <div className="space-y-3 px-5 py-5">
               {currentOrgAnnouncements.length === 0 ? (
                 <div className="ui-empty-state">No active announcements in this scope.</div>
               ) : (
                 currentOrgAnnouncements.map((announcement) => (
-                  <div key={announcement.id} className="rounded-[var(--radius)] border border-[var(--studio-border)] px-3 py-3">
+                  <div key={announcement.id} className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)] transition hover:border-[var(--studio-border-strong)]">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -361,8 +403,8 @@ export default function AdminAnnouncementsPage() {
                   </div>
                 ))
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </div>
       </div>
 

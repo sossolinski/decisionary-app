@@ -114,7 +114,7 @@ export default function HintTooltip({
         aria-describedby={open ? tooltipId : undefined}
         aria-expanded={open}
         className={[
-          "inline-flex h-4.5 w-4.5 items-center justify-center rounded-full",
+          "inline-flex h-5 w-5 items-center justify-center rounded-[6px]",
           "border border-[color:var(--studio-border)] bg-[var(--studio-surface2)] text-[color:var(--studio-muted2)]",
           "transition-colors hover:border-[color:var(--studio-border-strong)] hover:text-foreground",
           "focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]",
@@ -124,7 +124,7 @@ export default function HintTooltip({
         onBlur={() => setOpen(false)}
         onClick={() => setOpen((value) => !value)}
       >
-        <Info className="h-2.5 w-2.5" />
+        <Info className="h-3 w-3 stroke-[1.8]" />
       </button>
 
       {open && typeof document !== "undefined"

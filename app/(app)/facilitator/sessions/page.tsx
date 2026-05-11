@@ -373,12 +373,16 @@ export default function FacilitatorSessionsPage() {
   }
 
   if (loading) {
-    return <div className="text-sm text-muted-foreground">Loading…</div>;
+    return (
+      <div className="rounded-2xl border border-border bg-background px-5 py-5 text-sm text-[color:var(--studio-muted)] shadow-[var(--studio-shadow)]">
+        Loading…
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
-      <div className="ui-row-panel">
+      <div className="rounded-2xl border border-border bg-background px-5 py-4 shadow-[var(--studio-shadow)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <div className="text-sm font-semibold text-foreground">Need a guided first run?</div>

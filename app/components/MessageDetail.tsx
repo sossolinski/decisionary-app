@@ -5,10 +5,9 @@ import React, { useMemo, useState } from "react";
 import { Button } from "@/app/components/ui/button";
 import InjectMediaGallery from "@/app/components/InjectMediaGallery";
 import HintTooltip from "@/app/components/HintTooltip";
-import { Card, CardContent } from "@/app/components/ui/card";
-import { Select } from "@/app/components/session-runtime/sessionRuntimeUi";
+import { decisionPressureLabel, Select } from "@/app/components/session-runtime/sessionRuntimeUi";
 import type { InjectMedia } from "@/lib/injectMedia";
-import { ChevronDown, FileText, ImageIcon, Radio, Send, ShieldCheck, ShieldX } from "lucide-react";
+import { Activity, ChevronDown, FileText, ImageIcon, Radio, Send, ShieldCheck, ShieldX, TriangleAlert } from "lucide-react";
 
 type Mode = "inbox" | "pulse";
 
@@ -44,11 +43,11 @@ export type TaskRoleOption = {
 
 function badgeClass(kind: "severity" | "channel", value: string) {
   const base =
-    "inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold";
+    "inline-flex items-center rounded-full border border-[var(--studio-border)] px-1.5 py-0 text-[10px] font-semibold";
   const v = value.toLowerCase();
 
   if (kind === "severity") {
-    if (v === "critical") return `${base} bg-destructive/10 text-destructive`;
+    if (v === "critical") return `${base} border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300`;
     if (v === "high")
       return `${base} bg-orange-500/10 text-orange-700 dark:text-orange-300`;
     if (v === "medium")
@@ -99,46 +98,41 @@ function MetaPill({
   value: string;
 }) {
   return (
-    <div className="rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-3 py-1 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
+    <div className="rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3 py-1 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
       <span className="mr-1 uppercase tracking-[0.12em]">{label}</span>
       <span className="text-[color:var(--studio-ink)]">{value}</span>
     </div>
   );
 }
 
-function ActionCard({
-  title,
+function ResponseActionButton({
+  icon,
+  label,
   description,
-  recommended = false,
-  children,
+  onClick,
 }: {
-  title: string;
+  icon: React.ReactNode;
+  label: string;
   description: string;
-  recommended?: boolean;
-  children: React.ReactNode;
+  onClick: () => void;
 }) {
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
+      title={description}
+      aria-label={`${label}. ${description}`}
       className={[
-        "rounded-[10px] p-2.5 transition-colors",
-        recommended
-          ? "bg-primary/[0.07]"
-          : "bg-secondary/35",
+        "group flex min-h-12 w-full items-center justify-between gap-3 rounded-[8px] border px-3 text-left transition",
+        "border-[var(--studio-border)] bg-[hsl(var(--background))] hover:border-[var(--studio-border-strong)] hover:bg-[hsl(var(--card))]",
+        "focus:outline-none focus-visible:shadow-[var(--studio-ring)]",
       ].join(" ")}
     >
-      <div className="flex items-start gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[13px] font-semibold text-[color:var(--studio-ink)]">
-          <span className="truncate">{title}</span>
-          {recommended ? (
-            <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-primary">
-              Recommended
-            </span>
-          ) : null}
-          <HintTooltip text={description} side="top" />
-        </div>
-      </div>
-      <div className="mt-2.5">{children}</div>
-    </div>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <span className="shrink-0 text-[color:var(--studio-muted2)] [&_svg]:h-4 [&_svg]:w-4 [&_svg]:stroke-[1.8]" aria-hidden="true">{icon}</span>
+        <span className="truncate text-sm font-semibold">{label}</span>
+      </span>
+    </button>
   );
 }
 
@@ -210,7 +204,6 @@ export default function MessageDetail({
       : requiresDecision
         ? "This update should probably end with an explicit team decision and a named owner."
         : "Pick the smallest clear next step so the team can keep moving without overcommitting too early.";
-  const severityLevel = String(severity ?? "").toLowerCase();
   const isSystemFollowUp =
     activeTab === "inbox" &&
     (inject?.inject_kind === "system" ||
@@ -218,20 +211,15 @@ export default function MessageDetail({
       inject?.source_type === "consequence");
   const showResponseHint = activeTab === "pulse" || (requiresDecision && !isSystemFollowUp);
   const showEscalateAction = !(isSystemFollowUp && !requiresDecision);
-  const recommendedInboxAction = isSystemFollowUp
-    ? "ignore"
-    : requiresDecision || severityLevel === "high" || severityLevel === "critical"
-      ? "escalate"
-      : "act";
   const escalationOpen = activeTab === "inbox" && escalationItemId === item?.id;
   const guidanceOpen = guidanceItemId === item?.id;
 
   if (!item) {
     return (
       <div className="space-y-4">
-        <Card className="border border-dashed border-[var(--studio-border)] bg-[color:var(--studio-surface2)]">
-          <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)]">
+        <div className="rounded-[8px] border border-dashed border-[var(--studio-border)] bg-[hsl(var(--background))]">
+          <div className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+            <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))]">
               {activeTab === "pulse" ? (
                 <Radio className="h-4 w-4" />
               ) : (
@@ -246,18 +234,18 @@ export default function MessageDetail({
                 Pick one item on the left to review it here.
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (activeTab === "pulse") {
     return (
-      <div className="rounded-[var(--studio-radius)] border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-4 py-4">
+      <div className="rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface)] text-sm font-bold text-[color:var(--studio-ink)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--card))] text-sm font-bold text-[color:var(--studio-ink)]">
               {initials(pulseSenderName)}
             </div>
             <div className="min-w-0">
@@ -269,15 +257,15 @@ export default function MessageDetail({
                 {pulseSenderOrg && pulseSenderOrg !== pulseSenderName ? (
                   <div className="text-xs text-muted-foreground">· {pulseSenderOrg}</div>
                 ) : null}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 {severity ? (
                   <span className={badgeClass("severity", severity)}>
-                    {severity.toUpperCase()}
+                    {decisionPressureLabel(severity)}
                   </span>
                 ) : null}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 {pulseMediaCount > 0 ? (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[color:var(--studio-surface2)] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--studio-border)] bg-[hsl(var(--card))] px-2 py-0.5 text-[11px] font-semibold text-[color:var(--studio-muted2)]">
                     <ImageIcon className="h-3.5 w-3.5" />
                     {pulseMediaCount} image{pulseMediaCount === 1 ? "" : "s"}
                   </span>
@@ -331,19 +319,22 @@ export default function MessageDetail({
               {senderLine ? senderLine : "Unknown source"}
               {item.delivered_at ? (
                 <>
-                  <span className="mx-2">•</span>
+            <span className="mx-2">•</span>
                   <span>{fmtWhen(item.delivered_at) ?? item.delivered_at}</span>
+                </>
+              ) : null}
+              {severity ? (
+                <>
+                  <span className="mx-2">•</span>
+                  <span className={badgeClass("severity", severity)}>
+                    {decisionPressureLabel(severity)}
+                  </span>
                 </>
               ) : null}
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {severity ? (
-              <span className={badgeClass("severity", severity)}>
-                {severity.toUpperCase()}
-              </span>
-            ) : null}
             {requiresDecision ? (
               <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-[color:var(--studio-ink)]">
                 Decision needed
@@ -353,7 +344,7 @@ export default function MessageDetail({
         </div>
 
         {showResponseHint ? (
-          <div className="mt-2.5 rounded-[var(--radius)] bg-card/70 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+          <div className="mt-2.5 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))]">
             <button
               type="button"
               className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left"
@@ -390,7 +381,7 @@ export default function MessageDetail({
           <InjectMediaGallery media={availableMedia} />
         ) : null}
 
-        <div className="mt-3 rounded-[12px] bg-card/72 px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+        <div className="mt-3 rounded-[8px] border border-[var(--studio-border)] bg-[hsl(var(--background))] px-3.5 py-3">
           <div className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--studio-ink)]">
             {body || "No message body."}
           </div>
@@ -399,62 +390,40 @@ export default function MessageDetail({
 
       <div>
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
-          <span>Choose response</span>
+          <span>Take decision</span>
         </div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          <ActionCard
-            title="Monitor only"
+          <ResponseActionButton
+            icon={<Activity />}
+            label="Monitor"
             description="Keep this on the radar without starting a new task right now."
-            recommended={recommendedInboxAction === "ignore"}
-          >
-            <Button
-              variant={recommendedInboxAction === "ignore" ? "default" : "outline"}
-              onClick={() => {
-                setEscalationItemId(null);
-                onIgnore();
-              }}
-              className="w-full"
-            >
-              Monitor only
-            </Button>
-          </ActionCard>
+            onClick={() => {
+              setEscalationItemId(null);
+              onIgnore();
+            }}
+          />
           {showEscalateAction ? (
-            <ActionCard
-              title="Escalate now"
+            <ResponseActionButton
+              icon={<TriangleAlert />}
+              label="Escalate"
               description="Create a clear escalation follow-up so someone owns the next operational move."
-              recommended={recommendedInboxAction === "escalate"}
-            >
-              <Button
-                variant={recommendedInboxAction === "escalate" ? "default" : "secondary"}
-                onClick={() => {
-                  setEscalationItemId(item.id);
-                }}
-                className="w-full"
-              >
-                Escalate now
-              </Button>
-            </ActionCard>
-          ) : null}
-          <ActionCard
-            title="Take action now"
-            description="Record the action immediately and let any task or rule-based follow-up appear only if it is genuinely needed."
-            recommended={recommendedInboxAction === "act"}
-          >
-            <Button
-              variant={recommendedInboxAction === "act" ? "default" : "outline"}
               onClick={() => {
-                setEscalationItemId(null);
-                onAct();
+                setEscalationItemId((current) => (current === item.id ? null : item.id));
               }}
-              className="w-full gap-2"
-            >
-              <Send className="h-4 w-4" />
-              Take action now
-            </Button>
-          </ActionCard>
+            />
+          ) : null}
+          <ResponseActionButton
+            icon={<Send />}
+            label="Act"
+            description="Record the action immediately and let any task or rule-based follow-up appear only if it is genuinely needed."
+            onClick={() => {
+              setEscalationItemId(null);
+              onAct();
+            }}
+          />
         </div>
         {showEscalateAction && escalationOpen ? (
-          <div className="mt-2.5 rounded-[var(--radius)] bg-primary/[0.04] px-3.5 py-3 shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]">
+          <div className="mt-2.5 rounded-[8px] border border-primary/20 bg-primary/[0.04] px-3.5 py-3">
             <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--studio-ink)]">
@@ -497,7 +466,7 @@ export default function MessageDetail({
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={3}
-                className="w-full rounded-[12px] border border-[var(--studio-border)] bg-[color:var(--studio-surface)] px-3 py-2.5 text-sm leading-5 text-[color:var(--studio-ink)] outline-none transition placeholder:text-[color:var(--studio-muted2)] focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
+                className="w-full rounded-[8px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-3 py-2.5 text-sm leading-5 text-[color:var(--studio-ink)] outline-none transition placeholder:text-[color:var(--studio-muted2)] focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
                 placeholder="What should the owner know, verify, or do next?"
               />
             </label>

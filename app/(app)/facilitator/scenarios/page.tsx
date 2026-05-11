@@ -437,9 +437,9 @@ export default function FacilitatorScenariosPage() {
   /* ================= UI ================= */
   return (
     <div className="space-y-5">
-      <section className="ui-section-panel">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative grid gap-5 lg:grid-cols-[1.45fr_auto] lg:items-start">
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="relative">
+          <div className="grid gap-5 lg:grid-cols-[1.45fr_0.45fr] lg:items-start">
             <div className="space-y-4">
               <div className="ui-eyebrow">
                 <Sparkles className="h-3.5 w-3.5" />
@@ -451,17 +451,19 @@ export default function FacilitatorScenariosPage() {
               </div>
 
               <div className="space-y-2">
-                <h1 className="text-[28px] font-semibold tracking-tight">Design exercises that feel structured before they feel stressful.</h1>
+                <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                  Design exercises that feel structured before they feel stressful.
+                </h1>
               </div>
 
             </div>
 
             <div className="grid gap-3 sm:grid-cols-1">
-              <div className="ui-metric-card">
+              <div className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <div className="ui-metric-label">Scenarios</div>
-                    <div className="mt-2 text-3xl font-semibold">{scenarios.length}</div>
+                    <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{scenarios.length}</div>
                   </div>
                   <Library className="h-4 w-4 text-foreground/60" />
                 </div>
@@ -470,7 +472,7 @@ export default function FacilitatorScenariosPage() {
           </div>
         </div>
 
-        <div className="mt-5 rounded-[12px] bg-background/60 px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+        <div className="mt-5 rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
           <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr] xl:items-end">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -529,7 +531,7 @@ export default function FacilitatorScenariosPage() {
         </div>
       ) : null}
 
-      <div className="ui-row-panel">
+      <div className="rounded-2xl border border-border bg-background px-5 py-4 shadow-[var(--studio-shadow)]">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="space-y-1">
             <div className="text-sm font-semibold text-foreground">New to scenario design?</div>
@@ -553,8 +555,8 @@ export default function FacilitatorScenariosPage() {
 
       {/* List */}
       {sorted.length === 0 ? (
-        <div className="ui-empty-state">
-          <div className="p-5 text-sm text-[color:var(--studio-muted2)]">
+        <div className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)]">
+          <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
             {q.trim() ? "No scenarios match your search." : "No scenarios yet."}
           </div>
         </div>
@@ -569,21 +571,24 @@ export default function FacilitatorScenariosPage() {
             const updatedBy = who(s.updated_by);
 
             return (
-              <div key={s.id} className="ui-row-panel overflow-visible">
-                <div className="px-5 py-5 md:px-6 md:py-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div
+                key={s.id}
+                className="overflow-visible rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] transition hover:border-[var(--studio-border-strong)] md:px-6"
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-primary/10">
+                      <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--studio-inset)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)]">
                         <BookOpen className="h-4.5 w-4.5 text-primary" />
                       </div>
 
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-lg font-semibold tracking-tight truncate">
+                          <div className="truncate text-lg font-semibold tracking-tight text-foreground">
                             {s.title ?? "Untitled scenario"}
                           </div>
                           {isUuid(s.id) ? (
-                            <span className="text-[11px] rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2 py-0.5 text-[color:var(--studio-muted2)]">
+                            <span className="rounded-full border border-[var(--studio-border)] bg-[var(--studio-surface2)] px-2 py-0.5 text-[11px] text-[color:var(--studio-muted2)]">
                               {s.id.slice(0, 8)}
                             </span>
                           ) : null}
@@ -650,7 +655,7 @@ export default function FacilitatorScenariosPage() {
                           ref={managePanelRef}
                           role="dialog"
                           aria-label={`Manage scenario ${s.title}`}
-                          className="fixed z-[110] w-[380px] max-w-[92vw] popover-solid rounded-[14px] shadow-soft overflow-hidden"
+                          className="fixed z-[110] w-[380px] max-w-[92vw] overflow-hidden rounded-2xl border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] shadow-[var(--studio-shadow2)]"
                           style={
                             managePanelPosition
                               ? {
@@ -663,8 +668,8 @@ export default function FacilitatorScenariosPage() {
                                 }
                           }
                         >
-                          <div className="px-4 py-3 border-b border-[var(--studio-border)] flex items-center justify-between">
-                            <div className="text-sm font-semibold">Manage scenario</div>
+                          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                            <div className="text-sm font-semibold text-foreground">Manage scenario</div>
                             <Button variant="outline" size="sm" onClick={() => setManageOpenId(null)} className="gap-2">
                               <X className="h-4 w-4" />
                               Close

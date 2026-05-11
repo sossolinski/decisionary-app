@@ -1,10 +1,6 @@
-"use client";
-
-import { useState } from "react";
 import type { RefObject } from "react";
-import { ChevronDown, ChevronUp, Play, Sparkles } from "lucide-react";
+import { Play, Sparkles } from "lucide-react";
 
-import Collapsible from "@/app/components/Collapsible";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
@@ -53,9 +49,6 @@ export default function SessionCreatePanel({
   onCreate,
   scenarioSelectRef,
 }: SessionCreatePanelProps) {
-  const [detailsOpen, setDetailsOpen] = useState(false);
-  const detailsExpanded = detailsOpen || (createMode === "live" && !canCreateLive);
-
   const detailsSummary =
     createMode === "live"
       ? canCreateLive
@@ -67,7 +60,7 @@ export default function SessionCreatePanel({
       : "Rehearsal runs full flow for facilitator only";
 
   return (
-    <section className="ui-section-panel">
+    <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
       <div className="relative">
         <div className="grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
           <div className="space-y-4">
@@ -81,30 +74,32 @@ export default function SessionCreatePanel({
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-[28px] font-semibold tracking-tight">Move cleanly from planning into live exercise runs.</h1>
+              <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                Move cleanly from planning into live exercise runs.
+              </h1>
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-            <div className="ui-metric-card">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               <div className="ui-metric-label">Total</div>
-              <div className="mt-2 text-3xl font-semibold">{sessionsCount}</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{sessionsCount}</div>
             </div>
 
-            <div className="ui-metric-card">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               <div className="ui-metric-label">Live</div>
-              <div className="mt-2 text-3xl font-semibold">{activeCount}</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{activeCount}</div>
             </div>
 
-            <div className="ui-metric-card">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               <div className="ui-metric-label">Ended</div>
-              <div className="mt-2 text-3xl font-semibold">{endedCount}</div>
+              <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{endedCount}</div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 rounded-[12px] bg-background/60 px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+      <div className="mt-5 rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
         <div id="create-session" className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -117,10 +112,10 @@ export default function SessionCreatePanel({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant={createMode === "rehearsal" ? "default" : "outline"} onClick={() => setCreateMode("rehearsal")}>
+            <Button type="button" variant={createMode === "rehearsal" ? "default" : "outline"} onClick={() => setCreateMode("rehearsal")} className="rounded-full">
               Rehearsal
             </Button>
-            <Button type="button" variant={createMode === "live" ? "default" : "outline"} onClick={() => setCreateMode("live")}>
+            <Button type="button" variant={createMode === "live" ? "default" : "outline"} onClick={() => setCreateMode("live")} className="rounded-full">
               Live exercise
             </Button>
           </div>
@@ -162,7 +157,7 @@ export default function SessionCreatePanel({
               )}
             </div>
 
-          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <Button
                 onClick={onCreate}
                 disabled={busyId === "create" || (createMode === "live" && !canCreateLive)}
@@ -182,51 +177,13 @@ export default function SessionCreatePanel({
             </div>
           </div>
 
-          <div className="rounded-[12px] bg-card/80 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
-            <button
-              type="button"
-              onClick={() => setDetailsOpen((value) => !value)}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-              aria-expanded={detailsExpanded}
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-[color:var(--studio-ink)]">Mode details</div>
-                <div className="mt-1 text-sm text-[color:var(--studio-muted)]">{detailsSummary}</div>
-              </div>
-              {detailsExpanded ? (
-                <ChevronUp className="h-4 w-4 shrink-0 opacity-70" />
-              ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 opacity-70" />
-              )}
-            </button>
-            <Collapsible open={detailsExpanded}>
-              <div className="px-4 pb-3 text-sm text-[color:var(--studio-muted)]">
-                {createMode === "live" ? (
-                  canCreateLive ? (
-                    <span>
-                      Live access available. Matching entitlements:{" "}
-                      {[5, 10, 15]
-                        .filter((limit) => (availableLiveTiers.get(limit) ?? 0) > 0)
-                        .map((limit) => `${limit}p x${availableLiveTiers.get(limit) ?? 0}`)
-                        .join(" • ")}
-                    </span>
-                  ) : (
-                    <span>
-                      This organization does not currently have a live exercise entitlement for the selected participant tier.
-                      Ask an admin to grant access or create a billing order first.
-                    </span>
-                  )
-                ) : (
-                  <span>
-                    Rehearsal mode runs the full session flow, but only the creator can join and participant invitations stay disabled.
-                  </span>
-                )}
-              </div>
-            </Collapsible>
+          <div className="rounded-2xl bg-background px-4 py-3 text-sm shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)]">
+            <span className="font-semibold text-[color:var(--studio-ink)]">Mode:</span>{" "}
+            <span className="text-[color:var(--studio-muted)]">{detailsSummary}</span>
           </div>
 
           {scenarios.length === 0 ? (
-            <div className="rounded-[12px] bg-card/80 px-4 py-3 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+            <div className="rounded-2xl bg-background px-4 py-4 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)]">
               You do not have any scenarios yet. Create one first so this workspace can launch a session.
             </div>
           ) : null}

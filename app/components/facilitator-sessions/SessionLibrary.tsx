@@ -56,11 +56,11 @@ export default function SessionLibrary({
   onDelete,
 }: SessionLibraryProps) {
   return (
-    <section className="ui-section-panel overflow-visible">
-      <div className="pb-4">
+    <section className="overflow-visible rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6">
+      <div className="pb-3">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0 xl:flex xl:min-h-10 xl:items-center">
-            <h2 className="flex items-center gap-2 text-base font-semibold">
+            <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
               <ClipboardList className="h-5 w-5 opacity-80" />
               Session library
               <HintTooltip text="Search, open, and manage exercise runs from one place." />
@@ -90,7 +90,7 @@ export default function SessionLibrary({
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3 pt-2">
         {q.trim() || statusFilter !== "all" ? (
           <div className="flex flex-wrap gap-2">
             {q.trim() ? <Chip label={`Search: ${q.trim()}`} onClear={() => setQ("")} /> : null}
@@ -100,9 +100,9 @@ export default function SessionLibrary({
 
         {filteredSessions.length === 0 ? (
           q.trim() || statusFilter !== "all" ? (
-            <div className="ui-empty-state">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               <div className="text-sm font-medium text-foreground">No sessions match the current filters.</div>
-              <div className="mt-1 text-sm text-muted-foreground">
+              <div className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
                 Clear the search or status filter to get back to the full session library.
               </div>
               <div className="mt-3">
@@ -118,9 +118,9 @@ export default function SessionLibrary({
               </div>
             </div>
           ) : (
-            <div className="ui-empty-state">
+            <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
               <div className="text-sm font-medium text-foreground">No sessions yet.</div>
-              <div className="mt-1 text-sm text-muted-foreground">
+              <div className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
                 Launch your first exercise run from a scenario above, then come back here to manage it.
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -146,35 +146,32 @@ export default function SessionLibrary({
             return (
               <div
                 key={session.id}
-                className="ui-row-panel"
+                className="rounded-2xl bg-[var(--studio-inset)] px-4 py-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] transition hover:shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.08)] md:px-5"
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-lg font-semibold tracking-tight truncate">{session.title ?? "Untitled session"}</div>
+                      <div className="truncate text-lg font-semibold tracking-tight text-foreground">{session.title ?? "Untitled session"}</div>
                       <ModePill mode={session.session_mode} />
                       <StatusPill status={status} />
                     </div>
 
-                    <div className="mt-2 text-sm leading-6 text-muted-foreground">
+                    <div className="mt-2 text-sm leading-6 text-[color:var(--studio-muted)]">
                       <span className="font-medium text-foreground">Scenario:</span> {scenarioTitle}
                     </div>
 
                     {session.session_mode === "live" ? (
-                      <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
-                        <span className="font-medium text-foreground">Join code:</span>{" "}
-                        <span className="font-mono tracking-[0.08em]">{joinCode}</span>
-                        {typeof session.participant_limit === "number" ? (
-                          <span className="ml-2">· participant cap {session.participant_limit}</span>
-                        ) : null}
+                      <div className="mt-1.5 text-sm leading-6 text-[color:var(--studio-muted)]">
+                        <span className="font-medium text-foreground">Participants:</span>{" "}
+                        {typeof session.participant_limit === "number" ? `up to ${session.participant_limit}` : "live exercise"}
                       </div>
                     ) : (
-                      <div className="mt-1.5 text-sm leading-6 text-muted-foreground">
+                      <div className="mt-1.5 text-sm leading-6 text-[color:var(--studio-muted)]">
                         <span className="font-medium text-foreground">Access:</span> Rehearsal mode · creator only
                       </div>
                     )}
 
-                    <div className="mt-3 text-xs text-muted-foreground">
+                    <div className="mt-3 text-xs text-[color:var(--studio-muted2)]">
                       Created: {fmt(session.created_at)} <span className="mx-2">•</span>
                       Started: {fmt(session.started_at)} <span className="mx-2">•</span>
                       Ended: {fmt(session.ended_at)}
@@ -212,7 +209,7 @@ export default function SessionLibrary({
                       Review
                     </Button>
 
-                    {session.session_mode === "live" ? <CopyButton value={joinCode} label="Join code" /> : null}
+                    {session.session_mode === "live" ? <CopyButton value={joinCode} label={joinCode === "—" ? "Join code" : joinCode} /> : null}
 
                     <div className="relative">
                       <Button
@@ -237,7 +234,7 @@ export default function SessionLibrary({
                               ref={menuPanelRef}
                               role="dialog"
                               aria-label={`Actions for session ${session.title}`}
-                              className="fixed z-[110] w-[220px] rounded-[16px] border border-[var(--studio-border-strong)] bg-[hsl(var(--popover)/0.98)] p-1.5 shadow-[0_16px_40px_hsl(220_20%_20%/0.14)] backdrop-blur-sm"
+                              className="fixed z-[110] w-[220px] rounded-2xl border border-[var(--studio-border-strong)] bg-[var(--studio-surface2)] p-1.5 shadow-[var(--studio-shadow2)]"
                               style={
                                 menuPanelPosition
                                   ? { top: `${menuPanelPosition.top}px`, left: `${menuPanelPosition.left}px` }
@@ -247,7 +244,7 @@ export default function SessionLibrary({
                               <div className="space-y-1">
                                 <Button
                                   variant="ghost"
-                                  className="w-full justify-start gap-2 rounded-[12px] border border-transparent px-3"
+                                  className="w-full justify-start gap-2 rounded-2xl border border-transparent px-3"
                                   onClick={() => {
                                     setOpenMenuId(null);
                                     onEnd(session.id);
@@ -261,7 +258,7 @@ export default function SessionLibrary({
 
                                 <Button
                                   variant="ghost"
-                                  className="w-full justify-start gap-2 rounded-[12px] border border-transparent px-3"
+                                  className="w-full justify-start gap-2 rounded-2xl border border-transparent px-3"
                                   onClick={() => {
                                     setOpenMenuId(null);
                                     onRestart(session.id);
@@ -275,7 +272,7 @@ export default function SessionLibrary({
 
                                 <Button
                                   variant="destructive"
-                                  className="w-full justify-start gap-2 rounded-[12px] px-3"
+                                  className="w-full justify-start gap-2 rounded-2xl px-3"
                                   onClick={() => {
                                     setOpenMenuId(null);
                                     onDelete(session.id);

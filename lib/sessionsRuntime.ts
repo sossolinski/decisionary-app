@@ -112,14 +112,16 @@ async function requireUserId(): Promise<string> {
   return uid;
 }
 
-async function requireJoinUserId(): Promise<string> {
+async function requireJoinUserId(captchaToken?: string): Promise<string> {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
 
   const existingUid = data.user?.id;
   if (existingUid) return existingUid;
 
-  const { data: anonymousData, error: anonymousError } = await supabase.auth.signInAnonymously();
+  const { data: anonymousData, error: anonymousError } = await supabase.auth.signInAnonymously(
+    captchaToken ? { options: { captchaToken } } : undefined
+  );
   if (anonymousError) {
     throw new Error(
       anonymousError.message?.trim() || "Guest join is unavailable right now."
@@ -504,9 +506,9 @@ export async function deleteSession(sessionId: string) {
    JOIN BY CODE
 ========================= */
 
-export async function joinSessionByCode(code: string): Promise<string> {
+export async function joinSessionByCode(code: string, captchaToken?: string): Promise<string> {
   const joinCode = normCode(code);
-  await requireJoinUserId();
+  await requireJoinUserId(captchaToken);
 
   const sid = await tryRpc<string>("join_session", { p_code: joinCode });
   if (sid) return sid;

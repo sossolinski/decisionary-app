@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Link2Off, MoveDown, MoveUp, Plus, Settings2, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Link2Off, MoveDown, MoveUp, Plus, Settings2, Trash2 } from "lucide-react";
 
 import Collapsible from "@/app/components/Collapsible";
 import InjectMediaField from "@/app/components/InjectMediaField";
@@ -13,6 +13,7 @@ import { createPendingInjectMedia, type InjectMedia, type PendingInjectMedia } f
 
 import {
   formatReleaseOffset,
+  EDITOR_ICON,
   INJECT_KIND_OPTIONS,
   MiniBadge,
   SOURCE_TYPE_OPTIONS,
@@ -23,6 +24,18 @@ import {
 
 function formatStreamLabel(channel: string | null | undefined) {
   return String(channel ?? "").toLowerCase() === "pulse" ? "Pulse" : "Inbox";
+}
+
+function reorderInjectPreview(items: ScenarioInject[], sourceId: string, targetId: string) {
+  const fromIndex = items.findIndex((item) => item.id === sourceId);
+  const toIndex = items.findIndex((item) => item.id === targetId);
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return items;
+
+  const next = [...items];
+  const [moved] = next.splice(fromIndex, 1);
+  if (!moved) return items;
+  next.splice(toIndex, 0, moved);
+  return next;
 }
 
 type NewInjectState = {
@@ -91,6 +104,7 @@ type ScenarioInjectsSectionProps = NewInjectState & {
   onReorderInjectMedia: (injectId: string, fromId: string, toId: string) => void;
   onReschedule: (scenarioInjectId: string, releaseOffsetMinutes: string) => void;
   onMove: (scenarioInjectId: string, direction: -1 | 1) => void;
+  onReorder: (scenarioInjectId: string, targetScenarioInjectId: string) => void;
   clearNewInjectDraft: () => void;
 };
 
@@ -127,6 +141,7 @@ export default function ScenarioInjectsSection({
   onReorderInjectMedia,
   onReschedule,
   onMove,
+  onReorder,
   clearNewInjectDraft,
   niTitle,
   setNiTitle,
@@ -161,13 +176,17 @@ export default function ScenarioInjectsSection({
 }: ScenarioInjectsSectionProps) {
   const [createAdvancedOpen, setCreateAdvancedOpen] = useState(false);
   const [openInjectAdvancedIds, setOpenInjectAdvancedIds] = useState<Record<string, boolean>>({});
+  const [draggingInjectId, setDraggingInjectId] = useState<string | null>(null);
+  const [dragOverInjectId, setDragOverInjectId] = useState<string | null>(null);
+  const [previewInjects, setPreviewInjects] = useState<ScenarioInject[] | null>(null);
+  const displayedInjects = draggingInjectId && previewInjects ? previewInjects : sortedInjects;
 
   return (
-    <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden border border-[var(--studio-border)]">
-      <div className="px-5 py-4 flex items-start justify-between gap-3 border-b border-[var(--studio-border)]">
+    <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+      <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold">
-            <Settings2 className="h-4 w-4 opacity-80" />
+          <div className="flex items-center gap-2 text-base font-semibold">
+            <Settings2 className={EDITOR_ICON.section} />
             Injects
             <HintTooltip text="Create, edit, reorder, and schedule injects that drive the session forward." />
           </div>
@@ -180,22 +199,22 @@ export default function ScenarioInjectsSection({
           aria-expanded={newInjectOpen}
           aria-controls={newInjectPanelId}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className={EDITOR_ICON.action} />
           New inject
-          {newInjectOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+          {newInjectOpen ? <ChevronUp className={EDITOR_ICON.chevron} /> : <ChevronDown className={EDITOR_ICON.chevron} />}
         </Button>
       </div>
 
-      <div className="p-5 space-y-4">
+      <div className="space-y-4 p-5">
         {newInjectOpen ? (
           <div
             id={newInjectPanelId}
             role="region"
             aria-label="Create inject"
-            className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)] p-4 space-y-3"
+            className="space-y-3 rounded-2xl bg-[var(--studio-inset)] p-4 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]"
           >
             <div className="text-sm font-semibold flex items-center gap-2">
-              <Plus className="h-4 w-4 opacity-80" />
+              <Plus className={EDITOR_ICON.section} />
               Create inject
             </div>
 
@@ -248,7 +267,7 @@ export default function ScenarioInjectsSection({
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)]">
+            <div className="overflow-hidden rounded-2xl bg-background shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)]">
               <button
                 type="button"
                 onClick={() => setCreateAdvancedOpen((value) => !value)}
@@ -261,10 +280,10 @@ export default function ScenarioInjectsSection({
                     Open this only when the inject needs decision flow, visibility, branch, severity, or sender tuning.
                   </div>
                 </div>
-                {createAdvancedOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+                {createAdvancedOpen ? <ChevronUp className={EDITOR_ICON.chevron} /> : <ChevronDown className={EDITOR_ICON.chevron} />}
               </button>
               <Collapsible open={createAdvancedOpen}>
-                <div className="border-t border-[var(--studio-border)] p-4">
+                <div className="p-4">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-1">
                       <label htmlFor={niSeverityId} className="text-sm font-semibold">Severity</label>
@@ -328,7 +347,7 @@ export default function ScenarioInjectsSection({
                       <Input id={niBranchKeyId} value={niBranchKey} onChange={(e) => setNiBranchKey(e.target.value)} placeholder="Optional follow-up branch" />
                     </div>
 
-                    <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
+                    <div className="space-y-2 rounded-2xl bg-[var(--studio-surface2)] px-3 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] md:col-span-2">
                       <label className="flex items-start gap-3">
                         <input
                           id={niRequiresDecisionId}
@@ -382,7 +401,7 @@ export default function ScenarioInjectsSection({
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={onCreateScenarioInject} disabled={busyKey === "create-inject"} className="gap-2">
-                <Plus className="h-4 w-4" />
+                <Plus className={EDITOR_ICON.action} />
                 {busyKey === "create-inject" ? "…" : "Create & attach"}
               </Button>
 
@@ -401,11 +420,13 @@ export default function ScenarioInjectsSection({
           </div>
         ) : null}
 
-        {sortedInjects.length === 0 ? (
-          <div className="text-sm text-[color:var(--studio-muted2)]">No injects yet.</div>
+        {displayedInjects.length === 0 ? (
+          <div className="rounded-2xl bg-[var(--studio-inset)] px-5 py-6 text-sm text-[color:var(--studio-muted)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.035)]">
+            No injects yet.
+          </div>
         ) : (
           <div className="space-y-2">
-            {sortedInjects.map((si, idx) => {
+            {displayedInjects.map((si, idx) => {
               const inj = si.injects;
               const isOpen = openSiId === si.id;
               const isBusy =
@@ -417,33 +438,78 @@ export default function ScenarioInjectsSection({
               const injectAdvancedOpen = openInjectAdvancedIds[si.id] ?? false;
 
               return (
-                <div key={si.id} className="rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface)] overflow-hidden">
-                  <div className="px-4 py-3 flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-semibold truncate">
-                        {inj?.title ?? "Untitled inject"}
-                        <span className="ml-2 text-xs text-[color:var(--studio-muted2)]">#{si.order_index ?? 0}</span>
-                      </div>
+                <div
+                  key={si.id}
+                  onDragOver={(event) => {
+                    if (!draggingInjectId || draggingInjectId === si.id) return;
+                    event.preventDefault();
+                    setDragOverInjectId(si.id);
+                    setPreviewInjects((current) => reorderInjectPreview(current ?? sortedInjects, draggingInjectId, si.id));
+                  }}
+                  onDragLeave={() => setDragOverInjectId((current) => (current === si.id ? null : current))}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const sourceId = event.dataTransfer.getData("text/plain") || draggingInjectId;
+                    setDraggingInjectId(null);
+                    setDragOverInjectId(null);
+                    if (sourceId && sourceId !== si.id) onReorder(sourceId, si.id);
+                  }}
+                  className={`overflow-hidden rounded-2xl bg-[var(--studio-inset)] shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] transition-[box-shadow,transform] ${
+                    dragOverInjectId === si.id ? "shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.45),0_0_0_3px_hsl(var(--primary)/0.12)]" : ""
+                  } ${draggingInjectId === si.id ? "scale-[0.998] opacity-70" : ""}`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                    <div className="flex min-w-0 flex-1 items-start gap-2">
+                      <button
+                        type="button"
+                        draggable={!isBusy}
+                        onDragStart={(event) => {
+                          event.dataTransfer.effectAllowed = "move";
+                          event.dataTransfer.setData("text/plain", si.id);
+                          setDraggingInjectId(si.id);
+                          setPreviewInjects(sortedInjects);
+                        }}
+                        onDragEnd={() => {
+                          setDraggingInjectId(null);
+                          setDragOverInjectId(null);
+                        }}
+                        disabled={!!isBusy}
+                        title="Drag to reorder"
+                        aria-label={`Drag to reorder inject ${inj?.title ?? "Untitled inject"}`}
+                        className="mt-0.5 inline-flex h-8 w-8 shrink-0 cursor-grab items-center justify-center rounded-full border border-border bg-background text-[color:var(--studio-muted2)] transition hover:border-[var(--studio-border-strong)] hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:shadow-[var(--studio-ring)]"
+                      >
+                        <GripVertical className={EDITOR_ICON.drag} />
+                      </button>
 
-                      <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
-                        Stream: <span className="text-foreground/80 font-semibold">{formatStreamLabel(inj?.channel)}</span>
-                        <span className="mx-2">•</span>
-                        Severity: <span className="text-foreground/80 font-semibold">{inj?.severity ?? "—"}</span>
-                        <span className="mx-2">•</span>
-                        Release: <span className="text-foreground/80 font-semibold">{formatReleaseOffset(si.release_offset_minutes)}</span>
-                        {si.release_offset_minutes == null && si.scheduled_at ? (
-                          <>
-                            <span className="mx-2">•</span>
-                            Legacy time: <span className="text-foreground/80 font-semibold">{fmt(si.scheduled_at)}</span>
-                          </>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate font-semibold text-foreground">
+                            {inj?.title ?? "Untitled inject"}
+                          </div>
+                          <span className="text-xs text-[color:var(--studio-muted2)]">#{si.order_index ?? 0}</span>
+                          {inj?.inject_kind ? <MiniBadge>{inj.inject_kind}</MiniBadge> : null}
+                          {inj?.requires_decision ? <MiniBadge tone="accent">Decision required</MiniBadge> : null}
+                        </div>
+
+                        <div className="mt-1 text-xs text-[color:var(--studio-muted2)]">
+                          Stream: <span className="text-foreground/80 font-semibold">{formatStreamLabel(inj?.channel)}</span>
+                          <span className="mx-2">•</span>
+                          Severity: <span className="text-foreground/80 font-semibold">{inj?.severity ?? "—"}</span>
+                          <span className="mx-2">•</span>
+                          Release: <span className="text-foreground/80 font-semibold">{formatReleaseOffset(si.release_offset_minutes)}</span>
+                          {si.release_offset_minutes == null && si.scheduled_at ? (
+                            <>
+                              <span className="mx-2">•</span>
+                              Legacy time: <span className="text-foreground/80 font-semibold">{fmt(si.scheduled_at)}</span>
+                            </>
+                          ) : null}
+                        </div>
+
+                        {inj?.source_type && inj.source_type !== "manual" ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <MiniBadge tone="warm">{inj.source_type}</MiniBadge>
+                          </div>
                         ) : null}
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {inj?.inject_kind ? <MiniBadge>{inj.inject_kind}</MiniBadge> : null}
-                        {inj?.entity_scope ? <MiniBadge>{inj.entity_scope}</MiniBadge> : null}
-                        {inj?.requires_decision ? <MiniBadge tone="accent">Decision required</MiniBadge> : null}
-                        {inj?.source_type && inj.source_type !== "manual" ? <MiniBadge tone="warm">{inj.source_type}</MiniBadge> : null}
                       </div>
                     </div>
 
@@ -457,7 +523,7 @@ export default function ScenarioInjectsSection({
                         aria-label={`Move inject ${inj?.title ?? "Untitled inject"} up`}
                         className="gap-2"
                       >
-                        <MoveUp className="h-4 w-4" />
+                        <MoveUp className={EDITOR_ICON.action} />
                         Up
                       </Button>
 
@@ -465,12 +531,12 @@ export default function ScenarioInjectsSection({
                         variant="outline"
                         size="sm"
                         onClick={() => onMove(si.id, 1)}
-                        disabled={idx === sortedInjects.length - 1 || !!isBusy}
+                        disabled={idx === displayedInjects.length - 1 || !!isBusy}
                         title="Move down"
                         aria-label={`Move inject ${inj?.title ?? "Untitled inject"} down`}
                         className="gap-2"
                       >
-                        <MoveDown className="h-4 w-4" />
+                        <MoveDown className={EDITOR_ICON.action} />
                         Down
                       </Button>
 
@@ -483,7 +549,7 @@ export default function ScenarioInjectsSection({
                         aria-label={`${isOpen ? "Close" : "Edit"} inject ${inj?.title ?? "Untitled inject"}`}
                         className="gap-2"
                       >
-                        <Settings2 className="h-4 w-4" />
+                        <Settings2 className={EDITOR_ICON.action} />
                         {isOpen ? "Close" : "Edit"}
                       </Button>
 
@@ -496,7 +562,7 @@ export default function ScenarioInjectsSection({
                         title="Detach inject from scenario"
                         aria-label={`Detach inject ${inj?.title ?? "Untitled inject"} from scenario`}
                       >
-                        <Link2Off className="h-4 w-4" />
+                        <Link2Off className={EDITOR_ICON.action} />
                         Detach
                       </Button>
                     </div>
@@ -507,7 +573,7 @@ export default function ScenarioInjectsSection({
                       id={`${formId}-inject-editor-${si.id}`}
                       role="region"
                       aria-label={`Edit inject ${inj?.title ?? "Untitled inject"}`}
-                      className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2"
+                      className="grid gap-3 px-4 pb-4 pt-1 md:grid-cols-2"
                     >
                       <div className="space-y-1">
                         <label htmlFor={`${formId}-inject-title-${si.id}`} className="text-sm font-semibold">Title</label>
@@ -589,7 +655,7 @@ export default function ScenarioInjectsSection({
                         />
                       </div>
 
-                      <div className="md:col-span-2 overflow-hidden rounded-[14px] border border-[var(--studio-border)] bg-[var(--studio-surface2)]">
+                      <div className="overflow-hidden rounded-2xl bg-background shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] md:col-span-2">
                         <button
                           type="button"
                           onClick={() =>
@@ -607,10 +673,10 @@ export default function ScenarioInjectsSection({
                               Open this only when you need to tune sender, visibility, source, or decision wiring.
                             </div>
                           </div>
-                          {injectAdvancedOpen ? <ChevronUp className="h-4 w-4 opacity-70" /> : <ChevronDown className="h-4 w-4 opacity-70" />}
+                          {injectAdvancedOpen ? <ChevronUp className={EDITOR_ICON.chevron} /> : <ChevronDown className={EDITOR_ICON.chevron} />}
                         </button>
                         <Collapsible open={injectAdvancedOpen}>
-                          <div className="border-t border-[var(--studio-border)] p-4 grid gap-3 md:grid-cols-2">
+                          <div className="grid gap-3 p-4 md:grid-cols-2">
                             <div className="space-y-1">
                               <label htmlFor={`${formId}-inject-severity-${si.id}`} className="text-sm font-semibold">Severity</label>
                               <Input
@@ -698,7 +764,7 @@ export default function ScenarioInjectsSection({
                               />
                             </div>
 
-                            <div className="space-y-2 rounded-[var(--radius)] border border-[var(--studio-border)] bg-background/80 px-3 py-3 md:col-span-2">
+                            <div className="space-y-2 rounded-2xl bg-[var(--studio-surface2)] px-3 py-3 shadow-[inset_0_0_0_1px_hsl(var(--foreground)/0.04)] md:col-span-2">
                               <label className="flex items-start gap-3">
                                 <input
                                   id={`${formId}-inject-requires-decision-${si.id}`}
@@ -734,7 +800,7 @@ export default function ScenarioInjectsSection({
                             title="Delete inject from injects table"
                             aria-label={`Delete inject ${inj.title ?? "Untitled inject"} from the library`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className={EDITOR_ICON.action} />
                             Delete inject
                           </Button>
                         ) : null}
@@ -755,6 +821,6 @@ export default function ScenarioInjectsSection({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

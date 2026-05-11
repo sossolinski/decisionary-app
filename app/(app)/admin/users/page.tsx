@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { getErrorMessage, logClientError } from "@/lib/errors";
 import useAutoRefresh from "@/app/components/useAutoRefresh";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { Button } from "@/app/components/ui/button";
 import { Input } from "@/app/components/ui/input";
 import HintTooltip from "@/app/components/HintTooltip";
-import { Shield, Sparkles, Search, Users } from "lucide-react";
+import { ArrowRight, Search, Shield, Sparkles, UserCheck, UserX, Users } from "lucide-react";
 
 type ProfileRow = {
   user_id: string;
@@ -135,49 +135,94 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-5">
-      <div className="surface shadow-soft rounded-[var(--studio-radius)] overflow-hidden">
-        <div className="relative px-5 py-5 md:px-6 md:py-6">
-          <div className="relative grid gap-5 lg:grid-cols-[1.3fr_0.9fr] lg:items-start">
-            <div className="space-y-4">
-              <div className="ui-eyebrow">
-                <Sparkles className="h-3.5 w-3.5" />
-                Admin workspace
-              </div>
-
-              <div className="space-y-2">
-                <h1 className="text-[28px] font-semibold tracking-tight">Manage account access without losing the human context.</h1>
-              </div>
-
+      <section className="overflow-hidden rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)] md:px-6 md:py-6">
+        <div className="grid gap-5 lg:grid-cols-[1.35fr_0.95fr] lg:items-start">
+          <div className="space-y-4">
+            <div className="ui-eyebrow">
+              <Sparkles className="h-3.5 w-3.5" />
+              People directory
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Accounts</div>
-                <div className="mt-2 text-3xl font-semibold">{rows.length}</div>
+            <div className="space-y-2">
+              <h1 className="max-w-3xl text-[28px] font-semibold leading-tight tracking-tight text-foreground">
+                Manage account access without losing the human context.
+              </h1>
+              <p className="max-w-2xl text-sm leading-6 text-[color:var(--studio-muted)]">
+                Review visible accounts, adjust default access, and disable access when an account should stop using the workspace.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <Button asChild>
+                <Link href="/admin">
+                  Admin overview
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/admin/organizations">
+                  Organizations
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 self-start sm:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Accounts</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{rows.length}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Users className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Enabled</div>
-                <div className="mt-2 text-3xl font-semibold">{enabledCount}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Enabled</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{enabledCount}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <UserCheck className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Disabled</div>
-                <div className="mt-2 text-3xl font-semibold">{disabledCount}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Disabled</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{disabledCount}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <UserX className="h-4 w-4" />
+                </div>
               </div>
-              <div className="ui-metric-card">
-                <div className="ui-metric-label">Admins</div>
-                <div className="mt-2 text-3xl font-semibold">{adminCount}</div>
+            </div>
+            <div className="rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="ui-metric-label whitespace-nowrap">Admins</div>
+                  <div className="mt-2 text-3xl font-semibold tracking-tight text-foreground">{adminCount}</div>
+                </div>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-[color:var(--studio-muted)]">
+                  <Shield className="h-4 w-4" />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {!meAdmin && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Access denied</CardTitle>
-          </CardHeader>
-        </Card>
+        <section className="rounded-2xl border border-border bg-background px-5 py-5 shadow-[var(--studio-shadow)]">
+          <h2 className="text-lg font-semibold text-foreground">Access denied</h2>
+          <p className="mt-1 text-sm leading-6 text-[color:var(--studio-muted)]">
+            People management is only available to permanent administrators.
+          </p>
+        </section>
       )}
 
       {error ? (
@@ -186,14 +231,14 @@ export default function AdminUsersPage() {
 
       {meAdmin && (
         <>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2 text-base font-semibold text-foreground">
                 Search people
                 <HintTooltip text="Filter by name, email, default access level, active role, or account ID." />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+              </div>
+            </div>
+            <div className="space-y-3 px-5 py-5">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -206,18 +251,18 @@ export default function AdminUsersPage() {
               <div className="text-sm text-[color:var(--studio-muted)]">
                 {filtered.length} matching {filtered.length === 1 ? "account" : "accounts"}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <section className="overflow-hidden rounded-2xl border border-border bg-background shadow-[var(--studio-shadow)]">
+            <div className="border-b border-border px-5 py-4">
+              <div className="flex items-center gap-2 text-base font-semibold text-foreground">
                 <Users className="h-5 w-5 opacity-80" />
                 Accounts
                 <HintTooltip text="Review visible accounts, then adjust default access level or disable an account when needed." />
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+              </div>
+            </div>
+            <div className="space-y-3 px-5 py-5">
               {filtered.length === 0 ? (
                 <div className="ui-empty-state">
                   No accounts match the current search.
@@ -227,7 +272,7 @@ export default function AdminUsersPage() {
               {filtered.map((r) => {
                 const disabled = r.is_disabled;
                 return (
-                  <div key={r.user_id} className="ui-list-card flex flex-col gap-4 px-4 py-4 md:px-5">
+                  <div key={r.user_id} className="flex flex-col gap-4 rounded-2xl border border-border bg-background px-4 py-4 shadow-[0_8px_20px_hsl(220_20%_20%/0.025)] transition hover:border-[var(--studio-border-strong)] md:px-5">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
                         <div className="text-base font-semibold tracking-tight truncate">
@@ -281,8 +326,8 @@ export default function AdminUsersPage() {
                   </div>
                 );
               })}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </>
       )}
     </div>
